@@ -1,0 +1,53 @@
+# --- Dependencies ---
+node_modules/
+.pnpm-store/
+.npm/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# --- Environment Variables (CRITICAL) ---
+.env
+*.env.local
+.env.*.local
+.env.development
+.env.production
+
+# --- OS / IDE Metadata ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# --- Build Outputs ---
+dist/
+build/
+.next/
+out/
+bin/
+obj/
+
+# --- Logs ---
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+logs/
+*.log
+
+# --- Server Specifics ---
+server/templates/*.html # If you want to keep generated templates out
+server/uploads/        # Local storage for Cloudinary testing/fallbacks
+
+# --- Testing ---
+coverage/
+.nyc_output
+
+# --- Miscellaneous ---
+.vercel/
+.turbo/
