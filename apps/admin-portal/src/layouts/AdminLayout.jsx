@@ -1,20 +1,74 @@
-import { Outlet, NavLink } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   Users, 
   Mail, 
   Settings, 
   LogOut, 
-  Bell 
+  Bell,
+  ShieldCheck 
 } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
+import { logout as logoutApi, me as meApi } from '../api/authService';
+
+const normalize = (v) => String(v ?? '').trim().toLowerCase();
+
+const isAllowed = (user, permission) => {
+  const role = normalize(user?.role);
+  if (role === 'admin') return true;
+  const perms = Array.isArray(user?.permissions)
+    ? user.permissions.map((p) => normalize(p)).filter(Boolean)
+    : [];
+  return perms.includes(normalize(permission));
+};
+
+const getInitials = (name) => {
+  const text = String(name ?? '').trim();
+  if (!text) return 'U';
+  const parts = text.split(/\s+/).filter(Boolean);
+  const first = parts[0]?.[0] || '';
+  const last = (parts.length > 1 ? parts[parts.length - 1]?.[0] : parts[0]?.[1]) || '';
+  return (first + last).toUpperCase();
+};
 
 export default function AdminLayout() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  const { data: meData } = useQuery({
+    queryKey: ['me'],
+    queryFn: meApi,
+    retry: false,
+  });
+
+  const logoutMutation = useMutation({
+    mutationFn: logoutApi,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['me'] });
+      toast.success('Logged out');
+      navigate('/login', { replace: true });
+    },
+    onError: () => {
+      toast.error('Logout failed');
+    },
+  });
+
   const menuItems = [
-    { name: 'Dashboard', icon: <LayoutDashboard size={20}/>, path: '/' },
-    { name: 'Registrations', icon: <Users size={20}/>, path: '/registrations' },
-    { name: 'Email Center', icon: <Mail size={20}/>, path: '/mailer' },
-    { name: 'API Settings', icon: <Settings size={20}/>, path: '/settings' },
+    { name: 'Dashboard', icon: <LayoutDashboard size={20} />, path: '/', permission: 'dashboard' },
+    { name: 'Registrations', icon: <Users size={20} />, path: '/registrations', permission: 'registrations' },
+    { name: 'Team Members', icon: <ShieldCheck size={20} />, path: '/users', permission: 'users' },
+    { name: 'Email Center', icon: <Mail size={20} />, path: '/mailer', permission: 'mailer' },
+    { name: 'API Settings', icon: <Settings size={20} />, path: '/settings', permission: 'settings' },
   ];
+
+  const visibleMenuItems = meData?.id
+    ? menuItems.filter((m) => isAllowed(meData, m.permission))
+    : menuItems;
+
+  const displayName = String(meData?.name || meData?.membershipId || '').trim() || 'Account';
+  const roleLabel = String(meData?.role || '').trim() || 'Member';
+  const initials = getInitials(meData?.name || meData?.membershipId);
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden">
@@ -27,7 +81,7 @@ export default function AdminLayout() {
         
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           <p className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Main Menu</p>
-          {menuItems.map((item) => (
+          {visibleMenuItems.map((item) => (
             <NavLink 
               key={item.name} 
               to={item.path} 
@@ -46,7 +100,11 @@ export default function AdminLayout() {
 
         {/* Sidebar Footer */}
         <div className="p-4 border-t border-slate-100">
-          <button className="flex items-center gap-3 px-4 py-3 w-full text-red-500 hover:bg-red-50 rounded-xl transition-colors">
+          <button
+            onClick={() => logoutMutation.mutate()}
+            disabled={logoutMutation.isPending}
+            className="flex items-center gap-3 px-4 py-3 w-full text-red-500 hover:bg-red-50 rounded-xl transition-colors disabled:opacity-50"
+          >
             <LogOut size={20}/>
             <span className="font-medium text-sm">Logout</span>
           </button>
@@ -69,11 +127,11 @@ export default function AdminLayout() {
             <div className="h-8 w-px bg-slate-200"></div>
             <div className="flex items-center gap-3 cursor-pointer">
               <div className="text-right">
-                <p className="text-xs font-bold leading-none">Umar Mukhtar</p>
-                <p className="text-[10px] text-slate-400 font-medium">Super Admin</p>
+                <p className="text-xs font-bold leading-none">{displayName}</p>
+                <p className="text-[10px] text-slate-400 font-medium">{roleLabel}</p>
               </div>
-              <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 border-2 border-white shadow-sm flex items-center justify-center text-white text-xs font-bold">
-                UA
+              <div className="w-9 h-9 rounded-full bg-linear-to-tr from-blue-600 to-indigo-500 border-2 border-white shadow-sm flex items-center justify-center text-white text-xs font-bold">
+                {initials}
               </div>
             </div>
           </div>

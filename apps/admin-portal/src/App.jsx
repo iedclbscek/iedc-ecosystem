@@ -1,26 +1,79 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import AdminLayout from './layouts/AdminLayout';
+import { Toaster } from 'react-hot-toast';
+import RequireAuth from './components/RequireAuth';
+import RequirePermission from './components/RequirePermission';
 
 // Import Pages
 import Dashboard from './pages/Dashboard';
 import Registrations from './pages/Registrations';
+import Users from './pages/Users';
 import Settings from './pages/Settings';
+import Login from './pages/Login';
+import SetPassword from './pages/SetPassword';
+import Mailer from './pages/Mailer';
 
 function App() {
   return (
     <BrowserRouter>
+      <Toaster position="top-right" reverseOrder={false} />
       <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/set-password" element={<SetPassword />} />
+
         {/* Main Admin Route */}
-        <Route path="/" element={<AdminLayout />}>
+        <Route
+          path="/"
+          element={
+            <RequireAuth>
+              <AdminLayout />
+            </RequireAuth>
+          }
+        >
           {/* Index route shows the Dashboard by default at admin.iedclbscek.in/ */}
-          <Route index element={<Dashboard />} />
+          <Route
+            index
+            element={
+              <RequirePermission permission="dashboard">
+                <Dashboard />
+              </RequirePermission>
+            }
+          />
           
           {/* Sub-pages */}
-          <Route path="registrations" element={<Registrations />} />
-          <Route path="settings" element={<Settings />} />
+          <Route
+            path="registrations"
+            element={
+              <RequirePermission permission="registrations">
+                <Registrations />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="users"
+            element={
+              <RequirePermission permission="users">
+                <Users />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="settings"
+            element={
+              <RequirePermission permission="settings">
+                <Settings />
+              </RequirePermission>
+            }
+          />
           
-          {/* Placeholder for Mail Center which we'll build next */}
-          <Route path="mailer" element={<div className="p-8">Email Center Coming Soon...</div>} />
+          <Route
+            path="mailer"
+            element={
+              <RequirePermission permission="mailer">
+                <Mailer />
+              </RequirePermission>
+            }
+          />
         </Route>
 
         {/* 404 Catch-all */}
