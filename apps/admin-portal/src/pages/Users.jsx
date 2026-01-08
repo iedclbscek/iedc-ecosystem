@@ -258,6 +258,8 @@ const permissionOptions = [
   { id: 'settings', label: 'Settings' },
 ];
 
+const CLUB_PORTAL_PERMISSION_IDS = new Set(['dashboard', 'events', 'users']);
+
 function ClubPortalMemberManager({ meData, forcedClubId }) {
   const queryClient = useQueryClient();
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -294,7 +296,9 @@ function ClubPortalMemberManager({ meData, forcedClubId }) {
   }, [meData?.permissions]);
 
   const availablePermissionOptions = useMemo(() => {
-    return permissionOptions.filter((opt) => availablePermissionIds.has(normalize(opt.id)));
+    return permissionOptions.filter(
+      (opt) => CLUB_PORTAL_PERMISSION_IDS.has(normalize(opt.id)) && availablePermissionIds.has(normalize(opt.id))
+    );
   }, [availablePermissionIds]);
 
   const searchEnabled = isAddOpen && searchQuery.trim().length >= 2;
@@ -424,7 +428,9 @@ function ClubPortalMemberManager({ meData, forcedClubId }) {
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {portalMembers.map((u) => {
-                  const perms = Array.isArray(u?.permissions) ? u.permissions : [];
+                          const perms = (Array.isArray(u?.permissions) ? u.permissions : []).filter((p) =>
+                            CLUB_PORTAL_PERMISSION_IDS.has(normalize(p))
+                          );
                   return (
                     <tr key={String(u?._id)} className="hover:bg-slate-50/50 transition-colors">
                       <td className="px-6 py-4 font-semibold text-slate-900 whitespace-nowrap">{u?.name || '—'}</td>
@@ -611,7 +617,9 @@ function ClubPortalMemberManager({ meData, forcedClubId }) {
                     clubId: String(activeClub?._id),
                     registrationId: selectedStudent._id,
                     portalAccessEnabled,
-                    permissions,
+                    permissions: (Array.isArray(permissions) ? permissions : []).filter((p) =>
+                      CLUB_PORTAL_PERMISSION_IDS.has(normalize(p))
+                    ),
                   });
                 }}
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold disabled:opacity-50"
@@ -723,7 +731,9 @@ function ClubPortalMemberManager({ meData, forcedClubId }) {
                     clubId: String(activeClub?._id),
                     userId: String(editingUser?._id),
                     portalAccessEnabled: editPortalAccessEnabled,
-                    permissions: editPermissions,
+                    permissions: (Array.isArray(editPermissions) ? editPermissions : []).filter((p) =>
+                      CLUB_PORTAL_PERMISSION_IDS.has(normalize(p))
+                    ),
                   });
                 }}
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold disabled:opacity-50"
@@ -1934,7 +1944,7 @@ export default function Users() {
             }}
           />
 
-          <div className="relative w-full max-w-2xl bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden">
+          <div className="relative w-full max-w-2xl max-h-[90vh] bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden flex flex-col">
             <div className="p-6 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <h3 className="font-bold text-slate-900">Add Team Member</h3>
@@ -1952,7 +1962,7 @@ export default function Users() {
               </button>
             </div>
 
-            <div className="p-6 space-y-6">
+            <div className="p-6 space-y-6 overflow-y-auto flex-1">
               {/* Search */}
               <div className="space-y-2">
                 <label className="text-sm font-bold text-slate-700">Search Registrations</label>

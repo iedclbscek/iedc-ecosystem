@@ -13,6 +13,8 @@ const normalize = (v) =>
     .trim()
     .toLowerCase();
 
+const CLUB_PORTAL_ALLOWED_PERMISSIONS = new Set(["dashboard", "events", "users"]);
+
 const limitPermissionsToActor = (requestedPermissions, actorPermissions) => {
   const requested = Array.isArray(requestedPermissions)
     ? requestedPermissions.map((p) => normalize(p)).filter(Boolean)
@@ -23,6 +25,11 @@ const limitPermissionsToActor = (requestedPermissions, actorPermissions) => {
 
   const allowedSet = new Set(allowed);
   return Array.from(new Set(requested.filter((p) => allowedSet.has(p))));
+};
+
+const limitClubPortalPermissions = (requestedPermissions, actorPermissions) => {
+  const withinActor = limitPermissionsToActor(requestedPermissions, actorPermissions);
+  return withinActor.filter((p) => CLUB_PORTAL_ALLOWED_PERMISSIONS.has(p));
 };
 
 const isClubManager = (club, userId) => {
@@ -472,10 +479,7 @@ export const promoteClubPortalMember = async (req, res) => {
       club.memberRegistrations = [...memberRegs, regId];
     }
 
-    const requestedPerms = limitPermissionsToActor(
-      permissions,
-      req.user?.permissions
-    );
+    const requestedPerms = limitClubPortalPermissions(permissions, req.user?.permissions);
     const nextPortalAccessEnabled =
       portalAccessEnabled !== undefined ? Boolean(portalAccessEnabled) : true;
 
@@ -623,10 +627,7 @@ export const updateClubPortalMember = async (req, res) => {
     }
 
     if (permissions !== undefined) {
-      user.permissions = limitPermissionsToActor(
-        permissions,
-        req.user?.permissions
-      );
+      user.permissions = limitClubPortalPermissions(permissions, req.user?.permissions);
     }
 
     const wasPortalAccessEnabled = user.portalAccessEnabled !== false;
