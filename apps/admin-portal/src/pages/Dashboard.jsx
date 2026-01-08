@@ -4,7 +4,7 @@ export default function Dashboard() {
   // These stats would eventually come from your registrations and execomCall collections
   const stats = [
     { label: 'Total Registrations', value: '451', icon: <Users />, color: 'bg-blue-500', trend: '+12%', isUp: true },
-    { label: 'Execom Applications', value: '152', icon: <UserCheck />, color: 'bg-purple-500', trend: '+5%', isUp: true },
+    { label: 'Execom Applications', value: '152', icon: <UserCheck />, color: 'bg-pink-600', trend: '+5%', isUp: true },
     { label: 'Active Events', value: '0', icon: <Calendar />, color: 'bg-orange-500', trend: '0%', isUp: false },
     { label: 'Conversion Rate', value: '33.7%', icon: <TrendingUp />, color: 'bg-emerald-500', trend: '-2%', isUp: false },
   ];

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -7,7 +8,9 @@ import {
   Settings, 
   LogOut, 
   Bell,
-  ShieldCheck 
+  ShieldCheck,
+  Menu,
+  X
 } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -36,6 +39,7 @@ const getInitials = (name) => {
 export default function AdminLayout() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const { data: meData } = useQuery({
     queryKey: ['me'],
@@ -76,40 +80,50 @@ export default function AdminLayout() {
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden">
       {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col shrink-0">
-        <div className="p-6 border-b border-slate-100 flex items-center gap-3">
+      <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} bg-white border-r border-slate-200 flex flex-col shrink-0 transition-all duration-300`}>
+        <div className={`p-6 border-b border-slate-100 flex items-center ${sidebarOpen ? 'gap-3' : 'justify-center'}`}>
           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">I</div>
-          <h1 className="text-xl font-bold tracking-tight">IEDC Admin</h1>
+          {sidebarOpen && <h1 className="text-xl font-bold tracking-tight">IEDC Admin</h1>}
         </div>
         
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-          <p className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Main Menu</p>
+          {sidebarOpen && <p className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Main Menu</p>}
           {visibleMenuItems.map((item) => (
             <NavLink 
               key={item.name} 
               to={item.path} 
               className={({ isActive }) => `
-                flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200
+                flex items-center ${sidebarOpen ? 'gap-3 px-4' : 'justify-center px-0'} py-3 rounded-xl transition-all duration-200
                 ${isActive 
                   ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' 
                   : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'}
               `}
+              title={!sidebarOpen ? item.name : undefined}
             >
               {item.icon}
-              <span className="font-medium text-sm">{item.name}</span>
+              {sidebarOpen && <span className="font-medium text-sm">{item.name}</span>}
             </NavLink>
           ))}
         </nav>
 
         {/* Sidebar Footer */}
-        <div className="p-4 border-t border-slate-100">
+        <div className="p-4 border-t border-slate-100 space-y-2">
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className={`flex items-center ${sidebarOpen ? 'gap-3 px-4' : 'justify-center px-0'} py-3 w-full text-slate-500 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-colors`}
+            title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+          >
+            {sidebarOpen ? <X size={20}/> : <Menu size={20}/>}
+            {sidebarOpen && <span className="font-medium text-sm">Collapse</span>}
+          </button>
           <button
             onClick={() => logoutMutation.mutate()}
             disabled={logoutMutation.isPending}
-            className="flex items-center gap-3 px-4 py-3 w-full text-red-500 hover:bg-red-50 rounded-xl transition-colors disabled:opacity-50"
+            className={`flex items-center ${sidebarOpen ? 'gap-3 px-4' : 'justify-center px-0'} py-3 w-full text-red-500 hover:bg-red-50 rounded-xl transition-colors disabled:opacity-50`}
+            title={!sidebarOpen ? "Logout" : undefined}
           >
             <LogOut size={20}/>
-            <span className="font-medium text-sm">Logout</span>
+            {sidebarOpen && <span className="font-medium text-sm">Logout</span>}
           </button>
         </div>
       </aside>

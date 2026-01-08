@@ -6,6 +6,30 @@ import bcrypt from "bcryptjs";
 import { sendMail } from "../utils/mailer.js";
 import { renderTemplate } from "../utils/templateRenderer.js";
 
+const getAdminPortalUrl = () => {
+  const isProd =
+    String(process.env.NODE_ENV || "")
+      .trim()
+      .toLowerCase() === "production";
+  const raw = String(process.env.ADMIN_PORTAL_URL || "").trim();
+
+  // Sensible defaults: local dev uses Vite; production uses the deployed admin portal.
+  let url =
+    raw || (isProd ? "https://admin.iedclbscek.in" : "http://localhost:5173");
+
+  // If the value is host-only, add a scheme.
+  if (!/^https?:\/\//i.test(url)) {
+    url = `${isProd ? "https" : "http"}://${url}`;
+  }
+
+  // Avoid mixed content and unreachable http-only hosts in production.
+  if (isProd && url.startsWith("http://")) {
+    url = `https://${url.slice("http://".length)}`;
+  }
+
+  return url.replace(/\/$/, "");
+};
+
 export const searchStudents = async (req, res) => {
   try {
     const query = String(req.query.query ?? "").trim();
@@ -124,7 +148,7 @@ export const promoteToTeam = async (req, res) => {
     });
 
     // Send email with set-password link
-    const portalUrl = process.env.ADMIN_PORTAL_URL || "http://localhost:5173";
+    const portalUrl = getAdminPortalUrl();
     const link = `${portalUrl}/set-password?uid=${newUser._id}&token=${passwordSetupToken}`;
 
     let subject = "Reset Your Password";

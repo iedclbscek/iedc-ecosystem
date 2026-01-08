@@ -16,19 +16,32 @@ import {
   promoteToTeam,
   searchStudents,
 } from "../controllers/teamController.js";
+import { requireAuth } from "../middleware/requireAuth.js";
 import {
   listEmailTemplates,
   getEmailTemplate,
   createEmailTemplate,
   updateEmailTemplate,
   sendTestEmailTemplate,
+  sendBulkEmailTemplate,
 } from "../controllers/emailTemplateController.js";
 import {
   listEvents,
   createEvent,
   updateEvent,
   deleteEvent,
+  listClubEvents,
+  createClubEvent,
+  updateClubEvent,
+  deleteClubEvent,
 } from "../controllers/eventController.js";
+import {
+  listClubs,
+  createClub,
+  updateClub,
+  deleteClub,
+  getClubAccess,
+} from "../controllers/clubController.js";
 
 const router = express.Router();
 
@@ -37,6 +50,9 @@ router.post("/auth/login", login);
 router.post("/auth/logout", logout);
 router.get("/auth/me", me);
 router.post("/auth/set-password", setPassword);
+
+// Require auth for everything below
+router.use(requireAuth);
 
 // Registrations
 router.get("/registrations", getRegistrations);
@@ -55,11 +71,25 @@ router.get("/email/templates/:id", getEmailTemplate);
 router.post("/email/templates", createEmailTemplate);
 router.patch("/email/templates/:id", updateEmailTemplate);
 router.post("/email/templates/:id/test", sendTestEmailTemplate);
+router.post("/email/templates/:id/bulk", sendBulkEmailTemplate);
 
 // Events
 router.get("/events", listEvents);
 router.post("/events", createEvent);
 router.patch("/events/:id", updateEvent);
 router.delete("/events/:id", deleteEvent);
+
+// Club Events
+router.get("/clubs/:clubId/events", listClubEvents);
+router.post("/clubs/:clubId/events", createClubEvent);
+router.patch("/clubs/:clubId/events/:eventId", updateClubEvent);
+router.delete("/clubs/:clubId/events/:eventId", deleteClubEvent);
+
+// Clubs
+router.get("/clubs", listClubs);
+router.post("/clubs", createClub);
+router.get("/clubs/:id", getClubAccess);
+router.patch("/clubs/:id", updateClub);
+router.delete("/clubs/:id", deleteClub);
 
 export default router;

@@ -105,6 +105,15 @@ export const sendTestEmailTemplate = async ({ id, to, data: templateData }) => {
   return data; // { sent, reason }
 };
 
+export const sendBulkEmailTemplate = async ({ id, sendTo, recipients, data: templateData }) => {
+  const { data } = await api.post(`/admin/email/templates/${id}/bulk`, {
+    sendTo,
+    recipients,
+    data: templateData,
+  });
+  return data; // { mode, total, sent, failed, failures[] }
+};
+
 // Events
 export const fetchEvents = async (search = "") => {
   const { data } = await api.get("/admin/events", {
@@ -114,20 +123,24 @@ export const fetchEvents = async (search = "") => {
 };
 
 export const createEvent = async ({
+  clubId,
   title,
   description,
   location,
   startAt,
   endAt,
   coordinatorUserId,
+  coordinatorUserIds,
 }) => {
   const { data } = await api.post("/admin/events", {
+    clubId,
     title,
     description,
     location,
     startAt,
     endAt,
     coordinatorUserId,
+    coordinatorUserIds,
   });
   return data; // { event }
 };
@@ -140,6 +153,7 @@ export const updateEvent = async ({
   startAt,
   endAt,
   coordinatorUserId,
+  coordinatorUserIds,
 }) => {
   const { data } = await api.patch(`/admin/events/${id}`, {
     title,
@@ -148,11 +162,113 @@ export const updateEvent = async ({
     startAt,
     endAt,
     coordinatorUserId,
+    coordinatorUserIds,
   });
   return data; // { event }
 };
 
 export const deleteEvent = async (id) => {
   const { data } = await api.delete(`/admin/events/${id}`);
+  return data; // { message }
+};
+
+// Clubs
+export const fetchClubs = async () => {
+  const { data } = await api.get("/admin/clubs");
+  return data; // { clubs }
+};
+
+export const createClub = async ({
+  name,
+  description,
+  memberUserIds,
+  managerUserIds,
+}) => {
+  const { data } = await api.post("/admin/clubs", {
+    name,
+    description,
+    memberUserIds,
+    managerUserIds,
+  });
+  return data; // { club }
+};
+
+export const updateClub = async ({
+  id,
+  name,
+  description,
+  memberUserIds,
+  managerUserIds,
+}) => {
+  const { data } = await api.patch(`/admin/clubs/${id}`, {
+    name,
+    description,
+    memberUserIds,
+    managerUserIds,
+  });
+  return data; // { club }
+};
+
+export const deleteClub = async (id) => {
+  const { data } = await api.delete(`/admin/clubs/${id}`);
+  return data; // { message }
+};
+
+export const fetchClubAccess = async (id) => {
+  const { data } = await api.get(`/admin/clubs/${id}`);
+  return data; // { club }
+};
+
+// Club Events
+export const fetchClubEvents = async ({ clubId, search = "" }) => {
+  const { data } = await api.get(`/admin/clubs/${clubId}/events`, {
+    params: { search: String(search ?? "").trim() },
+  });
+  return data; // { events }
+};
+
+export const createClubEvent = async ({
+  clubId,
+  title,
+  description,
+  location,
+  startAt,
+  endAt,
+  coordinatorUserIds,
+}) => {
+  const { data } = await api.post(`/admin/clubs/${clubId}/events`, {
+    title,
+    description,
+    location,
+    startAt,
+    endAt,
+    coordinatorUserIds,
+  });
+  return data; // { event }
+};
+
+export const updateClubEvent = async ({
+  clubId,
+  eventId,
+  title,
+  description,
+  location,
+  startAt,
+  endAt,
+  coordinatorUserIds,
+}) => {
+  const { data } = await api.patch(`/admin/clubs/${clubId}/events/${eventId}`, {
+    title,
+    description,
+    location,
+    startAt,
+    endAt,
+    coordinatorUserIds,
+  });
+  return data; // { event }
+};
+
+export const deleteClubEvent = async ({ clubId, eventId }) => {
+  const { data } = await api.delete(`/admin/clubs/${clubId}/events/${eventId}`);
   return data; // { message }
 };

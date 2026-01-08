@@ -2,10 +2,13 @@ import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { Loader2, Plus, Save, Send, Eye } from 'lucide-react';
+import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 import {
   createEmailTemplate,
   fetchEmailTemplate,
   fetchEmailTemplates,
+  sendBulkEmailTemplate,
   sendTestEmailTemplate,
   updateEmailTemplate,
 } from '../api/adminService';
@@ -43,6 +46,12 @@ export default function Mailer() {
   const [isTestOpen, setIsTestOpen] = useState(false);
   const [testTo, setTestTo] = useState('');
   const [testData, setTestData] = useState({});
+
+  // bulk modal
+  const [isBulkOpen, setIsBulkOpen] = useState(false);
+  const [bulkMode, setBulkMode] = useState('upload'); // upload | all
+  const [bulkRecipients, setBulkRecipients] = useState([]);
+  const [bulkParseSummary, setBulkParseSummary] = useState(null);
 
   const { data: listData, isLoading: listLoading, isError: listError } = useQuery({
     queryKey: ['email-templates'],
@@ -99,6 +108,17 @@ export default function Mailer() {
     onError: (err) => toast.error(err?.response?.data?.message || 'Failed to send test email'),
   });
 
+  const bulkMutation = useMutation({
+    mutationFn: sendBulkEmailTemplate,
+    onSuccess: (res) => {
+      toast.success(`Bulk send done: ${res?.sent ?? 0} sent, ${res?.failed ?? 0} failed`);
+      setIsBulkOpen(false);
+      setBulkRecipients([]);
+      setBulkParseSummary(null);
+    },
+    onError: (err) => toast.error(err?.response?.data?.message || 'Failed to bulk send email'),
+  });
+
   const startNew = () => {
     setMode('new');
     setSelectedId(null);
@@ -150,6 +170,125 @@ export default function Mailer() {
     const saved = window.localStorage.getItem('iedc_test_email') || '';
     setTestTo(saved);
     setIsTestOpen(true);
+  };
+
+  const openBulk = () => {
+    if (!selectedId) {
+      toast.error('Save/select a template first');
+      return;
+    }
+    setBulkMode('upload');
+    setBulkRecipients([]);
+    setBulkParseSummary(null);
+    setIsBulkOpen(true);
+  };
+
+  const parseRowsToRecipients = (rows) => {
+    const safeRows = Array.isArray(rows) ? rows : [];
+
+    // find email column (case-insensitive)
+    const keys = safeRows.length > 0 ? Object.keys(safeRows[0] || {}) : [];
+    const emailKey = keys.find((k) => String(k).trim().toLowerCase() === 'email');
+    if (!emailKey) {
+      toast.error('File must contain an "email" column');
+      return { recipients: [], summary: { parsed: 0, valid: 0, invalid: 0 } };
+    }
+
+    let valid = 0;
+    let invalid = 0;
+    const recipients = [];
+
+    for (const row of safeRows) {
+      const email = String(row?.[emailKey] ?? '').trim();
+      if (!email) {
+        invalid++;
+        continue;
+      }
+
+      const data = {};
+      for (const [k, v] of Object.entries(row || {})) {
+        if (String(k) === String(emailKey)) continue;
+        const value = String(v ?? '').trim();
+        if (value === '') continue;
+        data[String(k).trim()] = value;
+      }
+
+      recipients.push({ email, data });
+      valid++;
+    }
+
+    return {
+      recipients,
+      summary: { parsed: safeRows.length, valid, invalid },
+    };
+  };
+
+  const onUploadFile = async (file) => {
+    if (!file) return;
+
+    const name = String(file.name || '').toLowerCase();
+    setBulkParseSummary(null);
+    setBulkRecipients([]);
+
+    try {
+      if (name.endsWith('.csv')) {
+        Papa.parse(file, {
+          header: true,
+          skipEmptyLines: true,
+          complete: (results) => {
+            const rows = Array.isArray(results?.data) ? results.data : [];
+            const { recipients, summary } = parseRowsToRecipients(rows);
+            setBulkRecipients(recipients);
+            setBulkParseSummary(summary);
+            if (recipients.length === 0) toast.error('No valid recipients found');
+            else toast.success(`Parsed ${recipients.length} recipients`);
+          },
+          error: () => toast.error('Failed to parse CSV'),
+        });
+        return;
+      }
+
+      if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+        const buffer = await file.arrayBuffer();
+        const wb = XLSX.read(buffer, { type: 'array' });
+        const firstSheetName = wb.SheetNames?.[0];
+        if (!firstSheetName) {
+          toast.error('No sheet found in file');
+          return;
+        }
+        const ws = wb.Sheets[firstSheetName];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        const { recipients, summary } = parseRowsToRecipients(rows);
+        setBulkRecipients(recipients);
+        setBulkParseSummary(summary);
+        if (recipients.length === 0) toast.error('No valid recipients found');
+        else toast.success(`Parsed ${recipients.length} recipients`);
+        return;
+      }
+
+      toast.error('Upload a .csv or .xlsx file');
+    } catch {
+      toast.error('Failed to read file');
+    }
+  };
+
+  const sendBulkNow = () => {
+    if (!selectedId) {
+      toast.error('Save/select a template first');
+      return;
+    }
+
+    if (bulkMode === 'all') {
+      bulkMutation.mutate({ id: selectedId, sendTo: 'all' });
+      return;
+    }
+
+    if (!Array.isArray(bulkRecipients) || bulkRecipients.length === 0) {
+      toast.error('Upload a file with recipients first');
+      return;
+    }
+
+    bulkMutation.mutate({ id: selectedId, sendTo: 'list', recipients: bulkRecipients });
   };
 
   const sendTest = () => {
@@ -222,6 +361,15 @@ export default function Mailer() {
             <div className="p-4 border-b border-slate-100 flex items-center justify-between">
               <div className="font-bold">{mode === 'new' ? 'Create Template' : 'Edit Template'}</div>
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={openBulk}
+                  disabled={mode === 'new' || !selectedId}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold hover:bg-slate-50 disabled:opacity-50"
+                >
+                  <Send size={16} />
+                  Bulk Send
+                </button>
                 <button
                   type="button"
                   onClick={openTest}
@@ -404,6 +552,109 @@ export default function Mailer() {
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold disabled:opacity-50"
               >
                 {testMutation.isPending && <Loader2 className="animate-spin" size={16} />}
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk modal */}
+      {isBulkOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-slate-900/50"
+            onClick={() => {
+              if (bulkMutation.isPending) return;
+              setIsBulkOpen(false);
+            }}
+          />
+
+          <div className="relative w-full max-w-2xl bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-slate-900">Bulk Send</h3>
+                <p className="text-sm text-slate-500">Upload a CSV/XLSX or send to all members.</p>
+              </div>
+              <button
+                onClick={() => {
+                  if (bulkMutation.isPending) return;
+                  setIsBulkOpen(false);
+                }}
+                className="p-2 rounded-xl hover:bg-slate-50 text-slate-500"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="space-y-2">
+                <div className="text-sm font-bold text-slate-700">Send mode</div>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="radio"
+                      name="bulkMode"
+                      checked={bulkMode === 'upload'}
+                      onChange={() => setBulkMode('upload')}
+                    />
+                    Upload CSV/XLSX
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="radio"
+                      name="bulkMode"
+                      checked={bulkMode === 'all'}
+                      onChange={() => setBulkMode('all')}
+                    />
+                    All active members
+                  </label>
+                </div>
+              </div>
+
+              {bulkMode === 'upload' ? (
+                <div className="space-y-2">
+                  <div className="text-sm font-bold text-slate-700">Upload file</div>
+                  <input
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    onChange={(e) => onUploadFile(e.target.files?.[0])}
+                    className="block w-full text-sm text-slate-600 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:bg-slate-900 file:text-white file:font-semibold hover:file:bg-slate-800"
+                  />
+                  <div className="text-xs text-slate-500">
+                    Required column: <span className="font-mono">email</span>. Other columns become template variables.
+                  </div>
+                  {bulkParseSummary ? (
+                    <div className="text-sm text-slate-600">
+                      Parsed {bulkParseSummary.parsed} rows • {bulkParseSummary.valid} valid • {bulkParseSummary.invalid} skipped
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="text-sm text-slate-600">
+                  This will send to all <span className="font-semibold">active</span> registrations in the database.
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (bulkMutation.isPending) return;
+                  setIsBulkOpen(false);
+                }}
+                className="px-5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={sendBulkNow}
+                disabled={bulkMutation.isPending}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold disabled:opacity-50"
+              >
+                {bulkMutation.isPending && <Loader2 className="animate-spin" size={16} />}
                 Send
               </button>
             </div>
