@@ -1,6 +1,7 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
+  CalendarDays,
   Users, 
   Mail, 
   Settings, 
@@ -57,6 +58,7 @@ export default function AdminLayout() {
   const menuItems = [
     { name: 'Dashboard', icon: <LayoutDashboard size={20} />, path: '/', permission: 'dashboard' },
     { name: 'Registrations', icon: <Users size={20} />, path: '/registrations', permission: 'registrations' },
+    { name: 'Events', icon: <CalendarDays size={20} />, path: '/events', permission: 'events' },
     { name: 'Team Members', icon: <ShieldCheck size={20} />, path: '/users', permission: 'users' },
     { name: 'Email Center', icon: <Mail size={20} />, path: '/mailer', permission: 'mailer' },
     { name: 'API Settings', icon: <Settings size={20} />, path: '/settings', permission: 'settings' },

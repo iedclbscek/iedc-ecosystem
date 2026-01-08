@@ -14,6 +14,7 @@ import { deleteUser, fetchUsers, promoteUser, searchStudents, updateUser } from 
 const permissionOptions = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'registrations', label: 'Registrations' },
+  { id: 'events', label: 'Events' },
   { id: 'users', label: 'Team' },
   { id: 'mailer', label: 'Email Center' },
   { id: 'settings', label: 'Settings' },

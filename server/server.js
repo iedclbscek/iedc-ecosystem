@@ -43,6 +43,15 @@ app.use(cookieParser());
 // 2. Routes
 app.use("/api/admin", adminRoutes);
 
+// Health
+app.get("/api/health", (req, res) => {
+  res.json({
+    status: "ok",
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // 3. Global Error Handler
 app.use((err, req, res, next) => {
   const statusCode = res.statusCode === 200 ? 500 : res.statusCode;

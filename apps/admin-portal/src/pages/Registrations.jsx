@@ -25,7 +25,7 @@ export default function Registrations() {
   }, [searchTerm]);
 
   // 2. Fetch Data from MongoDB
-  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
+  const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ['registrations', page, debouncedSearch],
     queryFn: () => fetchRegistrations(page, debouncedSearch),
     retry: 1,

@@ -104,3 +104,55 @@ export const sendTestEmailTemplate = async ({ id, to, data: templateData }) => {
   });
   return data; // { sent, reason }
 };
+
+// Events
+export const fetchEvents = async (search = "") => {
+  const { data } = await api.get("/admin/events", {
+    params: { search: String(search ?? "").trim() },
+  });
+  return data; // { events }
+};
+
+export const createEvent = async ({
+  title,
+  description,
+  location,
+  startAt,
+  endAt,
+  coordinatorUserId,
+}) => {
+  const { data } = await api.post("/admin/events", {
+    title,
+    description,
+    location,
+    startAt,
+    endAt,
+    coordinatorUserId,
+  });
+  return data; // { event }
+};
+
+export const updateEvent = async ({
+  id,
+  title,
+  description,
+  location,
+  startAt,
+  endAt,
+  coordinatorUserId,
+}) => {
+  const { data } = await api.patch(`/admin/events/${id}`, {
+    title,
+    description,
+    location,
+    startAt,
+    endAt,
+    coordinatorUserId,
+  });
+  return data; // { event }
+};
+
+export const deleteEvent = async (id) => {
+  const { data } = await api.delete(`/admin/events/${id}`);
+  return data; // { message }
+};

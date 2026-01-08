@@ -23,6 +23,12 @@ import {
   updateEmailTemplate,
   sendTestEmailTemplate,
 } from "../controllers/emailTemplateController.js";
+import {
+  listEvents,
+  createEvent,
+  updateEvent,
+  deleteEvent,
+} from "../controllers/eventController.js";
 
 const router = express.Router();
 
@@ -49,5 +55,11 @@ router.get("/email/templates/:id", getEmailTemplate);
 router.post("/email/templates", createEmailTemplate);
 router.patch("/email/templates/:id", updateEmailTemplate);
 router.post("/email/templates/:id/test", sendTestEmailTemplate);
+
+// Events
+router.get("/events", listEvents);
+router.post("/events", createEvent);
+router.patch("/events/:id", updateEvent);
+router.delete("/events/:id", deleteEvent);
 
 export default router;

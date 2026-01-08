@@ -7,12 +7,13 @@ import { me } from '../api/authService';
 const PERMISSION_TO_PATH = {
   dashboard: '/',
   registrations: '/registrations',
+  events: '/events',
   users: '/users',
   mailer: '/mailer',
   settings: '/settings',
 };
 
-const PERMISSION_ORDER = ['dashboard', 'registrations', 'users', 'mailer', 'settings'];
+const PERMISSION_ORDER = ['dashboard', 'registrations', 'events', 'users', 'mailer', 'settings'];
 
 const normalize = (v) => String(v ?? '').trim().toLowerCase();
 

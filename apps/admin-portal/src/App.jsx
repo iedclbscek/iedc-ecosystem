@@ -7,6 +7,7 @@ import RequirePermission from './components/RequirePermission';
 // Import Pages
 import Dashboard from './pages/Dashboard';
 import Registrations from './pages/Registrations';
+import Events from './pages/Events';
 import Users from './pages/Users';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
@@ -46,6 +47,14 @@ function App() {
             element={
               <RequirePermission permission="registrations">
                 <Registrations />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="events"
+            element={
+              <RequirePermission permission="events">
+                <Events />
               </RequirePermission>
             }
           />
