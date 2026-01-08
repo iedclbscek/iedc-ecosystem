@@ -105,7 +105,12 @@ export const sendTestEmailTemplate = async ({ id, to, data: templateData }) => {
   return data; // { sent, reason }
 };
 
-export const sendBulkEmailTemplate = async ({ id, sendTo, recipients, data: templateData }) => {
+export const sendBulkEmailTemplate = async ({
+  id,
+  sendTo,
+  recipients,
+  data: templateData,
+}) => {
   const { data } = await api.post(`/admin/email/templates/${id}/bulk`, {
     sendTo,
     recipients,

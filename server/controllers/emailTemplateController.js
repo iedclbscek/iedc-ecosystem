@@ -162,7 +162,9 @@ export const sendBulkEmailTemplate = async (req, res) => {
 
     const subject = template.subject || template.name || "Email";
     const baseData =
-      defaultData && typeof defaultData === "object" && !Array.isArray(defaultData)
+      defaultData &&
+      typeof defaultData === "object" &&
+      !Array.isArray(defaultData)
         ? defaultData
         : {};
 
@@ -181,7 +183,9 @@ export const sendBulkEmailTemplate = async (req, res) => {
         .map((m) => {
           const email = normalize(m?.email);
           if (!isValidEmail(email)) return null;
-          const name = normalize(`${m?.firstName ?? ""} ${m?.lastName ?? ""}`) || undefined;
+          const name =
+            normalize(`${m?.firstName ?? ""} ${m?.lastName ?? ""}`) ||
+            undefined;
           return {
             email,
             data: {
@@ -244,13 +248,17 @@ export const sendBulkEmailTemplate = async (req, res) => {
           const email = normalize(r?.email);
           if (!isValidEmail(email)) return null;
           const rowData =
-            r?.data && typeof r.data === "object" && !Array.isArray(r.data) ? r.data : {};
+            r?.data && typeof r.data === "object" && !Array.isArray(r.data)
+              ? r.data
+              : {};
           return { email, data: { ...baseData, ...rowData } };
         })
         .filter(Boolean);
 
       if (targets.length === 0) {
-        return res.status(400).json({ message: "No valid recipient emails found" });
+        return res
+          .status(400)
+          .json({ message: "No valid recipient emails found" });
       }
 
       const results = await sendManyWithConcurrency({
