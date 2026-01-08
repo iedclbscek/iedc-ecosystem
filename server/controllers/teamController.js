@@ -13,7 +13,11 @@ const normalize = (v) =>
     .trim()
     .toLowerCase();
 
-const CLUB_PORTAL_ALLOWED_PERMISSIONS = new Set(["dashboard", "events", "users"]);
+const CLUB_PORTAL_ALLOWED_PERMISSIONS = new Set([
+  "dashboard",
+  "events",
+  "users",
+]);
 
 const limitPermissionsToActor = (requestedPermissions, actorPermissions) => {
   const requested = Array.isArray(requestedPermissions)
@@ -28,7 +32,10 @@ const limitPermissionsToActor = (requestedPermissions, actorPermissions) => {
 };
 
 const limitClubPortalPermissions = (requestedPermissions, actorPermissions) => {
-  const withinActor = limitPermissionsToActor(requestedPermissions, actorPermissions);
+  const withinActor = limitPermissionsToActor(
+    requestedPermissions,
+    actorPermissions
+  );
   return withinActor.filter((p) => CLUB_PORTAL_ALLOWED_PERMISSIONS.has(p));
 };
 
@@ -479,7 +486,10 @@ export const promoteClubPortalMember = async (req, res) => {
       club.memberRegistrations = [...memberRegs, regId];
     }
 
-    const requestedPerms = limitClubPortalPermissions(permissions, req.user?.permissions);
+    const requestedPerms = limitClubPortalPermissions(
+      permissions,
+      req.user?.permissions
+    );
     const nextPortalAccessEnabled =
       portalAccessEnabled !== undefined ? Boolean(portalAccessEnabled) : true;
 
@@ -582,12 +592,10 @@ export const promoteClubPortalMember = async (req, res) => {
       passwordSetupEmailSent,
     });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        message: "Failed to add club portal member",
-        error: error.message,
-      });
+    res.status(500).json({
+      message: "Failed to add club portal member",
+      error: error.message,
+    });
   }
 };
 
@@ -627,7 +635,10 @@ export const updateClubPortalMember = async (req, res) => {
     }
 
     if (permissions !== undefined) {
-      user.permissions = limitClubPortalPermissions(permissions, req.user?.permissions);
+      user.permissions = limitClubPortalPermissions(
+        permissions,
+        req.user?.permissions
+      );
     }
 
     const wasPortalAccessEnabled = user.portalAccessEnabled !== false;
@@ -671,11 +682,9 @@ export const updateClubPortalMember = async (req, res) => {
       ...(shouldSendPasswordSetupEmail ? { passwordSetupEmailSent } : {}),
     });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        message: "Failed to update club portal member",
-        error: error.message,
-      });
+    res.status(500).json({
+      message: "Failed to update club portal member",
+      error: error.message,
+    });
   }
 };
