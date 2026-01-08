@@ -83,7 +83,7 @@ export default function Registrations() {
   if (isLoading) return (
     <div className="flex flex-col h-96 items-center justify-center gap-4">
       <Loader2 className="animate-spin text-blue-600" size={40} />
-      <p className="text-slate-500 font-medium animate-pulse">Fetching 451 registrations...</p>
+      <p className="text-slate-500 font-medium animate-pulse">Fetching 451 members...</p>
     </div>
   );
 
@@ -114,7 +114,7 @@ export default function Registrations() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
-            Registrations
+            Members
             <span className="bg-blue-100 text-blue-600 text-xs px-2 py-1 rounded-full">
               {data?.totalStudents || 0} Total
             </span>
@@ -201,7 +201,7 @@ export default function Registrations() {
         {/* Empty State */}
         {data?.students?.length === 0 && (
           <div className="p-20 text-center">
-            <p className="text-slate-400 italic">No registrations found matching "{searchTerm}"</p>
+            <p className="text-slate-400 italic">No members found matching "{searchTerm}"</p>
           </div>
         )}
 

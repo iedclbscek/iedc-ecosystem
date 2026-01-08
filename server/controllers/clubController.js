@@ -9,13 +9,25 @@ const canManageClub = (club, userId) => {
   return managers.some((m) => String(m) === id);
 };
 
+const canEditClub = (club, userId) => {
+  const id = String(userId);
+  const editors = Array.isArray(club?.editorUsers) ? club.editorUsers : [];
+  const managers = Array.isArray(club?.managerUsers) ? club.managerUsers : [];
+  return (
+    managers.some((m) => String(m) === id) ||
+    editors.some((e) => String(e) === id)
+  );
+};
+
 const canAccessClub = (club, userId) => {
   const id = String(userId);
   const members = Array.isArray(club?.memberUsers) ? club.memberUsers : [];
   const managers = Array.isArray(club?.managerUsers) ? club.managerUsers : [];
+  const editors = Array.isArray(club?.editorUsers) ? club.editorUsers : [];
   return (
     members.some((m) => String(m) === id) ||
-    managers.some((m) => String(m) === id)
+    managers.some((m) => String(m) === id) ||
+    editors.some((e) => String(e) === id)
   );
 };
 
@@ -25,12 +37,21 @@ export const listClubs = async (req, res) => {
     const query = isAdmin(user)
       ? {}
       : {
-          $or: [{ memberUsers: user.id }, { managerUsers: user.id }],
+          $or: [
+            { memberUsers: user.id },
+            { managerUsers: user.id },
+            { editorUsers: user.id },
+          ],
         };
 
     const clubs = await Club.find(query)
       .populate("memberUsers", "name email membershipId role")
       .populate("managerUsers", "name email membershipId role")
+      .populate("editorUsers", "name email membershipId role")
+      .populate(
+        "memberRegistrations",
+        "firstName lastName membershipId email department semester status"
+      )
       .sort({ name: 1 });
 
     res.json({ clubs });
@@ -51,23 +72,33 @@ export const createClub = async (req, res) => {
     const description = normalize(req.body?.description);
     if (!name) return res.status(400).json({ message: "name is required" });
 
-    const memberUsers = Array.isArray(req.body?.memberUserIds)
-      ? req.body.memberUserIds
-      : [];
     const managerUsers = Array.isArray(req.body?.managerUserIds)
       ? req.body.managerUserIds
       : [];
+
+    // Spec: when creating a club, only add club leads (managerUsers).
+    // Editors/members can be added later by the leads.
+    const editorUsers = [];
+    const memberUsers = [];
+    const memberRegistrations = [];
 
     const club = await Club.create({
       name,
       description: description || undefined,
       memberUsers,
       managerUsers,
+      editorUsers,
+      memberRegistrations,
     });
 
     const populated = await Club.findById(club._id)
       .populate("memberUsers", "name email membershipId role")
-      .populate("managerUsers", "name email membershipId role");
+      .populate("managerUsers", "name email membershipId role")
+      .populate("editorUsers", "name email membershipId role")
+      .populate(
+        "memberRegistrations",
+        "firstName lastName membershipId email department semester status"
+      );
 
     res.status(201).json({ club: populated });
   } catch (error) {
@@ -88,11 +119,18 @@ export const updateClub = async (req, res) => {
     if (!club) return res.status(404).json({ message: "Club not found" });
 
     const user = req.user;
-    if (!isAdmin(user) && !canManageClub(club, user.id)) {
+    const isLead = canManageClub(club, user.id);
+    const canEdit = canEditClub(club, user.id);
+
+    if (!isAdmin(user) && !canEdit) {
       return res.status(403).json({ message: "Forbidden" });
     }
 
+    // Only admins can rename a club.
     if (req.body?.name !== undefined) {
+      if (!isAdmin(user)) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
       const name = normalize(req.body.name);
       if (!name) return res.status(400).json({ message: "name is required" });
       club.name = name;
@@ -103,15 +141,42 @@ export const updateClub = async (req, res) => {
       club.description = description || undefined;
     }
 
+    // Membership management:
+    // - Admin can manage everything
+    // - Club leads can manage editors + members
+    if (req.body?.managerUserIds !== undefined) {
+      if (!isAdmin(user)) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      club.managerUsers = Array.isArray(req.body.managerUserIds)
+        ? req.body.managerUserIds
+        : [];
+    }
+
+    if (req.body?.editorUserIds !== undefined) {
+      if (!isAdmin(user) && !isLead) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      club.editorUsers = Array.isArray(req.body.editorUserIds)
+        ? req.body.editorUserIds
+        : [];
+    }
+
     if (req.body?.memberUserIds !== undefined) {
+      if (!isAdmin(user) && !isLead) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
       club.memberUsers = Array.isArray(req.body.memberUserIds)
         ? req.body.memberUserIds
         : [];
     }
 
-    if (req.body?.managerUserIds !== undefined) {
-      club.managerUsers = Array.isArray(req.body.managerUserIds)
-        ? req.body.managerUserIds
+    if (req.body?.memberRegistrationIds !== undefined) {
+      if (!isAdmin(user) && !isLead) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      club.memberRegistrations = Array.isArray(req.body.memberRegistrationIds)
+        ? req.body.memberRegistrationIds
         : [];
     }
 
@@ -119,7 +184,12 @@ export const updateClub = async (req, res) => {
 
     const populated = await Club.findById(club._id)
       .populate("memberUsers", "name email membershipId role")
-      .populate("managerUsers", "name email membershipId role");
+      .populate("managerUsers", "name email membershipId role")
+      .populate("editorUsers", "name email membershipId role")
+      .populate(
+        "memberRegistrations",
+        "firstName lastName membershipId email department semester status"
+      );
 
     res.json({ club: populated });
   } catch (error) {
@@ -153,7 +223,12 @@ export const getClubAccess = async (req, res) => {
   try {
     const club = await Club.findById(req.params.id)
       .populate("memberUsers", "name email membershipId role")
-      .populate("managerUsers", "name email membershipId role");
+      .populate("managerUsers", "name email membershipId role")
+      .populate("editorUsers", "name email membershipId role")
+      .populate(
+        "memberRegistrations",
+        "firstName lastName membershipId email department semester status"
+      );
 
     if (!club) return res.status(404).json({ message: "Club not found" });
 

@@ -3,6 +3,7 @@ import AdminLayout from './layouts/AdminLayout';
 import { Toaster } from 'react-hot-toast';
 import RequireAuth from './components/RequireAuth';
 import RequirePermission from './components/RequirePermission';
+import { ViewModeProvider } from './context/ViewModeContext';
 
 // Import Pages
 import Dashboard from './pages/Dashboard';
@@ -17,8 +18,9 @@ import Mailer from './pages/Mailer';
 function App() {
   return (
     <BrowserRouter>
-      <Toaster position="top-right" reverseOrder={false} />
-      <Routes>
+      <ViewModeProvider>
+        <Toaster position="top-right" reverseOrder={false} />
+        <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/set-password" element={<SetPassword />} />
 
@@ -87,7 +89,8 @@ function App() {
 
         {/* 404 Catch-all */}
         <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+        </Routes>
+      </ViewModeProvider>
     </BrowserRouter>
   );
 }

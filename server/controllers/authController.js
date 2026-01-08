@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import User from "../models/User.js";
 import crypto from "crypto";
+import Club from "../models/Club.js";
 
 const COOKIE_NAME = "token";
 
@@ -36,8 +37,22 @@ export const login = async (req, res) => {
     if (!user)
       return res.status(401).json({ message: "Invalid Membership ID" });
 
+    if (user.portalAccessEnabled === false) {
+      return res
+        .status(403)
+        .json({ message: "Access to the admin portal is disabled" });
+    }
+
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(401).json({ message: "Invalid password" });
+
+    let isClubLead = false;
+    try {
+      const leadCount = await Club.countDocuments({ managerUsers: user._id });
+      isClubLead = leadCount > 0;
+    } catch {
+      isClubLead = false;
+    }
 
     const token = jwt.sign(
       {
@@ -61,6 +76,9 @@ export const login = async (req, res) => {
         membershipId: user.membershipId,
         role: user.role,
         permissions: user.permissions,
+        portalAccessEnabled: user.portalAccessEnabled,
+        websiteProfile: user.websiteProfile,
+        isClubLead,
       });
   } catch (error) {
     res.status(500).json({ message: "Login Error", error: error.message });
@@ -85,6 +103,20 @@ export const me = async (req, res) => {
     const user = await User.findById(payload.id).select("-password");
     if (!user) return res.status(401).json({ message: "Not authenticated" });
 
+    if (user.portalAccessEnabled === false) {
+      return res
+        .status(403)
+        .json({ message: "Access to the admin portal is disabled" });
+    }
+
+    let isClubLead = false;
+    try {
+      const leadCount = await Club.countDocuments({ managerUsers: user._id });
+      isClubLead = leadCount > 0;
+    } catch {
+      isClubLead = false;
+    }
+
     res.json({
       id: user._id,
       name: user.name,
@@ -92,6 +124,9 @@ export const me = async (req, res) => {
       membershipId: user.membershipId,
       role: user.role,
       permissions: user.permissions,
+      portalAccessEnabled: user.portalAccessEnabled,
+      websiteProfile: user.websiteProfile,
+      isClubLead,
     });
   } catch (error) {
     res.status(401).json({ message: "Not authenticated" });

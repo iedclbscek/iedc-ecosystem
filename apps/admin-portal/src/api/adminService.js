@@ -43,23 +43,67 @@ export const promoteUser = async ({
   role,
   customRole,
   permissions,
+  portalAccessEnabled,
+  websiteProfile,
 }) => {
   const { data } = await api.post("/admin/users/promote", {
     registrationId,
     role,
     customRole,
     permissions,
+    portalAccessEnabled,
+    websiteProfile,
   });
   return data; // { user }
 };
 
-export const updateUser = async ({ id, role, customRole, permissions }) => {
+export const updateUser = async ({
+  id,
+  role,
+  customRole,
+  permissions,
+  portalAccessEnabled,
+  websiteProfile,
+}) => {
   const { data } = await api.patch(`/admin/users/${id}`, {
     role,
     customRole,
     permissions,
+    portalAccessEnabled,
+    websiteProfile,
   });
   return data; // { user }
+};
+
+// Club portal members (club leads)
+export const promoteClubPortalMember = async ({
+  clubId,
+  registrationId,
+  portalAccessEnabled,
+  permissions,
+}) => {
+  const { data } = await api.post(`/admin/clubs/${clubId}/portal-members`, {
+    registrationId,
+    portalAccessEnabled,
+    permissions,
+  });
+  return data; // { user, passwordSetupEmailSent }
+};
+
+export const updateClubPortalMember = async ({
+  clubId,
+  userId,
+  portalAccessEnabled,
+  permissions,
+}) => {
+  const { data } = await api.patch(
+    `/admin/clubs/${clubId}/portal-members/${userId}`,
+    {
+      portalAccessEnabled,
+      permissions,
+    }
+  );
+  return data; // { user, passwordSetupEmailSent? }
 };
 
 export const deleteUser = async (id) => {
@@ -186,14 +230,16 @@ export const fetchClubs = async () => {
 export const createClub = async ({
   name,
   description,
-  memberUserIds,
   managerUserIds,
+  editorUserIds,
+  memberRegistrationIds,
 }) => {
   const { data } = await api.post("/admin/clubs", {
     name,
     description,
-    memberUserIds,
     managerUserIds,
+    editorUserIds,
+    memberRegistrationIds,
   });
   return data; // { club }
 };
@@ -202,14 +248,16 @@ export const updateClub = async ({
   id,
   name,
   description,
-  memberUserIds,
   managerUserIds,
+  editorUserIds,
+  memberRegistrationIds,
 }) => {
   const { data } = await api.patch(`/admin/clubs/${id}`, {
-    name,
-    description,
-    memberUserIds,
-    managerUserIds,
+    ...(name !== undefined ? { name } : {}),
+    ...(description !== undefined ? { description } : {}),
+    ...(managerUserIds !== undefined ? { managerUserIds } : {}),
+    ...(editorUserIds !== undefined ? { editorUserIds } : {}),
+    ...(memberRegistrationIds !== undefined ? { memberRegistrationIds } : {}),
   });
   return data; // { club }
 };

@@ -15,6 +15,8 @@ import {
   deleteUser,
   promoteToTeam,
   searchStudents,
+  promoteClubPortalMember,
+  updateClubPortalMember,
 } from "../controllers/teamController.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import {
@@ -64,6 +66,10 @@ router.get("/users/search", searchStudents);
 router.post("/users/promote", promoteToTeam);
 router.patch("/users/:id", updateUser);
 router.delete("/users/:id", deleteUser);
+
+// Club-scoped portal members (club leads)
+router.post("/clubs/:clubId/portal-members", promoteClubPortalMember);
+router.patch("/clubs/:clubId/portal-members/:userId", updateClubPortalMember);
 
 // Email templates
 router.get("/email/templates", listEmailTemplates);

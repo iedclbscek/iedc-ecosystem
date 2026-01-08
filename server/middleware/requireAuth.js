@@ -16,6 +16,12 @@ export const requireAuth = async (req, res, next) => {
     const user = await User.findById(payload.id).select("-password");
     if (!user) return res.status(401).json({ message: "Not authenticated" });
 
+    if (user.portalAccessEnabled === false) {
+      return res
+        .status(403)
+        .json({ message: "Access to the admin portal is disabled" });
+    }
+
     req.user = {
       id: user._id,
       role: user.role,

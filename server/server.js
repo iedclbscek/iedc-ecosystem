@@ -8,6 +8,7 @@ import { seedEmailTemplates } from "./utils/seedEmailTemplates.js";
 
 // Route Imports
 import adminRoutes from "./routes/adminRoutes.js";
+import publicRoutes from "./routes/publicRoutes.js";
 
 dotenv.config();
 await connectDB();
@@ -42,6 +43,7 @@ app.use(cookieParser());
 
 // 2. Routes
 app.use("/api/admin", adminRoutes);
+app.use("/api/public", publicRoutes);
 
 // Health
 app.get("/api/health", (req, res) => {

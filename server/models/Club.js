@@ -10,6 +10,14 @@ const clubSchema = new mongoose.Schema(
 
     // Users who can manage membership for this club
     managerUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+
+    // Users who can edit/manage club content/events but are not leads
+    editorUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+
+    // Club members (students) coming from registrations
+    memberRegistrations: [
+      { type: mongoose.Schema.Types.ObjectId, ref: "Registration" },
+    ],
   },
   { timestamps: true }
 );

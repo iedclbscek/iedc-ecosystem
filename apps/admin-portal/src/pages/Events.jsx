@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { CalendarDays, Loader2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
@@ -13,11 +13,13 @@ import {
   fetchClubEvents,
   fetchEvents,
   fetchUsers,
+  searchStudents,
   updateClub,
   updateClubEvent,
   updateEvent,
 } from '../api/adminService';
 import { me } from '../api/authService';
+import { useViewMode } from '../context/ViewModeContext';
 
 const toDatetimeLocalValue = (value) => {
   if (!value) return '';
@@ -57,7 +59,7 @@ const toggleFromArray = (arr, value) => {
   return list.includes(id) ? list.filter((v) => v !== id) : [...list, id];
 };
 
-function MultiSelectUsers({ users, selectedIds, onToggle }) {
+function MultiSelectUsers({ users, selectedIds, onToggle, disabled }) {
   const options = (Array.isArray(users) ? users : [])
     .map((u) => ({
       id: u?._id,
@@ -70,7 +72,7 @@ function MultiSelectUsers({ users, selectedIds, onToggle }) {
   }
 
   return (
-    <div className="max-h-56 overflow-auto rounded-xl border border-slate-200 bg-white">
+    <div className={`max-h-56 overflow-auto rounded-xl border border-slate-200 bg-white ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>
       {options.map((u) => (
         <label
           key={u.id}
@@ -80,6 +82,7 @@ function MultiSelectUsers({ users, selectedIds, onToggle }) {
             type="checkbox"
             className="mt-1"
             checked={Array.isArray(selectedIds) && selectedIds.includes(u.id)}
+            disabled={Boolean(disabled)}
             onChange={() => onToggle(u.id)}
           />
           <div>
@@ -92,8 +95,76 @@ function MultiSelectUsers({ users, selectedIds, onToggle }) {
   );
 }
 
+function RegistrationSearch({ query, onQueryChange, selectedIds, onToggleId, disabled }) {
+  const normalizedQuery = normalize(query);
+  const enabled = !disabled && normalizedQuery.length >= 2;
+
+  const { data, isFetching } = useQuery({
+    queryKey: ['club-member-search', normalizedQuery],
+    queryFn: () => searchStudents(normalizedQuery),
+    enabled,
+    retry: false,
+  });
+
+  const students = Array.isArray(data?.students) ? data.students : [];
+
+  return (
+    <div className={disabled ? 'opacity-60 pointer-events-none' : ''}>
+      <div className="relative">
+        <Search className="absolute left-4 top-3 text-slate-400" size={18} />
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          placeholder="Search by name, email, or membership ID..."
+          className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all shadow-sm"
+        />
+      </div>
+      <div className="mt-2 text-[11px] text-slate-400">Type at least 2 characters to search.</div>
+
+      {enabled ? (
+        <div className="mt-2 border border-slate-200 rounded-xl overflow-hidden bg-white">
+          <div className="max-h-48 overflow-y-auto divide-y divide-slate-100">
+            {isFetching ? (
+              <div className="p-3 flex items-center gap-2 text-slate-500">
+                <Loader2 className="animate-spin" size={16} />
+                Searching...
+              </div>
+            ) : students.length === 0 ? (
+              <div className="p-3 text-slate-500">No students found.</div>
+            ) : (
+              students.map((s) => {
+                const id = String(s?._id || '');
+                if (!id) return null;
+                const checked = Array.isArray(selectedIds) && selectedIds.includes(id);
+                const name = `${s?.firstName ?? ''} ${s?.lastName ?? ''}`.trim() || '—';
+                const meta = [s?.membershipId, s?.email].filter(Boolean).join(' • ');
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => onToggleId(id)}
+                    className={`w-full text-left p-3 hover:bg-slate-50 transition-colors ${
+                      checked ? 'bg-blue-50/60' : ''
+                    }`}
+                  >
+                    <div className="font-semibold text-slate-900">{name}</div>
+                    {meta ? <div className="text-xs text-slate-500 mt-0.5">{meta}</div> : null}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ClubsEvents() {
   const queryClient = useQueryClient();
+
+  const { mode, clubId: activeClubId } = useViewMode();
 
   const [clubSearch, setClubSearch] = useState('');
   const [selectedClubId, setSelectedClubId] = useState('');
@@ -110,16 +181,18 @@ function ClubsEvents() {
   const [createClubForm, setCreateClubForm] = useState({
     name: '',
     description: '',
-    memberUserIds: [],
     managerUserIds: [],
   });
 
   const [editClubForm, setEditClubForm] = useState({
     name: '',
     description: '',
-    memberUserIds: [],
     managerUserIds: [],
+    editorUserIds: [],
+    memberRegistrationIds: [],
   });
+
+  const [memberSearch, setMemberSearch] = useState('');
 
   const [createEventForm, setCreateEventForm] = useState({
     title: '',
@@ -160,20 +233,37 @@ function ClubsEvents() {
   const clubs = Array.isArray(clubsData?.clubs) ? clubsData.clubs : [];
   const users = Array.isArray(usersData?.users) ? usersData.users : [];
 
-  const filteredClubs = clubs.filter((c) => {
+  const scopedClubs = useMemo(() => {
+    if (mode !== 'club' || !activeClubId) return clubs;
+    return clubs.filter((c) => String(c?._id) === String(activeClubId));
+  }, [activeClubId, clubs, mode]);
+
+  const filteredClubs = scopedClubs.filter((c) => {
     const text = normalize(clubSearch).toLowerCase();
     if (!text) return true;
     return normalize(c?.name).toLowerCase().includes(text);
   });
 
-  const selectedClub = clubs.find((c) => String(c?._id) === String(selectedClubId)) || null;
+  const selectedClub = scopedClubs.find((c) => String(c?._id) === String(selectedClubId)) || null;
   const isAdmin = normalize(meData?.role).toLowerCase() === 'admin';
-  const isClubManager = selectedClub
+
+  useEffect(() => {
+    if (mode !== 'club' || !activeClubId) return;
+    setSelectedClubId(String(activeClubId));
+  }, [activeClubId, mode]);
+  const isClubLead = selectedClub
     ? (Array.isArray(selectedClub?.managerUsers) ? selectedClub.managerUsers : []).some(
         (u) => String(u?._id || u) === String(meData?.id)
       )
     : false;
-  const canManageClub = Boolean(selectedClub) && (isAdmin || isClubManager);
+  const isClubEditor = selectedClub
+    ? (Array.isArray(selectedClub?.editorUsers) ? selectedClub.editorUsers : []).some(
+        (u) => String(u?._id || u) === String(meData?.id)
+      )
+    : false;
+
+  const canEditClub = Boolean(selectedClub) && (isAdmin || isClubLead || isClubEditor);
+  const canManageMembers = Boolean(selectedClub) && (isAdmin || isClubLead);
 
   const {
     data: eventsData,
@@ -194,7 +284,7 @@ function ClubsEvents() {
       toast.success('Club created');
       queryClient.invalidateQueries({ queryKey: ['clubs'] });
       setIsCreateClubOpen(false);
-      setCreateClubForm({ name: '', description: '', memberUserIds: [], managerUserIds: [] });
+      setCreateClubForm({ name: '', description: '', managerUserIds: [] });
     },
     onError: (err) => toast.error(err?.response?.data?.message || 'Failed to create club'),
   });
@@ -267,14 +357,18 @@ function ClubsEvents() {
     setEditClubForm({
       name: club?.name || '',
       description: club?.description || '',
-      memberUserIds: (Array.isArray(club?.memberUsers) ? club.memberUsers : [])
-        .map((u) => String(u?._id || u))
-        .filter(Boolean),
       managerUserIds: (Array.isArray(club?.managerUsers) ? club.managerUsers : [])
         .map((u) => String(u?._id || u))
         .filter(Boolean),
+      editorUserIds: (Array.isArray(club?.editorUsers) ? club.editorUsers : [])
+        .map((u) => String(u?._id || u))
+        .filter(Boolean),
+      memberRegistrationIds: (Array.isArray(club?.memberRegistrations) ? club.memberRegistrations : [])
+        .map((r) => String(r?._id || r))
+        .filter(Boolean),
     });
     setIsEditClubOpen(true);
+    setMemberSearch('');
   };
 
   const confirmDeleteClub = (club) => {
@@ -376,7 +470,6 @@ function ClubsEvents() {
     createClubMutation.mutate({
       name: createClubForm.name.trim(),
       description: createClubForm.description,
-      memberUserIds: createClubForm.memberUserIds,
       managerUserIds: createClubForm.managerUserIds,
     });
   };
@@ -385,10 +478,13 @@ function ClubsEvents() {
     if (!clubEditing?._id || !canUpdateClub || updateClubMutation.isPending) return;
     updateClubMutation.mutate({
       id: clubEditing._id,
-      name: editClubForm.name.trim(),
+      ...(isAdmin ? { name: editClubForm.name.trim() } : {}),
       description: editClubForm.description,
-      memberUserIds: editClubForm.memberUserIds,
-      managerUserIds: editClubForm.managerUserIds,
+      ...(isAdmin ? { managerUserIds: editClubForm.managerUserIds } : {}),
+      ...(canManageMembers ? { editorUserIds: editClubForm.editorUserIds } : {}),
+      ...(canManageMembers
+        ? { memberRegistrationIds: editClubForm.memberRegistrationIds }
+        : {}),
     });
   };
 
@@ -423,11 +519,15 @@ function ClubsEvents() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Clubs</h1>
-          <p className="text-slate-500 text-sm">Select a club to manage its events and coordinators.</p>
+          <h1 className="text-2xl font-bold text-slate-900">{mode === 'club' ? 'Events' : 'Clubs'}</h1>
+          <p className="text-slate-500 text-sm">
+            {mode === 'club'
+              ? 'Manage your club events and coordinators.'
+              : 'Select a club to manage its events and coordinators.'}
+          </p>
         </div>
 
-        {isAdmin ? (
+        {isAdmin && mode !== 'club' ? (
           <button
             onClick={() => setIsCreateClubOpen(true)}
             className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-semibold shadow-lg shadow-blue-200 transition-all"
@@ -438,89 +538,100 @@ function ClubsEvents() {
         ) : null}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-slate-100">
-            <div className="relative">
-              <Search className="absolute left-4 top-3 text-slate-400" size={18} />
-              <input
-                type="text"
-                value={clubSearch}
-                onChange={(e) => setClubSearch(e.target.value)}
-                placeholder="Search clubs..."
-                className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all shadow-sm"
-              />
+      <div
+        className={`grid grid-cols-1 gap-6 ${mode === 'club' ? '' : 'lg:grid-cols-3'}`}
+      >
+        {mode !== 'club' ? (
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="p-4 border-b border-slate-100">
+              <div className="relative">
+                <Search className="absolute left-4 top-3 text-slate-400" size={18} />
+                <input
+                  type="text"
+                  value={clubSearch}
+                  onChange={(e) => setClubSearch(e.target.value)}
+                  placeholder="Search clubs..."
+                  className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all shadow-sm"
+                />
+              </div>
             </div>
-          </div>
 
-          {clubsLoading ? (
-            <div className="p-6 flex items-center gap-3 text-slate-500">
-              <Loader2 className="animate-spin" size={18} />
-              Loading clubs...
-            </div>
-          ) : clubsError ? (
-            <div className="p-6 text-slate-500">Failed to load clubs.</div>
-          ) : filteredClubs.length === 0 ? (
-            <div className="p-6 text-slate-500">No clubs.</div>
-          ) : (
-            <div className="divide-y divide-slate-50">
-              {filteredClubs.map((club) => {
-                const active = String(club?._id) === String(selectedClubId);
-                const memberCount = Array.isArray(club?.memberUsers) ? club.memberUsers.length : 0;
-                const managerCount = Array.isArray(club?.managerUsers) ? club.managerUsers.length : 0;
-                return (
-                  <button
-                    key={club?._id}
-                    type="button"
-                    onClick={() => setSelectedClubId(String(club?._id))}
-                    className={`w-full text-left p-4 hover:bg-slate-50 transition-colors ${
-                      active ? 'bg-blue-50/60' : ''
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="font-bold text-slate-900">{club?.name || '—'}</div>
-                        <div className="text-xs text-slate-500 mt-1">
-                          {managerCount} managers • {memberCount} members
+            {clubsLoading ? (
+              <div className="p-6 flex items-center gap-3 text-slate-500">
+                <Loader2 className="animate-spin" size={18} />
+                Loading clubs...
+              </div>
+            ) : clubsError ? (
+              <div className="p-6 text-slate-500">Failed to load clubs.</div>
+            ) : filteredClubs.length === 0 ? (
+              <div className="p-6 text-slate-500">No clubs.</div>
+            ) : (
+              <div className="divide-y divide-slate-50">
+                {filteredClubs.map((club) => {
+                  const active = String(club?._id) === String(selectedClubId);
+                  const memberCount =
+                    (Array.isArray(club?.memberRegistrations)
+                      ? club.memberRegistrations.length
+                      : 0) +
+                    (Array.isArray(club?.memberUsers) ? club.memberUsers.length : 0);
+                  const managerCount = Array.isArray(club?.managerUsers)
+                    ? club.managerUsers.length
+                    : 0;
+                  const editorCount = Array.isArray(club?.editorUsers) ? club.editorUsers.length : 0;
+                  return (
+                    <button
+                      key={club?._id}
+                      type="button"
+                      onClick={() => setSelectedClubId(String(club?._id))}
+                      className={`w-full text-left p-4 hover:bg-slate-50 transition-colors ${
+                        active ? 'bg-blue-50/60' : ''
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-bold text-slate-900">{club?.name || '—'}</div>
+                          <div className="text-xs text-slate-500 mt-1">
+                            {managerCount} leads • {editorCount} editors • {memberCount} members
+                          </div>
                         </div>
-                      </div>
 
-                      {active && canManageClub ? (
-                        <div className="flex gap-1">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openEditClub(club);
-                            }}
-                            className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
-                          >
-                            <Pencil size={18} />
-                          </button>
-                          {isAdmin ? (
+                        {active && canEditClub ? (
+                          <div className="flex gap-1">
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                confirmDeleteClub(club);
+                                openEditClub(club);
                               }}
-                              disabled={deleteClubMutation.isPending}
-                              className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all disabled:opacity-30"
+                              className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
                             >
-                              <Trash2 size={18} />
+                              <Pencil size={18} />
                             </button>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                            {isAdmin ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  confirmDeleteClub(club);
+                                }}
+                                disabled={deleteClubMutation.isPending}
+                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all disabled:opacity-30"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : null}
 
-        <div className="lg:col-span-2 space-y-4">
+        <div className={`${mode === 'club' ? '' : 'lg:col-span-2'} space-y-4`}>
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
               <div className="flex items-center gap-2">
@@ -553,7 +664,9 @@ function ClubsEvents() {
             </div>
 
             {!selectedClubId ? (
-              <div className="p-8 text-slate-500">Select a club to view its events.</div>
+              <div className="p-8 text-slate-500">
+                {mode === 'club' ? 'Loading club…' : 'Select a club to view its events.'}
+              </div>
             ) : eventsLoading ? (
               <div className="p-8 flex items-center gap-3 text-slate-500">
                 <Loader2 className="animate-spin" size={18} />
@@ -670,20 +783,7 @@ function ClubsEvents() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500">Members</label>
-                  <MultiSelectUsers
-                    users={users}
-                    selectedIds={createClubForm.memberUserIds}
-                    onToggle={(id) =>
-                      setCreateClubForm((p) => ({
-                        ...p,
-                        memberUserIds: toggleFromArray(p.memberUserIds, id),
-                      }))
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500">Managers</label>
+                  <label className="text-xs font-bold text-slate-500">Club Leads</label>
                   <MultiSelectUsers
                     users={users}
                     selectedIds={createClubForm.managerUserIds}
@@ -694,6 +794,9 @@ function ClubsEvents() {
                       }))
                     }
                   />
+                  <div className="text-[11px] text-slate-400">
+                    Leads can later add editors and members.
+                  </div>
                 </div>
               </div>
 
@@ -746,8 +849,12 @@ function ClubsEvents() {
                     type="text"
                     value={editClubForm.name}
                     onChange={(e) => setEditClubForm((p) => ({ ...p, name: e.target.value }))}
+                    disabled={!isAdmin}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
                   />
+                  {!isAdmin ? (
+                    <div className="text-[11px] text-slate-400">Only admins can rename a club.</div>
+                  ) : null}
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500">Description</label>
@@ -762,30 +869,111 @@ function ClubsEvents() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500">Members</label>
-                  <MultiSelectUsers
-                    users={users}
-                    selectedIds={editClubForm.memberUserIds}
-                    onToggle={(id) =>
-                      setEditClubForm((p) => ({
-                        ...p,
-                        memberUserIds: toggleFromArray(p.memberUserIds, id),
-                      }))
-                    }
-                  />
+                  <label className="text-xs font-bold text-slate-500">Club Leads</label>
+                  {isAdmin ? (
+                    <MultiSelectUsers
+                      users={users}
+                      selectedIds={editClubForm.managerUserIds}
+                      onToggle={(id) =>
+                        setEditClubForm((p) => ({
+                          ...p,
+                          managerUserIds: toggleFromArray(p.managerUserIds, id),
+                        }))
+                      }
+                    />
+                  ) : (
+                    <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600">
+                      {(Array.isArray(clubEditing?.managerUsers) ? clubEditing.managerUsers : [])
+                        .map((u) => u?.name || u?.membershipId)
+                        .filter(Boolean)
+                        .join(', ') || '—'}
+                    </div>
+                  )}
                 </div>
+
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500">Managers</label>
+                  <label className="text-xs font-bold text-slate-500">Editors</label>
                   <MultiSelectUsers
                     users={users}
-                    selectedIds={editClubForm.managerUserIds}
+                    selectedIds={editClubForm.editorUserIds}
                     onToggle={(id) =>
                       setEditClubForm((p) => ({
                         ...p,
-                        managerUserIds: toggleFromArray(p.managerUserIds, id),
+                        editorUserIds: toggleFromArray(p.editorUserIds, id),
                       }))
                     }
+                    disabled={!canManageMembers}
                   />
+                  {!canManageMembers ? (
+                    <div className="text-[11px] text-slate-400">
+                      Only club leads can manage editors.
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="space-y-2 sm:col-span-2">
+                  <label className="text-xs font-bold text-slate-500">Members</label>
+                  <RegistrationSearch
+                    query={memberSearch}
+                    onQueryChange={setMemberSearch}
+                    selectedIds={editClubForm.memberRegistrationIds}
+                    onToggleId={(id) =>
+                      setEditClubForm((p) => ({
+                        ...p,
+                        memberRegistrationIds: toggleFromArray(p.memberRegistrationIds, id),
+                      }))
+                    }
+                    disabled={!canManageMembers}
+                  />
+
+                  <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+                    <div className="text-xs font-bold text-slate-500">Selected Members</div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {(Array.isArray(editClubForm.memberRegistrationIds)
+                        ? editClubForm.memberRegistrationIds
+                        : [])
+                        .map((id) => {
+                          const list = Array.isArray(clubEditing?.memberRegistrations)
+                            ? clubEditing.memberRegistrations
+                            : [];
+                          const found = list.find((r) => String(r?._id) === String(id));
+                          const label = found
+                            ? `${`${found?.firstName ?? ''} ${found?.lastName ?? ''}`.trim() || 'Member'}${
+                                found?.membershipId ? ` (${found.membershipId})` : ''
+                              }`
+                            : id;
+                          return (
+                            <button
+                              key={id}
+                              type="button"
+                              onClick={() => {
+                                if (!canManageMembers) return;
+                                setEditClubForm((p) => ({
+                                  ...p,
+                                  memberRegistrationIds: p.memberRegistrationIds.filter(
+                                    (x) => String(x) !== String(id)
+                                  ),
+                                }));
+                              }}
+                              className={`px-3 py-1.5 rounded-full border border-slate-200 text-sm ${
+                                canManageMembers
+                                  ? 'hover:bg-slate-50 text-slate-700'
+                                  : 'text-slate-500'
+                              }`}
+                              title={canManageMembers ? 'Click to remove' : undefined}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+
+                      {(Array.isArray(editClubForm.memberRegistrationIds)
+                        ? editClubForm.memberRegistrationIds
+                        : []).length === 0 ? (
+                        <div className="text-sm text-slate-500">No members selected.</div>
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
               </div>
 

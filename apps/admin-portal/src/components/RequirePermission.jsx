@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { me } from '../api/authService';
+import { useViewMode } from '../context/ViewModeContext';
 
 const PERMISSION_TO_PATH = {
   dashboard: '/',
@@ -17,11 +18,14 @@ const PERMISSION_ORDER = ['dashboard', 'registrations', 'events', 'users', 'mail
 
 const normalize = (v) => String(v ?? '').trim().toLowerCase();
 
+const CLUB_VIEW_PAGES = new Set(['dashboard', 'events', 'users']);
+
 const isAllowed = (user, permission) => {
   const role = normalize(user?.role);
   if (role === 'admin') return true;
 
   const required = normalize(permission);
+  if (CLUB_VIEW_PAGES.has(required) && user?.isClubLead) return true;
   if (!required) return true;
 
   const perms = Array.isArray(user?.permissions)
@@ -34,6 +38,8 @@ const isAllowed = (user, permission) => {
 const getFallbackPath = (user) => {
   const role = normalize(user?.role);
   if (role === 'admin') return '/';
+
+  if (user?.isClubLead) return '/';
 
   const perms = Array.isArray(user?.permissions)
     ? user.permissions.map((p) => normalize(p)).filter(Boolean)
@@ -49,6 +55,7 @@ export default function RequirePermission({ permission, children }) {
   const location = useLocation();
   const navigate = useNavigate();
   const didToastRef = useRef(false);
+  const { mode } = useViewMode();
 
   const { data } = useQuery({
     queryKey: ['me'],
@@ -56,7 +63,10 @@ export default function RequirePermission({ permission, children }) {
     retry: false,
   });
 
-  const allowed = isAllowed(data, permission);
+  const required = normalize(permission);
+  const blockedByClubView = mode === 'club' && !CLUB_VIEW_PAGES.has(required);
+  const allowedInClubView = mode === 'club' && CLUB_VIEW_PAGES.has(required) && Boolean(data?.id);
+  const allowed = !blockedByClubView && (allowedInClubView || isAllowed(data, permission));
   const fallback = getFallbackPath(data);
 
   useEffect(() => {

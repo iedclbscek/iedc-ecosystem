@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -15,16 +15,24 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { logout as logoutApi, me as meApi } from '../api/authService';
+import { fetchClubs } from '../api/adminService';
+import { useViewMode } from '../context/ViewModeContext';
 
 const normalize = (v) => String(v ?? '').trim().toLowerCase();
+
+const CLUB_VIEW_PAGES = new Set(['dashboard', 'events', 'users']);
 
 const isAllowed = (user, permission) => {
   const role = normalize(user?.role);
   if (role === 'admin') return true;
+
+  const required = normalize(permission);
+  if (CLUB_VIEW_PAGES.has(required) && user?.isClubLead) return true;
+
   const perms = Array.isArray(user?.permissions)
     ? user.permissions.map((p) => normalize(p)).filter(Boolean)
     : [];
-  return perms.includes(normalize(permission));
+  return perms.includes(required);
 };
 
 const getInitials = (name) => {
@@ -40,12 +48,69 @@ export default function AdminLayout() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profileRef = useRef(null);
+
+  const { mode, clubId, setIedcMode, setClubMode } = useViewMode();
 
   const { data: meData } = useQuery({
     queryKey: ['me'],
     queryFn: meApi,
     retry: false,
   });
+
+  const { data: clubsData } = useQuery({
+    queryKey: ['clubs'],
+    queryFn: fetchClubs,
+    enabled: Boolean(meData?.id),
+    retry: false,
+  });
+  const myClubs = useMemo(() => {
+    const myId = String(meData?.id ?? '');
+    if (!myId) return [];
+    const clubs = Array.isArray(clubsData?.clubs) ? clubsData.clubs : [];
+    return clubs.filter((c) => {
+      const managers = Array.isArray(c?.managerUsers) ? c.managerUsers : [];
+      const editors = Array.isArray(c?.editorUsers) ? c.editorUsers : [];
+      const members = Array.isArray(c?.memberUsers) ? c.memberUsers : [];
+      return (
+        managers.some((u) => String(u?._id) === myId) ||
+        editors.some((u) => String(u?._id) === myId) ||
+        members.some((u) => String(u?._id) === myId)
+      );
+    });
+  }, [clubsData, meData?.id]);
+
+  const activeClubName = useMemo(() => {
+    if (mode !== 'club' || !clubId) return '';
+    const c = myClubs.find((x) => String(x?._id) === String(clubId));
+    return String(c?.name ?? '').trim();
+  }, [clubId, mode, myClubs]);
+
+  const isAdmin = normalize(meData?.role) === 'admin';
+
+  const canUseIedcMode = useMemo(() => {
+    if (isAdmin) return true;
+    const perms = Array.isArray(meData?.permissions)
+      ? meData.permissions.map((p) => normalize(p)).filter(Boolean)
+      : [];
+    // If the user has any permission outside the club-only pages,
+    // allow them to switch back to IEDC mode.
+    return perms.some((p) => !CLUB_VIEW_PAGES.has(p));
+  }, [isAdmin, meData]);
+
+  useEffect(() => {
+    if (!meData?.id) return;
+    if (canUseIedcMode) return;
+    if (myClubs.length === 0) return;
+
+    // Club-only users should always operate in club view.
+    if (mode === 'iedc') {
+      setClubMode(String(myClubs[0]?._id));
+    } else if (mode === 'club' && !clubId) {
+      setClubMode(String(myClubs[0]?._id));
+    }
+  }, [canUseIedcMode, clubId, meData?.id, mode, myClubs, setClubMode]);
 
   const logoutMutation = useMutation({
     mutationFn: logoutApi,
@@ -62,7 +127,7 @@ export default function AdminLayout() {
 
   const menuItems = [
     { name: 'Dashboard', icon: <LayoutDashboard size={20} />, path: '/', permission: 'dashboard' },
-    { name: 'Registrations', icon: <Users size={20} />, path: '/registrations', permission: 'registrations' },
+    { name: 'Members', icon: <Users size={20} />, path: '/registrations', permission: 'registrations' },
     { name: 'Events', icon: <CalendarDays size={20} />, path: '/events', permission: 'events' },
     { name: 'Team Members', icon: <ShieldCheck size={20} />, path: '/users', permission: 'users' },
     { name: 'Email Center', icon: <Mail size={20} />, path: '/mailer', permission: 'mailer' },
@@ -70,12 +135,19 @@ export default function AdminLayout() {
   ];
 
   const visibleMenuItems = meData?.id
-    ? menuItems.filter((m) => isAllowed(meData, m.permission))
+    ? menuItems
+        .filter((m) => {
+          if (isAdmin) return isAllowed(meData, m.permission);
+          if (mode === 'club') return CLUB_VIEW_PAGES.has(normalize(m.permission));
+          return isAllowed(meData, m.permission);
+        })
     : menuItems;
 
   const displayName = String(meData?.name || meData?.membershipId || '').trim() || 'Account';
   const roleLabel = String(meData?.role || '').trim() || 'Member';
   const initials = getInitials(meData?.name || meData?.membershipId);
+
+  const viewLabel = mode === 'club' && activeClubName ? `Viewing: ${activeClubName}` : 'Viewing: IEDC';
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden">
@@ -142,7 +214,20 @@ export default function AdminLayout() {
               <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
             </button>
             <div className="h-8 w-px bg-slate-200"></div>
-            <div className="flex items-center gap-3 cursor-pointer">
+            <div
+              ref={profileRef}
+              className="relative"
+              onBlur={(e) => {
+                if (!profileRef.current) return;
+                if (profileRef.current.contains(e.relatedTarget)) return;
+                setProfileOpen(false);
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setProfileOpen((v) => !v)}
+                className="flex items-center gap-3 cursor-pointer rounded-xl hover:bg-slate-50 px-2 py-1"
+              >
               <div className="text-right">
                 <p className="text-xs font-bold leading-none">{displayName}</p>
                 <p className="text-[10px] text-slate-400 font-medium">{roleLabel}</p>
@@ -150,6 +235,64 @@ export default function AdminLayout() {
               <div className="w-9 h-9 rounded-full bg-linear-to-tr from-blue-600 to-indigo-500 border-2 border-white shadow-sm flex items-center justify-center text-white text-xs font-bold">
                 {initials}
               </div>
+              </button>
+
+              {profileOpen ? (
+                <div className="absolute right-0 mt-2 w-72 rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden z-50">
+                  <div className="px-4 py-3 border-b border-slate-100">
+                    <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">View mode</div>
+                    <div className="mt-1 text-sm font-semibold text-slate-900">{viewLabel}</div>
+                  </div>
+
+                  <div className="p-2">
+                    {canUseIedcMode ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIedcMode();
+                          setProfileOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
+                          mode === 'iedc'
+                            ? 'bg-blue-600 text-white'
+                            : 'hover:bg-slate-50 text-slate-700'
+                        }`}
+                      >
+                        IEDC
+                      </button>
+                    ) : null}
+
+                    {myClubs.length > 0 ? (
+                      <div className="mt-2">
+                        <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                          Clubs
+                        </div>
+                        {myClubs.map((c) => {
+                          const cid = String(c?._id);
+                          const active = mode === 'club' && String(clubId) === cid;
+                          return (
+                            <button
+                              key={cid}
+                              type="button"
+                              onClick={() => {
+                                setClubMode(cid);
+                                setProfileOpen(false);
+                              }}
+                              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
+                                active
+                                  ? 'bg-blue-600 text-white'
+                                  : 'hover:bg-slate-50 text-slate-700'
+                              }`}
+                            >
+                              {c?.name || 'Club'}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         </header>

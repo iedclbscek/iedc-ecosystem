@@ -15,9 +15,11 @@ const canAccessClub = (club, userId) => {
   const id = String(userId);
   const members = Array.isArray(club?.memberUsers) ? club.memberUsers : [];
   const managers = Array.isArray(club?.managerUsers) ? club.managerUsers : [];
+  const editors = Array.isArray(club?.editorUsers) ? club.editorUsers : [];
   return (
     members.some((m) => String(m) === id) ||
-    managers.some((m) => String(m) === id)
+    managers.some((m) => String(m) === id) ||
+    editors.some((e) => String(e) === id)
   );
 };
 
