@@ -316,7 +316,8 @@ export default function Mailer() {
               <iframe
                 title="email-preview"
                 className="w-full h-96 sm:h-130 rounded-xl border border-slate-200 bg-white"
-                sandbox=""
+                sandbox="allow-same-origin"
+                referrerPolicy="no-referrer"
                 srcDoc={previewHtml}
               />
             </div>

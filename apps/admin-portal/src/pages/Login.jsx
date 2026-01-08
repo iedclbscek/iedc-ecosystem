@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Loader2, LogIn } from 'lucide-react';
-import { login as loginApi } from '../api/authService';
+import { login as loginApi, me as meApi } from '../api/authService';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -15,9 +15,20 @@ export default function Login() {
   const loginMutation = useMutation({
     mutationFn: loginApi,
     onSuccess: async () => {
-      toast.success('Logged in');
-      await queryClient.invalidateQueries({ queryKey: ['me'] });
-      navigate('/', { replace: true });
+      // Ensure the cookie-based session is actually established before leaving the login page.
+      // This avoids the "login succeeds but requires a second try" behavior.
+      try {
+        await queryClient.invalidateQueries({ queryKey: ['me'] });
+        await queryClient.fetchQuery({
+          queryKey: ['me'],
+          queryFn: meApi,
+          retry: false,
+        });
+        toast.success('Logged in');
+        navigate('/', { replace: true });
+      } catch {
+        toast.error('Login succeeded, but session was not established. Check cookies / CORS.');
+      }
     },
     onError: (err) => {
       toast.error(err?.response?.data?.message || 'Login failed');

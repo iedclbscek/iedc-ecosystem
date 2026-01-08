@@ -46,7 +46,8 @@ export default function AdminLayout() {
   const logoutMutation = useMutation({
     mutationFn: logoutApi,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['me'] });
+      await queryClient.cancelQueries({ queryKey: ['me'] });
+      queryClient.removeQueries({ queryKey: ['me'] });
       toast.success('Logged out');
       navigate('/login', { replace: true });
     },
