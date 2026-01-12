@@ -8,12 +8,19 @@ const registrationSchema = new mongoose.Schema(
     admissionNo: { type: String, unique: true },
     department: String,
     semester: String,
+    userType: {
+      type: String,
+      enum: ["student", "staff", "guest"],
+      default: "student",
+      index: true,
+    },
     status: {
       type: String,
       default: "pending",
       enum: ["pending", "active", "rejected"],
     },
     membershipId: String,
+    accessCode: String,
     hashedPassword: { type: String, select: false },
   },
   { timestamps: true }

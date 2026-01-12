@@ -18,6 +18,18 @@ Create `server/.env`:
 - `COOKIE_DOMAIN=.iedclbscek.in` (leading dot enables sharing across subdomains)
 - `ADMIN_PORTAL_URL=https://admin.iedclbscek.in` (used for password setup link; must be HTTPS in production)
 
+Email (required for OTP + registration confirmation emails):
+
+- `EMAIL_USER=...`
+- `EMAIL_PASS=...`
+- `EMAIL_FROM=...` (optional; defaults to `EMAIL_USER`)
+
+Optional custom SMTP (instead of Gmail service):
+
+- `SMTP_HOST=...`
+- `SMTP_PORT=587`
+- `SMTP_SECURE=false`
+
 ## CORS
 
 CORS is configured in `server/server.js` and should allow:
@@ -25,6 +37,7 @@ CORS is configured in `server/server.js` and should allow:
 - `https://admin.iedclbscek.in`
 - `https://iedclbscek.in`
 - `https://portal.iedclbscek.in`
+- `https://makerspace.iedclbscek.in`
 
 ## Admin API endpoints
 
@@ -111,3 +124,72 @@ Coordinators are stored as references to `User` in `coordinatorUsers` (array). T
 
 - `GET /api/health`
   - Returns `{ status: "ok", uptime, timestamp }`
+
+## Public API endpoints
+
+All routes are prefixed with `/api/public`.
+
+### Member lookup (legacy-compatible)
+
+- `GET /member?id=IEDC24IT029`
+  - Query: `id` (or `membershipId`)
+  - Response:
+    - `{ "success": true, "data": { firstName, lastName, admissionNo, department, yearOfJoining, membershipId } }`
+
+### Makerspace OTP
+
+Two equivalent path styles are supported:
+
+- **Short**: `/send-otp` and `/verify-otp`
+- **Namespaced**: `/makerspace/send-otp` and `/makerspace/verify-otp`
+
+Send OTP:
+
+- `POST /send-otp`
+  - Body: `{ "email": "user@example.com" }`
+  - Response: `{ "success": true, "sent": true|false }`
+  - Notes: OTP is never returned to the client; expires in ~5 minutes.
+
+Verify OTP:
+
+- `POST /verify-otp`
+  - Body: `{ "email": "user@example.com", "otp": "123456" }`
+  - Response: `{ "success": true, "message": "OTP verified" }`
+  - Notes: OTP is one-time use (deleted after successful verification).
+
+### Makerspace registration (Staff/Guest)
+
+Verify whether an ID is already registered:
+
+- `GET /verify-member?id=IEDC26ST001`
+  - Query: `id` (or `membershipId`)
+  - Response (examples):
+    - Registered: `{ "success": true, "isRegistered": true, "userType": "student"|"staff"|"guest" }`
+    - Not registered but staff/guest pattern matches: `{ "success": true, "isRegistered": false, "userType": "staff"|"guest" }`
+    - Not registered: `{ "success": true, "isRegistered": false }`
+
+Register staff/guest (final submit):
+
+- `POST /register-staff-guest`
+  - Body:
+    - Required: `{ "email": "user@example.com", "otp": "123456", "userType": "staff"|"guest", "firstName": "...", "lastName": "..." }`
+    - Optional: `{ "department": "..." }`
+  - Response: `{ "success": true, "membershipId": "IEDC26ST005", "accessCode": "IEDC26ST005", "userType": "staff" }`
+  - Notes:
+    - OTP is verified again right before saving.
+    - `membershipId` is generated as `IEDC<YY><ST|GT><NNN>`.
+    - `accessCode` is set equal to `membershipId`.
+    - A confirmation email is sent.
+
+### Makerspace check-in
+
+Two equivalent path styles are supported:
+
+- **Short**: `/check-in`
+- **Namespaced**: `/makerspace/check-in`
+
+- `POST /check-in`
+  - Body: `{ "membershipId": "IEDC24IT029" }`
+  - (Also accepts query: `?id=...` or `?membershipId=...`)
+  - Response: `{ "success": true, "checkInId": "...", "membershipId": "...", "userType": "...", "checkedInAt": "..." }`
+  - Notes: Any ID present in `Registration` can check in (student/staff/guest).

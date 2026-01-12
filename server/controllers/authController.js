@@ -3,6 +3,8 @@ import bcrypt from "bcryptjs";
 import User from "../models/User.js";
 import crypto from "crypto";
 import Club from "../models/Club.js";
+import OTP from "../models/OTP.js";
+import { sendMail } from "../utils/mailer.js";
 
 const COOKIE_NAME = "token";
 
@@ -179,5 +181,102 @@ export const setPassword = async (req, res) => {
     res
       .status(500)
       .json({ message: "Failed to set password", error: error.message });
+  }
+};
+
+const normalizeEmail = (value) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase();
+
+const isValidEmail = (email) => {
+  // Minimal sanity check; do not try to fully validate RFC 5322.
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email));
+};
+
+const generateNumericOtp = () => {
+  // 6-digit numeric OTP
+  const n = crypto.randomInt(0, 1000000);
+  return String(n).padStart(6, "0");
+};
+
+const hashOtp = (otp) => {
+  return crypto.createHash("sha256").update(String(otp)).digest("hex");
+};
+
+export const sendOTP = async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    if (!email || !isValidEmail(email)) {
+      return res.status(400).json({ message: "Valid email is required" });
+    }
+
+    const otpPlain = generateNumericOtp();
+    const otpHashed = hashOtp(otpPlain);
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+    await OTP.deleteMany({ email });
+    await OTP.create({ email, otp: otpHashed, expiresAt });
+
+    const subject = "Your Makerspace OTP";
+    const html = `
+      <div style="font-family:Arial,Helvetica,sans-serif;line-height:1.6">
+        <h2>Makerspace Verification Code</h2>
+        <p>Your OTP is:</p>
+        <p style="font-size:22px;letter-spacing:2px"><b>${otpPlain}</b></p>
+        <p>This OTP expires in 5 minutes.</p>
+        <p>If you didn’t request this, you can ignore this email.</p>
+      </div>
+    `;
+
+    const mailResult = await sendMail({ to: email, subject, html });
+
+    // Never return the OTP to the client.
+    return res.json({ success: true, sent: Boolean(mailResult?.sent) });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to send OTP" });
+  }
+};
+
+export const verifyOTP = async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const otp = String(req.body?.otp ?? "").trim();
+
+    if (!email || !isValidEmail(email) || !otp) {
+      return res
+        .status(400)
+        .json({ success: false, message: "email and otp are required" });
+    }
+
+    const record = await OTP.findOne({ email });
+    if (
+      !record ||
+      !record.expiresAt ||
+      record.expiresAt.getTime() < Date.now()
+    ) {
+      await OTP.deleteMany({ email });
+      return res
+        .status(400)
+        .json({ success: false, message: "OTP expired or invalid" });
+    }
+
+    const incomingHash = hashOtp(otp);
+    if (incomingHash !== record.otp) {
+      return res
+        .status(400)
+        .json({ success: false, message: "OTP expired or invalid" });
+    }
+
+    // One-time use.
+    await OTP.deleteMany({ email });
+
+    return res.json({ success: true, message: "OTP verified" });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to verify OTP" });
   }
 };
