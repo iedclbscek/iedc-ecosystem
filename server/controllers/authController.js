@@ -5,6 +5,8 @@ import crypto from "crypto";
 import Club from "../models/Club.js";
 import OTP from "../models/OTP.js";
 import { sendMail } from "../utils/mailer.js";
+import EmailTemplate from "../models/EmailTemplate.js";
+import { renderTemplate } from "../utils/templateRenderer.js";
 
 const COOKIE_NAME = "token";
 
@@ -218,8 +220,8 @@ export const sendOTP = async (req, res) => {
     await OTP.deleteMany({ email });
     await OTP.create({ email, otp: otpHashed, expiresAt });
 
-    const subject = "Your Makerspace OTP";
-    const html = `
+    let subject = "Your Makerspace OTP";
+    let html = `
       <div style="font-family:Arial,Helvetica,sans-serif;line-height:1.6">
         <h2>Makerspace Verification Code</h2>
         <p>Your OTP is:</p>
@@ -228,6 +230,21 @@ export const sendOTP = async (req, res) => {
         <p>If you didn’t request this, you can ignore this email.</p>
       </div>
     `;
+
+    // Prefer the Email Template Center template if present.
+    try {
+      const template = await EmailTemplate.findOne({ key: "makerspace_otp" });
+      if (template?.html) {
+        subject = String(template.subject || subject);
+        html = renderTemplate(template.html, {
+          otp: otpPlain,
+          expiresMinutes: 5,
+          email,
+        });
+      }
+    } catch {
+      // ignore template lookup errors
+    }
 
     const mailResult = await sendMail({ to: email, subject, html });
 

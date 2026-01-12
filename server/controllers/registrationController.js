@@ -2,6 +2,8 @@ import Registration from "../models/Registration.js";
 import OTP from "../models/OTP.js";
 import crypto from "crypto";
 import { sendMail } from "../utils/mailer.js";
+import EmailTemplate from "../models/EmailTemplate.js";
+import { renderTemplate } from "../utils/templateRenderer.js";
 
 const STAFF_GUEST_ID_REGEX = /^IEDC\d{2}(ST|GT)\d+$/i;
 
@@ -188,8 +190,8 @@ export const registerStaffGuest = async (req, res) => {
     });
 
     // 5) Send confirmation email
-    const subject = "Your IEDC Makerspace Access Granted";
-    const html = `
+    let subject = "Your IEDC Makerspace Access Granted";
+    let html = `
       <div style="font-family:Arial,Helvetica,sans-serif;line-height:1.6">
         <h2>Welcome to IEDC Makerspace</h2>
         <p>Your registered ID / Access Code is:</p>
@@ -197,6 +199,29 @@ export const registerStaffGuest = async (req, res) => {
         <p>Use this ID to check-in at the Makerspace entrance.</p>
       </div>
     `;
+
+    // Prefer the Email Template Center template if present.
+    try {
+      const template = await EmailTemplate.findOne({
+        key: "makerspace_access_granted",
+      });
+      if (template?.html) {
+        subject = String(template.subject || subject);
+        const name = `${firstName} ${lastName}`.trim();
+        html = renderTemplate(template.html, {
+          email,
+          membershipId,
+          accessCode,
+          userType: parts.userType,
+          name: name ? ` ${name}` : "",
+          firstName,
+          lastName,
+          department: department || "",
+        });
+      }
+    } catch {
+      // ignore template lookup errors
+    }
 
     await sendMail({ to: email, subject, html });
 

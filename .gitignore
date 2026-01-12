@@ -51,3 +51,4 @@ coverage/
 # --- Miscellaneous ---
 .vercel/
 .turbo/
+server/utils/seedEmailTemplates.js
