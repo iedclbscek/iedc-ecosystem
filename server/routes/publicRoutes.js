@@ -1,5 +1,6 @@
 import express from "express";
 import User from "../models/User.js";
+import { getMemberById } from "../controllers/publicMemberController.js";
 
 const router = express.Router();
 
@@ -19,5 +20,13 @@ router.get("/team", async (req, res) => {
       .json({ message: "Failed to fetch team", error: error.message });
   }
 });
+
+// Public (makerspace): lookup member profile by membershipId
+// New canonical endpoint: GET /api/public/makerspace/members/:membershipId
+// Compatibility: also accepts ?id=... or ?membershipId=...
+router.get("/makerspace/members/:membershipId?", getMemberById);
+
+// Requested compatibility: /api/public/member?id=IEDC24IT029
+router.get("/member", getMemberById);
 
 export default router;

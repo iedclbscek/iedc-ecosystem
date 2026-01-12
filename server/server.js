@@ -9,6 +9,7 @@ import { seedEmailTemplates } from "./utils/seedEmailTemplates.js";
 // Route Imports
 import adminRoutes from "./routes/adminRoutes.js";
 import publicRoutes from "./routes/publicRoutes.js";
+import usersPublicRoutes from "./routes/usersPublicRoutes.js";
 
 dotenv.config();
 await connectDB();
@@ -22,6 +23,7 @@ const allowedOrigins = [
   "https://iedclbscek.in",
   "https://admin.iedclbscek.in",
   "https://portal.iedclbscek.in",
+  "https://makerspace.iedclbscek.in",
   "http://localhost:5173", // For local development
 ];
 
@@ -44,6 +46,7 @@ app.use(cookieParser());
 // 2. Routes
 app.use("/api/admin", adminRoutes);
 app.use("/api/public", publicRoutes);
+app.use("/api/users", usersPublicRoutes);
 
 // Health
 app.get("/api/health", (req, res) => {
