@@ -1,5 +1,6 @@
 import Registration from "../models/Registration.js";
 import CheckIn from "../models/CheckIn.js";
+import StaffGuestRegistration from "../models/StaffGuestRegistration.js";
 
 const escapeRegExp = (value) =>
   String(value ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -21,11 +22,19 @@ export const createCheckIn = async (req, res) => {
       "i"
     );
 
-    const registration = await Registration.findOne({
-      membershipId: membershipIdRegex,
-    })
-      .select("_id membershipId userType")
-      .lean();
+    const [student, staffGuest] = await Promise.all([
+      Registration.findOne({ membershipId: membershipIdRegex })
+        .select("_id membershipId userType")
+        .lean(),
+      StaffGuestRegistration.findOne({ membershipId: membershipIdRegex })
+        .select("_id membershipId userType")
+        .lean(),
+    ]);
+
+    const registration = student || staffGuest;
+    const registrationModel = student
+      ? "Registration"
+      : "StaffGuestRegistration";
 
     if (!registration) {
       return res
@@ -37,6 +46,7 @@ export const createCheckIn = async (req, res) => {
     const record = await CheckIn.create({
       membershipId: registration.membershipId,
       userType: registration.userType ?? "student",
+      registrationModel,
       registrationRef: registration._id,
     });
 

@@ -7,6 +7,7 @@ const registrationSchema = new mongoose.Schema(
     email: { type: String, unique: true, required: true },
     admissionNo: { type: String, unique: true },
     department: String,
+    organization: String,
     semester: String,
     userType: {
       type: String,

@@ -8,9 +8,14 @@ const checkInSchema = new mongoose.Schema(
       enum: ["student", "staff", "guest"],
       required: true,
     },
+    registrationModel: {
+      type: String,
+      enum: ["Registration", "StaffGuestRegistration"],
+      required: true,
+    },
     registrationRef: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Registration",
+      refPath: "registrationModel",
       required: true,
       index: true,
     },

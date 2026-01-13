@@ -260,17 +260,89 @@ const PASSWORD_RESET_HTML = `<!DOCTYPE html>
 
 </html>`;
 
+const MAKERSPACE_OTP_HTML = `
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Makerspace OTP</title>
+	</head>
+	<body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;line-height:1.6;background:#f6f7fb;">
+		<div style="max-width:600px;margin:0 auto;padding:24px;">
+			<div style="background:#ffffff;border-radius:10px;padding:24px;border:1px solid #e7e9f2;">
+				<h2 style="margin:0 0 12px 0;">Makerspace Verification Code</h2>
+				<p style="margin:0 0 18px 0;">Use the OTP below to complete your verification:</p>
+				<div style="font-size:28px;letter-spacing:6px;font-weight:700;text-align:center;padding:14px 10px;background:#f3f5ff;border-radius:10px;border:1px dashed #c9cffd;">
+					{{otp}}
+				</div>
+				<p style="margin:18px 0 0 0;">This OTP expires in <b>{{expiresMinutes}}</b> minutes.</p>
+				<p style="margin:10px 0 0 0;color:#666;">If you didn’t request this, you can ignore this email.</p>
+			</div>
+			<p style="margin:14px 0 0 0;color:#889; font-size:12px; text-align:center;">IEDC LBSCEK Makerspace</p>
+		</div>
+	</body>
+</html>
+`;
+
+const MAKERSPACE_ACCESS_GRANTED_HTML = `
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Makerspace Access Granted</title>
+	</head>
+	<body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;line-height:1.6;background:#f6f7fb;">
+		<div style="max-width:600px;margin:0 auto;padding:24px;">
+			<div style="background:#ffffff;border-radius:10px;padding:24px;border:1px solid #e7e9f2;">
+				<h2 style="margin:0 0 12px 0;">Your IEDC Makerspace Access Granted</h2>
+				<p style="margin:0 0 12px 0;">Welcome{{name}}!</p>
+				<p style="margin:0 0 18px 0;">Your registered ID / Access Code is:</p>
+				<div style="font-size:20px;font-weight:700;text-align:center;padding:12px 10px;background:#f3f5ff;border-radius:10px;border:1px solid #e7e9f2;">
+					{{membershipId}}
+				</div>
+				<p style="margin:18px 0 0 0;">Use this ID to check-in at the Makerspace entrance.</p>
+				<p style="margin:10px 0 0 0;color:#666;">Email: {{email}}</p>
+				<p style="margin:10px 0 0 0;color:#666;">User type: {{userType}}</p>
+				<p style="margin:10px 0 0 0;color:#666;">Organization: {{organization}}</p>
+			</div>
+			<p style="margin:14px 0 0 0;color:#889; font-size:12px; text-align:center;">IEDC LBSCEK Makerspace</p>
+		</div>
+	</body>
+</html>
+`;
+
 export const seedEmailTemplates = async () => {
-  const key = "password_reset";
+  const templatesToSeed = [
+    {
+      key: "password_reset",
+      name: "Password Reset",
+      subject: "Reset Your Password",
+      html: PASSWORD_RESET_HTML,
+      isBase: true,
+    },
+    {
+      key: "makerspace_otp",
+      name: "Makerspace OTP",
+      subject: "Your Makerspace OTP",
+      html: MAKERSPACE_OTP_HTML,
+      isBase: true,
+    },
+    {
+      key: "makerspace_access_granted",
+      name: "Makerspace Access Granted",
+      subject: "Your IEDC Makerspace Access Granted",
+      html: MAKERSPACE_ACCESS_GRANTED_HTML,
+      isBase: true,
+    },
+  ];
 
-  const existing = await EmailTemplate.findOne({ key });
-  if (existing) return;
-
-  await EmailTemplate.create({
-    key,
-    name: "Password Reset",
-    subject: "Reset Your Password",
-    html: PASSWORD_RESET_HTML,
-    isBase: true,
-  });
+  for (const t of templatesToSeed) {
+    // eslint-disable-next-line no-await-in-loop
+    const existing = await EmailTemplate.findOne({ key: t.key });
+    if (existing) continue;
+    // eslint-disable-next-line no-await-in-loop
+    await EmailTemplate.create(t);
+  }
 };

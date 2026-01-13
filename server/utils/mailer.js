@@ -42,12 +42,15 @@ export const sendMail = async ({ to, subject, html }) => {
 
   const from = process.env.EMAIL_FROM || process.env.EMAIL_USER;
 
-  await transporter.sendMail({
-    from,
-    to,
-    subject,
-    html,
-  });
-
-  return { sent: true };
+  try {
+    await transporter.sendMail({
+      from,
+      to,
+      subject,
+      html,
+    });
+    return { sent: true };
+  } catch (error) {
+    return { sent: false, reason: error?.message || "Failed to send email" };
+  }
 };

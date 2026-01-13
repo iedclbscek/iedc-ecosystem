@@ -134,7 +134,10 @@ All routes are prefixed with `/api/public`.
 - `GET /member?id=IEDC24IT029`
   - Query: `id` (or `membershipId`)
   - Response:
-    - `{ "success": true, "data": { firstName, lastName, admissionNo, department, yearOfJoining, membershipId } }`
+    - `{ "success": true, "data": { firstName, lastName, admissionNo, department, yearOfJoining, membershipId, userType, organization } }`
+  - Notes:
+    - Works for student IDs and staff/guest IDs.
+    - For staff/guest: `admissionNo` is an empty string, and `organization` is set when available.
 
 ### Makerspace OTP
 
@@ -154,7 +157,7 @@ Verify OTP:
 
 - `POST /verify-otp`
   - Body: `{ "email": "user@example.com", "otp": "123456" }`
-  - Response: `{ "success": true, "message": "OTP verified" }`
+  - Response: `{ "success": true, "message": "OTP verified", "otpToken": "..." }`
   - Notes: OTP is one-time use (deleted after successful verification).
 
 ### Makerspace registration (Staff/Guest)
@@ -172,11 +175,15 @@ Register staff/guest (final submit):
 
 - `POST /register-staff-guest`
   - Body:
-    - Required: `{ "email": "user@example.com", "otp": "123456", "userType": "staff"|"guest", "firstName": "...", "lastName": "..." }`
+    - Required: `{ "email": "user@example.com", "otpToken": "...", "userType": "staff"|"guest", "firstName": "...", "lastName": "..." }`
     - Optional: `{ "department": "..." }`
+    - Guest only (required): `{ "organization": "Company/Institution" }`
+    - Staff: `organization` defaults to `LBS College of Engineering Kasaragod` (any provided value is ignored).
+    - Legacy fallback (still supported): send `otp` instead of `otpToken`.
   - Response: `{ "success": true, "membershipId": "IEDC26ST005", "accessCode": "IEDC26ST005", "userType": "staff" }`
   - Notes:
-    - OTP is verified again right before saving.
+    - otpToken (preferred) is verified server-side right before saving.
+    - Staff/Guest registrations are stored in a separate collection (`staff_guest_registrations`) to avoid student-only constraints like unique `admissionNo`.
     - `membershipId` is generated as `IEDC<YY><ST|GT><NNN>`.
     - `accessCode` is set equal to `membershipId`.
     - A confirmation email is sent.

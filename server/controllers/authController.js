@@ -206,6 +206,26 @@ const hashOtp = (otp) => {
   return crypto.createHash("sha256").update(String(otp)).digest("hex");
 };
 
+const getOtpTokenSecret = () => {
+  return process.env.OTP_TOKEN_SECRET || process.env.JWT_SECRET;
+};
+
+const signOtpToken = ({ email }) => {
+  const secret = getOtpTokenSecret();
+  if (!secret) {
+    throw new Error("OTP_TOKEN_SECRET (or JWT_SECRET) is not configured");
+  }
+
+  return jwt.sign(
+    {
+      email,
+      scope: "makerspace_register",
+    },
+    secret,
+    { expiresIn: "10m" }
+  );
+};
+
 export const sendOTP = async (req, res) => {
   try {
     const email = normalizeEmail(req.body?.email);
@@ -290,10 +310,12 @@ export const verifyOTP = async (req, res) => {
     // One-time use.
     await OTP.deleteMany({ email });
 
-    return res.json({ success: true, message: "OTP verified" });
+    const otpToken = signOtpToken({ email });
+    return res.json({ success: true, message: "OTP verified", otpToken });
   } catch (error) {
-    return res
-      .status(500)
-      .json({ success: false, message: "Failed to verify OTP" });
+    const message = String(error?.message || "").includes("OTP_TOKEN_SECRET")
+      ? "OTP token signing is not configured"
+      : "Failed to verify OTP";
+    return res.status(500).json({ success: false, message });
   }
 };

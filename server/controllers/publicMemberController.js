@@ -1,5 +1,6 @@
 import User from "../models/User.js";
 import Registration from "../models/Registration.js";
+import StaffGuestRegistration from "../models/StaffGuestRegistration.js";
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -39,13 +40,18 @@ export async function getMemberById(req, res) {
       .select("membershipId registrationRef")
       .populate(
         "registrationRef",
-        "firstName lastName admissionNo department membershipId"
+        "firstName lastName admissionNo department membershipId userType organization"
       );
 
     const registration =
       user?.registrationRef ??
       (await Registration.findOne({ membershipId: membershipIdRegex }).select(
-        "firstName lastName admissionNo department membershipId"
+        "firstName lastName admissionNo department membershipId userType organization"
+      )) ??
+      (await StaffGuestRegistration.findOne({
+        membershipId: membershipIdRegex,
+      }).select(
+        "firstName lastName department membershipId userType organization"
       ));
 
     if (!registration) {
@@ -64,10 +70,12 @@ export async function getMemberById(req, res) {
       data: {
         firstName: registration.firstName,
         lastName: registration.lastName,
-        admissionNo: registration.admissionNo,
+        admissionNo: registration.admissionNo || "",
         department: registration.department,
         yearOfJoining,
         membershipId: registration.membershipId ?? membershipId,
+        userType: registration.userType || "student",
+        organization: registration.organization || "",
       },
     });
   } catch (error) {
