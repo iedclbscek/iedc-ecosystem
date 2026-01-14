@@ -330,16 +330,43 @@ export const sendOTP = async (req, res) => {
 
 export const verifyOTP = async (req, res) => {
   try {
-    const email = await resolveEmailFromEmailOrMembershipId({
-      email: req.body?.email,
-      membershipId: req.body?.membershipId ?? req.body?.id,
-    });
     const otp = String(req.body?.otp ?? "").trim();
 
-    if (!email || !isValidEmail(email) || !otp) {
+    const rawMembershipId = String(
+      req.body?.membershipId ?? req.body?.id ?? ""
+    ).trim();
+    const hasMembershipId = Boolean(rawMembershipId);
+
+    const rawEmail = normalizeEmail(req.body?.email);
+
+    if (!otp) {
+      return res
+        .status(400)
+        .json({ success: false, message: "otp is required" });
+    }
+
+    let email = "";
+    if (rawEmail) {
+      if (!isValidEmail(rawEmail)) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Valid email is required" });
+      }
+      email = rawEmail;
+    } else if (hasMembershipId) {
+      email = await resolveEmailFromEmailOrMembershipId({
+        membershipId: rawMembershipId,
+      });
+      if (!email) {
+        return res.status(404).json({
+          success: false,
+          message: "Member not found for provided membershipId",
+        });
+      }
+    } else {
       return res.status(400).json({
         success: false,
-        message: "Provide email or membershipId, and otp",
+        message: "Provide a valid email or membershipId",
       });
     }
 
