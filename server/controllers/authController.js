@@ -4,6 +4,8 @@ import User from "../models/User.js";
 import crypto from "crypto";
 import Club from "../models/Club.js";
 import OTP from "../models/OTP.js";
+import Registration from "../models/Registration.js";
+import StaffGuestRegistration from "../models/StaffGuestRegistration.js";
 import { sendMail } from "../utils/mailer.js";
 import EmailTemplate from "../models/EmailTemplate.js";
 import { renderTemplate } from "../utils/templateRenderer.js";
@@ -196,6 +198,44 @@ const isValidEmail = (email) => {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email));
 };
 
+const escapeRegex = (value) =>
+  String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const resolveEmailFromEmailOrMembershipId = async ({ email, membershipId }) => {
+  const normalizedEmail = normalizeEmail(email);
+  if (normalizedEmail && isValidEmail(normalizedEmail)) {
+    return normalizedEmail;
+  }
+
+  const rawMembershipId = String(membershipId ?? "").trim();
+  if (!rawMembershipId) return "";
+
+  const idRegex = new RegExp(`^${escapeRegex(rawMembershipId)}$`, "i");
+
+  // Prefer registration records for makerspace flows.
+  const student = await Registration.findOne({ membershipId: idRegex })
+    .select("email")
+    .lean();
+  const studentEmail = normalizeEmail(student?.email);
+  if (studentEmail && isValidEmail(studentEmail)) return studentEmail;
+
+  const staffGuest = await StaffGuestRegistration.findOne({
+    membershipId: idRegex,
+  })
+    .select("email")
+    .lean();
+  const staffGuestEmail = normalizeEmail(staffGuest?.email);
+  if (staffGuestEmail && isValidEmail(staffGuestEmail)) return staffGuestEmail;
+
+  const user = await User.findOne({ membershipId: idRegex })
+    .select("email")
+    .lean();
+  const userEmail = normalizeEmail(user?.email);
+  if (userEmail && isValidEmail(userEmail)) return userEmail;
+
+  return "";
+};
+
 const generateNumericOtp = () => {
   // 6-digit numeric OTP
   const n = crypto.randomInt(0, 1000000);
@@ -228,9 +268,20 @@ const signOtpToken = ({ email }) => {
 
 export const sendOTP = async (req, res) => {
   try {
-    const email = normalizeEmail(req.body?.email);
-    if (!email || !isValidEmail(email)) {
-      return res.status(400).json({ message: "Valid email is required" });
+    const email = await resolveEmailFromEmailOrMembershipId({
+      email: req.body?.email,
+      membershipId: req.body?.membershipId ?? req.body?.id,
+    });
+
+    if (!email) {
+      const hasMembership = Boolean(
+        String(req.body?.membershipId ?? req.body?.id ?? "").trim()
+      );
+      return res.status(hasMembership ? 404 : 400).json({
+        message: hasMembership
+          ? "Member not found for provided membershipId"
+          : "Provide a valid email or membershipId",
+      });
     }
 
     const otpPlain = generateNumericOtp();
@@ -279,13 +330,17 @@ export const sendOTP = async (req, res) => {
 
 export const verifyOTP = async (req, res) => {
   try {
-    const email = normalizeEmail(req.body?.email);
+    const email = await resolveEmailFromEmailOrMembershipId({
+      email: req.body?.email,
+      membershipId: req.body?.membershipId ?? req.body?.id,
+    });
     const otp = String(req.body?.otp ?? "").trim();
 
     if (!email || !isValidEmail(email) || !otp) {
-      return res
-        .status(400)
-        .json({ success: false, message: "email and otp are required" });
+      return res.status(400).json({
+        success: false,
+        message: "Provide email or membershipId, and otp",
+      });
     }
 
     const record = await OTP.findOne({ email });

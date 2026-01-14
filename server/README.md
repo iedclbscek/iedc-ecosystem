@@ -149,14 +149,16 @@ Two equivalent path styles are supported:
 Send OTP:
 
 - `POST /send-otp`
-  - Body: `{ "email": "user@example.com" }`
+  - Body (either):
+    - `{ "email": "user@example.com" }`
+    - `{ "membershipId": "IEDC24IT029" }`
   - Response: `{ "success": true, "sent": true|false }`
   - Notes: OTP is never returned to the client; expires in ~5 minutes.
 
 Verify OTP:
 
 - `POST /verify-otp`
-  - Body: `{ "email": "user@example.com", "otp": "123456" }`
+  - Body: `{ "email": "user@example.com", "otp": "123456" }` (or `{ "membershipId": "...", "otp": "123456" }`)
   - Response: `{ "success": true, "message": "OTP verified", "otpToken": "..." }`
   - Notes: OTP is one-time use (deleted after successful verification).
 
