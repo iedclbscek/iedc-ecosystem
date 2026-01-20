@@ -26,6 +26,7 @@ const app = express();
 // 1. Advanced CORS Configuration
 const allowedOrigins = [
   "https://iedclbscek.in",
+  "https://www.iedclbscek.in",
   "https://admin.iedclbscek.in",
   "https://portal.iedclbscek.in",
   "https://makerspace.iedclbscek.in",
