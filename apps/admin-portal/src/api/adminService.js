@@ -8,14 +8,41 @@ export const fetchRegistrations = async (page = 1, search = "") => {
       page,
       limit: 10,
       search: search,
+      memberType: "student",
     },
   });
   return data;
 };
 
 // The missing export causing your error
-export const deleteStudent = async (id) => {
-  const { data } = await api.delete(`/admin/registrations/${id}`);
+export const deleteStudent = async ({ id }) => {
+  const { data } = await api.delete(`/admin/registrations/${id}`, {
+    params: { memberType: "student" },
+  });
+  return data;
+};
+
+// Members (student/staff/guest)
+export const fetchMembers = async ({
+  page = 1,
+  search = "",
+  memberType = "student",
+} = {}) => {
+  const { data } = await api.get("/admin/registrations", {
+    params: {
+      page,
+      limit: 10,
+      search: String(search ?? ""),
+      memberType,
+    },
+  });
+  return data;
+};
+
+export const deleteMember = async ({ id, memberType = "student" } = {}) => {
+  const { data } = await api.delete(`/admin/registrations/${id}`, {
+    params: { memberType },
+  });
   return data;
 };
 
@@ -31,15 +58,16 @@ export const fetchUsers = async () => {
   return data; // { users }
 };
 
-export const searchStudents = async (query) => {
+export const searchStudents = async (query, memberType = "student") => {
   const { data } = await api.get("/admin/users/search", {
-    params: { query },
+    params: { query, memberType },
   });
   return data; // { students }
 };
 
 export const promoteUser = async ({
   registrationId,
+  memberType,
   role,
   customRole,
   permissions,
@@ -48,6 +76,7 @@ export const promoteUser = async ({
 }) => {
   const { data } = await api.post("/admin/users/promote", {
     registrationId,
+    ...(memberType ? { memberType } : {}),
     role,
     customRole,
     permissions,
@@ -101,13 +130,78 @@ export const updateClubPortalMember = async ({
     {
       portalAccessEnabled,
       permissions,
-    }
+    },
   );
   return data; // { user, passwordSetupEmailSent? }
 };
 
 export const deleteUser = async (id) => {
   const { data } = await api.delete(`/admin/users/${id}`);
+  return data; // { message }
+};
+
+// Website team (Execom) entries
+export const fetchWebsiteTeamYears = async ({ category = "execom" } = {}) => {
+  const { data } = await api.get("/admin/team/years", { params: { category } });
+  return data; // { years }
+};
+
+export const fetchWebsiteTeamEntries = async ({
+  category = "execom",
+  year = "",
+} = {}) => {
+  const { data } = await api.get("/admin/team/entries", {
+    params: { category, year },
+  });
+  return data; // { entries }
+};
+
+export const createWebsiteTeamEntry = async ({
+  category = "execom",
+  year,
+  userId,
+  roleTitle,
+  visible,
+} = {}) => {
+  const { data } = await api.post("/admin/team/entries", {
+    category,
+    year,
+    userId,
+    roleTitle,
+    visible,
+  });
+  return data; // { entry }
+};
+
+export const updateWebsiteTeamEntry = async ({
+  id,
+  year,
+  roleTitle,
+  visible,
+} = {}) => {
+  const { data } = await api.patch(`/admin/team/entries/${id}`, {
+    year,
+    roleTitle,
+    visible,
+  });
+  return data; // { entry }
+};
+
+export const deleteWebsiteTeamEntry = async (id) => {
+  const { data } = await api.delete(`/admin/team/entries/${id}`);
+  return data; // { message }
+};
+
+export const reorderWebsiteTeamEntries = async ({
+  category = "execom",
+  year,
+  orderedIds,
+} = {}) => {
+  const { data } = await api.post("/admin/team/entries/reorder", {
+    category,
+    year,
+    orderedIds,
+  });
   return data; // { message }
 };
 

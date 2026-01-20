@@ -1,5 +1,6 @@
 import express from "express";
 import User from "../models/User.js";
+import WebsiteTeamEntry from "../models/WebsiteTeamEntry.js";
 import { getMemberById } from "../controllers/publicMemberController.js";
 import { sendOTP, verifyOTP } from "../controllers/authController.js";
 import {
@@ -24,6 +25,62 @@ router.get("/team", async (req, res) => {
     res
       .status(500)
       .json({ message: "Failed to fetch team", error: error.message });
+  }
+});
+
+// Public: year-wise Execom list
+// Intended for website team page consumption.
+router.get("/execom", async (req, res) => {
+  try {
+    const year = String(req.query.year ?? "").trim();
+
+    const filter = { category: "execom", visible: true };
+    if (year) filter.year = year;
+
+    const entries = await WebsiteTeamEntry.find(filter)
+      .populate({
+        path: "userRef",
+        select: "name membershipId registrationRef",
+        populate: {
+          path: "registrationRef",
+          select: "firstName lastName department semester",
+        },
+      })
+      .sort({ year: -1, order: 1, createdAt: 1 });
+
+    const yearsMap = new Map();
+    for (const entry of entries) {
+      const y = String(entry.year || "").trim();
+      if (!y) continue;
+      if (!yearsMap.has(y)) yearsMap.set(y, []);
+
+      const u = entry.userRef;
+      yearsMap.get(y).push({
+        id: entry._id,
+        year: y,
+        order: entry.order,
+        roleTitle: entry.roleTitle || "",
+        user: u
+          ? {
+              id: u._id,
+              name: u.name,
+              membershipId: u.membershipId,
+              registration: u.registrationRef || null,
+            }
+          : null,
+      });
+    }
+
+    const years = Array.from(yearsMap.keys()).sort((a, b) =>
+      b.localeCompare(a)
+    );
+    return res.json({
+      years: years.map((y) => ({ year: y, members: yearsMap.get(y) })),
+    });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ message: "Failed to fetch execom", error: error.message });
   }
 });
 

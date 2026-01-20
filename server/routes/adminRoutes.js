@@ -17,6 +17,12 @@ import {
   searchStudents,
   promoteClubPortalMember,
   updateClubPortalMember,
+  listWebsiteTeamYears,
+  listWebsiteTeamEntries,
+  createWebsiteTeamEntry,
+  updateWebsiteTeamEntry,
+  deleteWebsiteTeamEntry,
+  reorderWebsiteTeamEntries,
 } from "../controllers/teamController.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import {
@@ -66,6 +72,14 @@ router.get("/users/search", searchStudents);
 router.post("/users/promote", promoteToTeam);
 router.patch("/users/:id", updateUser);
 router.delete("/users/:id", deleteUser);
+
+// Website Team (Execom) year-wise entries
+router.get("/team/years", listWebsiteTeamYears);
+router.get("/team/entries", listWebsiteTeamEntries);
+router.post("/team/entries", createWebsiteTeamEntry);
+router.patch("/team/entries/:id", updateWebsiteTeamEntry);
+router.delete("/team/entries/:id", deleteWebsiteTeamEntry);
+router.post("/team/entries/reorder", reorderWebsiteTeamEntries);
 
 // Club-scoped portal members (club leads)
 router.post("/clubs/:clubId/portal-members", promoteClubPortalMember);

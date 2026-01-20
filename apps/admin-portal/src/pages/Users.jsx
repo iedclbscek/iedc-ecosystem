@@ -22,6 +22,7 @@ import {
 } from '../api/adminService';
 import { me } from '../api/authService';
 import { useViewMode } from '../context/ViewModeContext';
+import ExecomEntriesManager from '../components/ExecomEntriesManager';
 
 const normalize = (v) => String(v ?? '').trim().toLowerCase();
 
@@ -58,7 +59,9 @@ function ClubMemberManager({ meData, forcedClubId }) {
     retry: false,
   });
 
-  const clubs = Array.isArray(clubsData?.clubs) ? clubsData.clubs : [];
+  const clubs = useMemo(() => {
+    return Array.isArray(clubsData?.clubs) ? clubsData.clubs : [];
+  }, [clubsData]);
   const myClubs = useMemo(() => {
     const myId = String(meData?.id ?? '');
     if (!myId) return [];
@@ -768,6 +771,7 @@ export default function Users() {
   const isClubLead = Boolean(meData?.isClubLead);
 
   const [activeCategory, setActiveCategory] = useState('execom');
+  const [showWebsiteExecomOrder, setShowWebsiteExecomOrder] = useState(false);
   const [execomYear, setExecomYear] = useState('');
   const [staffYear, setStaffYear] = useState('');
 
@@ -782,6 +786,7 @@ export default function Users() {
   const [isOpen, setIsOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchMemberType, setSearchMemberType] = useState('student');
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [selectedUser, setSelectedUser] = useState(null);
   const [form, setForm] = useState({
@@ -789,12 +794,6 @@ export default function Users() {
     customRole: '',
     permissions: [],
     portalAccessEnabled: false,
-    websiteProfile: {
-      visible: false,
-      order: 0,
-      roleTitle: '',
-      group: '',
-    },
   });
 
   const [editForm, setEditForm] = useState({
@@ -817,7 +816,9 @@ export default function Users() {
     retry: false,
   });
 
-  const users = Array.isArray(usersData?.users) ? usersData.users : [];
+  const users = useMemo(() => {
+    return Array.isArray(usersData?.users) ? usersData.users : [];
+  }, [usersData]);
 
   const { data: clubsData } = useQuery({
     queryKey: ['clubs'],
@@ -826,7 +827,9 @@ export default function Users() {
     retry: false,
   });
 
-  const clubs = Array.isArray(clubsData?.clubs) ? clubsData.clubs : [];
+  const clubs = useMemo(() => {
+    return Array.isArray(clubsData?.clubs) ? clubsData.clubs : [];
+  }, [clubsData]);
 
   const usersById = useMemo(() => {
     const m = new Map();
@@ -888,8 +891,8 @@ export default function Users() {
     data: searchData,
     isFetching: searching,
   } = useQuery({
-    queryKey: ['student-search', searchQuery],
-    queryFn: () => searchStudents(searchQuery.trim()),
+    queryKey: ['student-search', searchMemberType, searchQuery],
+    queryFn: () => searchStudents(searchQuery.trim(), searchMemberType),
     enabled: searchEnabled,
     retry: false,
   });
@@ -930,7 +933,6 @@ export default function Users() {
         customRole: '',
         permissions: [],
         portalAccessEnabled: false,
-        websiteProfile: { visible: false, order: 0, roleTitle: '', group: '' },
       });
     },
     onError: (err) => {
@@ -955,16 +957,11 @@ export default function Users() {
       if (!userId) {
         const data = await promoteUser({
           registrationId: student._id,
+          memberType: student?.userType,
           role: 'Custom',
           customRole: 'Club Lead',
           permissions: [],
           portalAccessEnabled: Boolean(portalAccessEnabled),
-          websiteProfile: {
-            visible: false,
-            order: 0,
-            roleTitle: '',
-            group: '',
-          },
         });
 
         userId = String(data?.user?.id ?? '');
@@ -1178,11 +1175,11 @@ export default function Users() {
     if (!selectedStudent?._id) return;
     promoteMutation.mutate({
       registrationId: selectedStudent._id,
+      memberType: selectedStudent?.userType || searchMemberType,
       role: form.role,
       customRole: form.customRole,
       permissions: form.permissions,
       portalAccessEnabled: form.portalAccessEnabled,
-      websiteProfile: form.websiteProfile,
     });
   };
 
@@ -1267,7 +1264,10 @@ export default function Users() {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => setActiveCategory('staff')}
+            onClick={() => {
+              setShowWebsiteExecomOrder(false);
+              setActiveCategory('staff');
+            }}
             className={`px-4 py-2 rounded-xl text-sm font-semibold border transition-colors ${
               activeCategory === 'staff'
                 ? 'bg-blue-600 text-white border-blue-600'
@@ -1278,7 +1278,10 @@ export default function Users() {
           </button>
           <button
             type="button"
-            onClick={() => setActiveCategory('execom')}
+            onClick={() => {
+              setShowWebsiteExecomOrder(false);
+              setActiveCategory('execom');
+            }}
             className={`px-4 py-2 rounded-xl text-sm font-semibold border transition-colors ${
               activeCategory === 'execom'
                 ? 'bg-blue-600 text-white border-blue-600'
@@ -1289,7 +1292,10 @@ export default function Users() {
           </button>
           <button
             type="button"
-            onClick={() => setActiveCategory('clubLeads')}
+            onClick={() => {
+              setShowWebsiteExecomOrder(false);
+              setActiveCategory('clubLeads');
+            }}
             className={`px-4 py-2 rounded-xl text-sm font-semibold border transition-colors ${
               activeCategory === 'clubLeads'
                 ? 'bg-blue-600 text-white border-blue-600'
@@ -1467,96 +1473,125 @@ export default function Users() {
           )}
         </div>
       ) : (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-slate-100 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <UsersIcon size={18} className="text-slate-400" />
-            <h2 className="font-bold">
-              {activeCategory === 'staff' ? 'Staff/Admin' : 'Execom'}
-            </h2>
-          </div>
-          <div className="text-sm text-slate-500 font-semibold">{tableUsers.length} members</div>
-        </div>
+        <div className="space-y-6">
+          {activeCategory === 'execom' && showWebsiteExecomOrder ? (
+            <div className="space-y-3">
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowWebsiteExecomOrder(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold hover:bg-slate-50"
+                >
+                  Back to Execom list
+                </button>
+              </div>
+              <ExecomEntriesManager users={users} canManageUsers={canManageUsers} />
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-6 border-b border-slate-100 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <UsersIcon size={18} className="text-slate-400" />
+                  <h2 className="font-bold">{activeCategory === 'staff' ? 'Staff/Admin' : 'Execom'}</h2>
+                </div>
 
-        {usersLoading ? (
-          <div className="p-8 flex items-center gap-3 text-slate-500">
-            <Loader2 className="animate-spin" size={18} />
-            Loading members...
-          </div>
-        ) : usersError ? (
-          <div className="p-8 text-slate-500">Failed to load members.</div>
-        ) : tableUsers.length === 0 ? (
-          <div className="p-8 text-slate-500">No team members yet.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 border-b border-slate-100">
-                <tr className="text-left text-slate-500">
-                  <th className="px-6 py-3 font-semibold">Name</th>
-                  <th className="px-6 py-3 font-semibold">Email</th>
-                  <th className="px-6 py-3 font-semibold">Membership ID</th>
-                  <th className="px-6 py-3 font-semibold">Role</th>
-                  <th className="px-6 py-3 font-semibold">Portal Access</th>
-                  <th className="px-6 py-3 font-semibold">Permissions</th>
-                  <th className="px-6 py-3 font-semibold">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {tableUsers.map((u) => (
-                  <tr key={u?._id || u?.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-6 py-4 font-semibold text-slate-900 whitespace-nowrap">{u?.name || '—'}</td>
-                    <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{u?.email || '—'}</td>
-                    <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{u?.membershipId || '—'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-semibold bg-slate-100 text-slate-700">
-                        <ShieldCheck size={14} />
-                        {u?.role || '—'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-slate-600 whitespace-nowrap">
-                      {u?.portalAccessEnabled === false ? (
-                        <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold bg-red-50 text-red-700">
-                          Disabled
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold bg-emerald-50 text-emerald-700">
-                          Enabled
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-slate-600">
-                      {(Array.isArray(u?.permissions) ? u.permissions : []).join(', ') || '—'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => openEdit(u)}
-                          disabled={String(u?.membershipId ?? '').trim().toLowerCase() === 'admin'}
-                          className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 font-semibold hover:bg-slate-50 disabled:opacity-50"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => confirmDelete(u)}
-                          disabled={
-                            deleteMutation.isPending ||
-                            String(u?.membershipId ?? '').trim().toLowerCase() === 'admin'
-                          }
-                          className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-red-600 font-semibold hover:bg-slate-50 disabled:opacity-50"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                <div className="flex items-center gap-3">
+                  {activeCategory === 'execom' ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowWebsiteExecomOrder(true)}
+                      className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold hover:bg-slate-50"
+                    >
+                      Website order
+                    </button>
+                  ) : null}
+                  <div className="text-sm text-slate-500 font-semibold">{tableUsers.length} members</div>
+                </div>
+              </div>
+
+              {usersLoading ? (
+                <div className="p-8 flex items-center gap-3 text-slate-500">
+                  <Loader2 className="animate-spin" size={18} />
+                  Loading members...
+                </div>
+              ) : usersError ? (
+                <div className="p-8 text-slate-500">Failed to load members.</div>
+              ) : tableUsers.length === 0 ? (
+                <div className="p-8 text-slate-500">No team members yet.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-100">
+                      <tr className="text-left text-slate-500">
+                        <th className="px-6 py-3 font-semibold">Name</th>
+                        <th className="px-6 py-3 font-semibold">Email</th>
+                        <th className="px-6 py-3 font-semibold">Membership ID</th>
+                        <th className="px-6 py-3 font-semibold">Role</th>
+                        <th className="px-6 py-3 font-semibold">Portal Access</th>
+                        <th className="px-6 py-3 font-semibold">Permissions</th>
+                        <th className="px-6 py-3 font-semibold">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {tableUsers.map((u) => (
+                        <tr key={u?._id || u?.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-6 py-4 font-semibold text-slate-900 whitespace-nowrap">
+                            {u?.name || '—'}
+                          </td>
+                          <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{u?.email || '—'}</td>
+                          <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{u?.membershipId || '—'}</td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-semibold bg-slate-100 text-slate-700">
+                              <ShieldCheck size={14} />
+                              {u?.role || '—'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-slate-600 whitespace-nowrap">
+                            {u?.portalAccessEnabled === false ? (
+                              <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold bg-red-50 text-red-700">
+                                Disabled
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold bg-emerald-50 text-emerald-700">
+                                Enabled
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-slate-600">
+                            {(Array.isArray(u?.permissions) ? u.permissions : []).join(', ') || '—'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => openEdit(u)}
+                                disabled={String(u?.membershipId ?? '').trim().toLowerCase() === 'admin'}
+                                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 font-semibold hover:bg-slate-50 disabled:opacity-50"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => confirmDelete(u)}
+                                disabled={
+                                  deleteMutation.isPending ||
+                                  String(u?.membershipId ?? '').trim().toLowerCase() === 'admin'
+                                }
+                                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-red-600 font-semibold hover:bg-slate-50 disabled:opacity-50"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       {/* Edit Modal */}
@@ -1965,7 +2000,32 @@ export default function Users() {
             <div className="p-6 space-y-6 overflow-y-auto flex-1">
               {/* Search */}
               <div className="space-y-2">
-                <label className="text-sm font-bold text-slate-700">Search Registrations</label>
+                <label className="text-sm font-bold text-slate-700">Search Members</label>
+
+                <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
+                  {[
+                    { id: 'student', label: 'Students' },
+                    { id: 'staff', label: 'Staff' },
+                    { id: 'guest', label: 'Guests' },
+                  ].map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => {
+                        setSearchMemberType(t.id);
+                        setSelectedStudent(null);
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                        searchMemberType === t.id
+                          ? 'bg-white text-slate-900 shadow-sm'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+
                 <div className="relative">
                   <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
@@ -1989,7 +2049,7 @@ export default function Users() {
                           Searching...
                         </div>
                       ) : students.length === 0 ? (
-                        <div className="p-4 text-slate-500">No students found.</div>
+                        <div className="p-4 text-slate-500">No members found.</div>
                       ) : (
                         students.map((s) => (
                           <button
@@ -2025,7 +2085,7 @@ export default function Users() {
                     <p className="text-sm text-slate-500">{selectedStudent?.email || '—'}</p>
                   </div>
                 ) : (
-                  <p className="mt-2 text-sm text-slate-500">No student selected yet.</p>
+                  <p className="mt-2 text-sm text-slate-500">No member selected yet.</p>
                 )}
               </div>
 
@@ -2060,85 +2120,24 @@ export default function Users() {
                 )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-slate-700">Portal Access</label>
-                  <label className="flex items-center gap-2 text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(form.portalAccessEnabled)}
-                      onChange={(e) =>
-                        setForm((p) => ({ ...p, portalAccessEnabled: e.target.checked }))
-                      }
-                    />
-                    <span className="font-medium text-slate-700">Allow login to admin portal</span>
-                  </label>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-slate-700">Website Visibility</label>
-                  <label className="flex items-center gap-2 text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(form.websiteProfile?.visible)}
-                      onChange={(e) =>
-                        setForm((p) => ({
-                          ...p,
-                          websiteProfile: { ...p.websiteProfile, visible: e.target.checked },
-                        }))
-                      }
-                    />
-                    <span className="font-medium text-slate-700">Show on main site</span>
-                  </label>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-slate-700">Website Order</label>
-                  <input
-                    type="number"
-                    value={Number(form.websiteProfile?.order ?? 0)}
-                    onChange={(e) =>
-                      setForm((p) => ({
-                        ...p,
-                        websiteProfile: { ...p.websiteProfile, order: Number(e.target.value) },
-                      }))
-                    }
-                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                    placeholder="0"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-slate-700">Website Role Title</label>
-                  <input
-                    value={form.websiteProfile?.roleTitle ?? ''}
-                    onChange={(e) =>
-                      setForm((p) => ({
-                        ...p,
-                        websiteProfile: { ...p.websiteProfile, roleTitle: e.target.value },
-                      }))
-                    }
-                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                    placeholder="e.g. President"
-                  />
-                </div>
-              </div>
-
               <div className="space-y-2">
-                <label className="text-sm font-bold text-slate-700">Website Group</label>
-                <input
-                  value={form.websiteProfile?.group ?? ''}
-                  onChange={(e) =>
-                    setForm((p) => ({
-                      ...p,
-                      websiteProfile: { ...p.websiteProfile, group: e.target.value },
-                    }))
-                  }
-                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                  placeholder="e.g. Execom 2025-26"
-                />
+                <label className="text-sm font-bold text-slate-700">Portal Access</label>
+                <label className="flex items-center gap-2 text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(form.portalAccessEnabled)}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, portalAccessEnabled: e.target.checked }))
+                    }
+                  />
+                  <span className="font-medium text-slate-700">Allow login to admin portal</span>
+                </label>
+              </div>
+
+
+              <div className="text-sm text-slate-500">
+                Website team visibility, role title, and ordering are managed from the
+                "Website Execom (year-wise)" section.
               </div>
 
               {/* Permissions */}

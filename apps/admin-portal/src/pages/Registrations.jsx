@@ -1,16 +1,29 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchRegistrations, deleteStudent } from '../api/adminService';
+import { fetchMembers, deleteMember } from '../api/adminService';
 import { 
   Search, Loader2, Pencil, Trash2, AlertCircle, 
   RefreshCcw, ChevronLeft, ChevronRight, User 
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+const MEMBER_TYPES = [
+  { id: 'student', label: 'Students' },
+  { id: 'staff', label: 'Staff' },
+  { id: 'guest', label: 'Guests' },
+];
+
+const getSearchPlaceholder = (memberType) => {
+  if (memberType === 'student') return 'Search name, admission, or dept...';
+  if (memberType === 'staff') return 'Search name, membership ID, or dept...';
+  return 'Search name, membership ID, or organization...';
+};
+
 export default function Registrations() {
   const queryClient = useQueryClient();
   
   // States
+  const [memberType, setMemberType] = useState('student');
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -24,19 +37,23 @@ export default function Registrations() {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [memberType]);
+
   // 2. Fetch Data from MongoDB
   const { data, isLoading, isError, refetch, isFetching } = useQuery({
-    queryKey: ['registrations', page, debouncedSearch],
-    queryFn: () => fetchRegistrations(page, debouncedSearch),
+    queryKey: ['registrations', memberType, page, debouncedSearch],
+    queryFn: () => fetchMembers({ page, search: debouncedSearch, memberType }),
     retry: 1,
   });
 
   // 3. Delete Mutation
   const deleteMutation = useMutation({
-    mutationFn: deleteStudent,
+    mutationFn: deleteMember,
     onSuccess: () => {
-      queryClient.invalidateQueries(['registrations']);
-      toast.success('Student record deleted');
+      queryClient.invalidateQueries({ queryKey: ['registrations'] });
+      toast.success('Member record deleted');
     },
     onError: (err) => {
       toast.error(err.response?.data?.message || 'Failed to delete');
@@ -61,7 +78,7 @@ export default function Registrations() {
         <button
           onClick={() => {
             toast.dismiss(t.id);
-            deleteMutation.mutate(id);
+            deleteMutation.mutate({ id, memberType });
           }}
           className="px-3 py-1.5 text-xs font-semibold bg-rose-600 text-white hover:bg-rose-700 rounded-lg shadow-sm transition-colors"
         >
@@ -83,7 +100,7 @@ export default function Registrations() {
   if (isLoading) return (
     <div className="flex flex-col h-96 items-center justify-center gap-4">
       <Loader2 className="animate-spin text-blue-600" size={40} />
-      <p className="text-slate-500 font-medium animate-pulse">Fetching 451 members...</p>
+      <p className="text-slate-500 font-medium animate-pulse">Fetching members...</p>
     </div>
   );
 
@@ -108,6 +125,10 @@ export default function Registrations() {
     </div>
   );
 
+  const members = Array.isArray(data?.members) ? data.members : (Array.isArray(data?.students) ? data.students : []);
+  const total = data?.totalMembers ?? data?.totalStudents ?? 0;
+  const titleLabel = memberType === 'student' ? 'Students' : (memberType === 'staff' ? 'Staff' : 'Guests');
+
   return (
     <div className="space-y-6 pb-12">
       {/* Header & Search */}
@@ -116,22 +137,40 @@ export default function Registrations() {
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
             Members
             <span className="bg-blue-100 text-blue-600 text-xs px-2 py-1 rounded-full">
-              {data?.totalStudents || 0} Total
+              {total} {titleLabel}
             </span>
           </h1>
-          <p className="text-slate-500 text-sm">Manage student enrollment and membership data.</p>
+          <p className="text-slate-500 text-sm">Manage student, staff, and guest membership data.</p>
         </div>
         
-        <div className="relative w-full md:w-96">
+        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto md:items-center">
+          <div className="inline-flex w-full sm:w-auto rounded-2xl bg-slate-100 p-1 border border-slate-200">
+            {MEMBER_TYPES.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setMemberType(t.id)}
+                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+                  memberType === t.id
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="relative w-full sm:w-96">
           <Search className="absolute left-4 top-3 text-slate-400" size={20} />
           <input 
             type="text"
-            placeholder="Search name, admission, or dept..."
+            placeholder={getSearchPlaceholder(memberType)}
             className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all shadow-sm"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
           {isFetching && <Loader2 className="absolute right-4 top-3.5 animate-spin text-blue-500" size={16} />}
+          </div>
         </div>
       </div>
 
@@ -142,15 +181,21 @@ export default function Registrations() {
             <thead className="bg-slate-50/50 border-b border-slate-100">
               <tr>
                 <th className="p-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">Sl No.</th>
-                <th className="p-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">Student Details</th>
-                <th className="p-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">Admission No</th>
-                <th className="p-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">Department</th>
+                <th className="p-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">{titleLabel} Details</th>
+                {memberType === 'student' ? (
+                  <th className="p-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">Admission No</th>
+                ) : (
+                  <th className="p-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">Membership ID</th>
+                )}
+                <th className="p-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  {memberType === 'guest' ? 'Organization' : 'Department'}
+                </th>
                 <th className="p-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {data?.students?.map((student, index) => (
-                <tr key={student._id} className="hover:bg-slate-50/80 transition-colors group">
+              {members?.map((member, index) => (
+                <tr key={member._id} className="hover:bg-slate-50/80 transition-colors group">
                   <td className="p-5 text-sm font-medium text-slate-400">
                     {(page - 1) * 10 + (index + 1)}
                   </td>
@@ -161,18 +206,29 @@ export default function Registrations() {
                       </div>
                       <div>
                         <div className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
-                          {student.firstName} {student.lastName}
+                          {member.firstName} {member.lastName}
                         </div>
-                        <div className="text-xs text-slate-500">{student.email}</div>
+                        <div className="text-xs text-slate-500">
+                          {member.email}
+                          {member.membershipId ? (
+                            <span className="text-slate-400"> • {String(member.membershipId).toUpperCase()}</span>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
                   </td>
-                  <td className="p-5 text-sm font-mono font-medium text-slate-600">
-                    {student.admissionNo || '—'}
-                  </td>
+                  {memberType === 'student' ? (
+                    <td className="p-5 text-sm font-mono font-medium text-slate-600">
+                      {member.admissionNo || '—'}
+                    </td>
+                  ) : (
+                    <td className="p-5 text-sm font-mono font-medium text-slate-600">
+                      {member.membershipId ? String(member.membershipId).toUpperCase() : '—'}
+                    </td>
+                  )}
                   <td className="p-5">
                     <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-semibold">
-                      {student.department}
+                      {memberType === 'guest' ? (member.organization || '—') : (member.department || '—')}
                     </span>
                   </td>
                   <td className="p-5 text-right">
@@ -184,7 +240,7 @@ export default function Registrations() {
                         <Pencil size={18} />
                       </button>
                       <button 
-                        onClick={() => handleDelete(student._id, student.firstName)}
+                        onClick={() => handleDelete(member._id, member.firstName)}
                         disabled={deleteMutation.isPending}
                         className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all disabled:opacity-30"
                       >
@@ -199,7 +255,7 @@ export default function Registrations() {
         </div>
 
         {/* Empty State */}
-        {data?.students?.length === 0 && (
+        {members?.length === 0 && (
           <div className="p-20 text-center">
             <p className="text-slate-400 italic">No members found matching "{searchTerm}"</p>
           </div>
