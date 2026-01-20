@@ -285,6 +285,61 @@ const MAKERSPACE_OTP_HTML = `
 </html>
 `;
 
+const STUDENT_REGISTRATION_CONFIRMATION_HTML = `<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+			<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+			<title>Your IEDC Membership ID</title>
+		</head>
+		<body style="margin:0;padding:0;background:#0b1220;">
+			<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#0b1220;padding:28px 12px;">
+				<tr>
+					<td align="center">
+						<table width="600" cellpadding="0" cellspacing="0" role="presentation" style="width:600px;max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;">
+							<tr>
+								<td style="padding:22px 22px 10px 22px;background:linear-gradient(135deg,#111827,#0b1220);">
+									<div style="text-align:center;">
+										<img src="https://1a5da14deb.imgdist.com/pub/bfra/uqpdfms1/wx7/bcf/n6i/iedc-lbs-logo.png" alt="IEDC LBSCEK" width="140" style="display:inline-block;border:0;max-width:140px;height:auto;" />
+									</div>
+									<div style="text-align:center;color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:20px;font-weight:800;margin-top:14px;">
+										Membership Registration
+									</div>
+									<div style="text-align:center;color:#cbd5e1;font-family:Arial,Helvetica,sans-serif;font-size:13px;margin-top:6px;line-height:1.6;">
+										Your Membership ID is ready.
+									</div>
+								</td>
+							</tr>
+							<tr>
+								<td style="padding:22px;font-family:Arial,Helvetica,sans-serif;color:#111827;">
+									<p style="margin:0 0 14px 0;font-size:14px;line-height:1.7;">Hi {{name}},</p>
+									<p style="margin:0 0 16px 0;font-size:14px;line-height:1.7;">
+										Thanks for registering with IEDC LBSCEK. Please keep your Membership ID for future reference.
+									</p>
+
+									<div style="border:1px solid #e5e7eb;border-radius:14px;background:#f8fafc;padding:16px 14px;">
+										<div style="font-size:12px;color:#64748b;letter-spacing:.08em;text-transform:uppercase;">Membership ID</div>
+										<div style="font-size:24px;font-weight:900;letter-spacing:.12em;margin-top:6px;color:#0f172a;">{{membershipId}}</div>
+									</div>
+
+									<p style="margin:18px 0 0 0;font-size:12px;color:#64748b;line-height:1.6;">
+										This email was sent to {{email}}.
+									</p>
+								</td>
+							</tr>
+							<tr>
+								<td style="padding:14px 22px;background:#0b1220;color:#94a3b8;font-family:Arial,Helvetica,sans-serif;font-size:12px;text-align:center;">
+									© 2026 IEDC LBSCEK
+								</td>
+							</tr>
+						</table>
+					</td>
+				</tr>
+			</table>
+		</body>
+	</html>
+	`;
+
 const MAKERSPACE_ACCESS_GRANTED_HTML = `
 <!DOCTYPE html>
 <html lang="en">
@@ -334,6 +389,13 @@ export const seedEmailTemplates = async () => {
       name: "Makerspace Access Granted",
       subject: "Your IEDC Makerspace Access Granted",
       html: MAKERSPACE_ACCESS_GRANTED_HTML,
+      isBase: true,
+    },
+    {
+      key: "student_registration_confirmation",
+      name: "Student Registration Confirmation",
+      subject: "Your IEDC Membership ID",
+      html: STUDENT_REGISTRATION_CONFIRMATION_HTML,
       isBase: true,
     },
   ];

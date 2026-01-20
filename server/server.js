@@ -5,14 +5,19 @@ import cookieParser from "cookie-parser";
 import connectDB from "./config/db.js";
 import { seedAdminUser } from "./utils/seedAdmin.js";
 import { seedEmailTemplates } from "./utils/seedEmailTemplates.js";
+import { ensureRegistrationAdmissionNoIndex } from "./utils/ensureIndexes.js";
+import swaggerUi from "swagger-ui-express";
+import { buildOpenApiSpec } from "./config/swagger.js";
 
 // Route Imports
 import adminRoutes from "./routes/adminRoutes.js";
 import publicRoutes from "./routes/publicRoutes.js";
 import usersPublicRoutes from "./routes/usersPublicRoutes.js";
+import registrationRoutes from "./routes/registrationRoutes.js";
 
 dotenv.config();
 await connectDB();
+await ensureRegistrationAdmissionNoIndex();
 await seedAdminUser();
 await seedEmailTemplates();
 
@@ -24,31 +29,68 @@ const allowedOrigins = [
   "https://admin.iedclbscek.in",
   "https://portal.iedclbscek.in",
   "https://makerspace.iedclbscek.in",
-  "http://localhost:5173", // For local development
+  "http://localhost:5173",
+  "http://localhost:5174", // For local development
 ];
+
+const isAllowedDevLocalhost = (origin) => {
+  const o = String(origin || "");
+  return (
+    /^http:\/\/localhost:\d+$/.test(o) || /^http:\/\/127\.0\.0\.1:\d+$/.test(o)
+  );
+};
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      const isProd = process.env.NODE_ENV === "production";
+      if (
+        !origin ||
+        allowedOrigins.includes(origin) ||
+        (!isProd && isAllowedDevLocalhost(origin))
+      ) {
         callback(null, true);
       } else {
         callback(new Error("Not allowed by CORS"));
       }
     },
     credentials: true, // Crucial for JWT cookies
-  })
+  }),
 );
 
 app.use(express.json());
 app.use(cookieParser());
 
+// Swagger (OpenAPI)
+const openApiSpec = buildOpenApiSpec();
+app.get("/api-docs.json", (req, res) => res.json(openApiSpec));
+app.use(
+  "/api-docs",
+  swaggerUi.serve,
+  swaggerUi.setup(openApiSpec, {
+    explorer: true,
+    customSiteTitle: "IEDC Ecosystem API Docs",
+  }),
+);
+
 // 2. Routes
 app.use("/api/admin", adminRoutes);
 app.use("/api/public", publicRoutes);
 app.use("/api/users", usersPublicRoutes);
+app.use("/api/registrations", registrationRoutes);
 
 // Health
+/**
+ * @openapi
+ * /api/health:
+ *   get:
+ *     tags:
+ *       - Health
+ *     summary: Health check
+ *     responses:
+ *       200:
+ *         description: Server is healthy
+ */
 app.get("/api/health", (req, res) => {
   res.json({
     status: "ok",

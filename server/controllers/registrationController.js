@@ -61,6 +61,215 @@ const verifyOtpTokenOrThrow = ({ email, otpToken }) => {
   }
 };
 
+const normalizeDepartment = (value) => {
+  const raw = String(value ?? "").trim();
+  const upper = raw.toUpperCase();
+
+  const map = {
+    CSE: "Computer Science and Engineering",
+    CSBS: "Computer Science and Business Systems",
+    "CSE (AI & DS)": "Computer Science and Engineering(AI & Data Science)",
+    EEE: "Electrical and Electronics Engineering",
+    ECE: "Electronics and Communication Engineering",
+    IT: "Information Technology",
+    ME: "Mechanical Engineering",
+    CE: "Civil Engineering",
+  };
+
+  if (map[raw]) return map[raw];
+  if (map[upper]) return map[upper];
+
+  return raw;
+};
+
+const normalizeSemester = (value) => String(value ?? "").trim();
+
+const normalizeString = (value) => String(value ?? "").trim();
+
+const normalizeUrlOrEmpty = (value) => {
+  const v = normalizeString(value);
+  return v || "";
+};
+
+export const createStudentRegistration = async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const otpToken = String(req.body?.otpToken ?? "").trim();
+    const otp = String(req.body?.otp ?? "").trim();
+
+    if (!email || !isValidEmail(email) || (!otpToken && !otp)) {
+      return res.status(400).json({
+        success: false,
+        message: "email and otpToken (or otp) are required",
+      });
+    }
+
+    // 1) Re-verify before persisting.
+    // Preferred: otpToken (short-lived, signed). Legacy fallback: raw otp.
+    try {
+      if (otpToken) {
+        verifyOtpTokenOrThrow({ email, otpToken });
+      } else {
+        await verifyOtpOrThrow({ email, otp });
+      }
+    } catch (e) {
+      return res
+        .status(400)
+        .json({ success: false, message: String(e?.message || "Invalid OTP") });
+    }
+
+    // Prevent duplicates by email across both collections.
+    const [existingStudent, existingStaffGuest] = await Promise.all([
+      Registration.findOne({ email }).select("_id membershipId").lean(),
+      StaffGuestRegistration.findOne({ email })
+        .select("_id membershipId")
+        .lean(),
+    ]);
+
+    const existing = existingStudent || existingStaffGuest;
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        message: "Email already registered",
+        existing: true,
+        membershipId: existing?.membershipId || undefined,
+      });
+    }
+
+    const firstName = normalizeString(req.body?.firstName);
+    const lastName = normalizeString(req.body?.lastName);
+    const phone = normalizeString(req.body?.phone);
+
+    const department = normalizeDepartment(req.body?.department);
+    const yearOfJoining = normalizeString(req.body?.yearOfJoining);
+    const semester = normalizeSemester(req.body?.semester);
+    const referralCode = normalizeString(req.body?.referralCode);
+    const admissionNo = normalizeString(req.body?.admissionNo);
+
+    const isLateralEntry = Boolean(req.body?.isLateralEntry);
+
+    const interests = Array.isArray(req.body?.interests)
+      ? req.body.interests.map((i) => normalizeString(i)).filter(Boolean)
+      : [];
+
+    const nonTechInterests = normalizeString(req.body?.nonTechInterests);
+    const experience = normalizeString(req.body?.experience);
+    const motivation = normalizeString(req.body?.motivation);
+
+    if (!firstName || !lastName || !phone) {
+      return res.status(400).json({
+        success: false,
+        message: "firstName, lastName and phone are required",
+      });
+    }
+
+    if (
+      !department ||
+      !yearOfJoining ||
+      !semester ||
+      !referralCode ||
+      !motivation
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "department, yearOfJoining, semester, referralCode and motivation are required",
+      });
+    }
+
+    const doc = await Registration.create({
+      firstName,
+      lastName,
+      email,
+      phone,
+      admissionNo: admissionNo || undefined,
+      referralCode,
+      department,
+      yearOfJoining,
+      semester,
+      isLateralEntry,
+      interests,
+      nonTechInterests: nonTechInterests || undefined,
+      experience: experience || undefined,
+      motivation,
+      linkedin: normalizeUrlOrEmpty(req.body?.linkedin) || undefined,
+      github: normalizeUrlOrEmpty(req.body?.github) || undefined,
+      portfolio: normalizeUrlOrEmpty(req.body?.portfolio) || undefined,
+      profilePhoto: req.body?.profilePhoto ?? null,
+      idPhoto: req.body?.idPhoto ?? null,
+      userType: "student",
+      status: "pending",
+      submittedAt: new Date(),
+    });
+
+    // Send confirmation email (best-effort; do not fail the registration if mail fails).
+    try {
+      const memberName = `${doc.firstName || ""} ${doc.lastName || ""}`.trim();
+      const membershipId = String(doc.membershipId || "").trim();
+
+      let subject = "Your IEDC Membership ID";
+      let html = `
+        <div style="font-family:Arial,Helvetica,sans-serif;line-height:1.6">
+          <h2 style="margin:0 0 10px 0;">Registration successful</h2>
+          <p style="margin:0 0 12px 0;">Hi ${memberName || "there"},</p>
+          <p style="margin:0 0 16px 0;">Your IEDC membership registration has been submitted successfully.</p>
+          <div style="margin:14px 0 18px 0;padding:14px 12px;border:1px solid #e7e9f2;border-radius:12px;background:#f6f8ff;">
+            <div style="font-size:12px;color:#667;letter-spacing:.02em;text-transform:uppercase;">Membership ID</div>
+            <div style="font-size:22px;font-weight:800;letter-spacing:.08em;color:#111;">${membershipId || ""}</div>
+          </div>
+          <p style="margin:0;">Keep this ID for future reference.</p>
+        </div>
+      `;
+
+      // Prefer a template if present.
+      try {
+        const template = await EmailTemplate.findOne({
+          key: "student_registration_confirmation",
+        });
+        if (template?.html) {
+          subject = String(template.subject || subject);
+          html = renderTemplate(template.html, {
+            name: memberName,
+            email,
+            membershipId,
+          });
+        }
+      } catch {
+        // ignore template lookup errors
+      }
+
+      await sendMail({ to: email, subject, html });
+    } catch {
+      // ignore mail errors
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: "Registration submitted",
+      registrationId: doc._id,
+      membershipId: doc.membershipId,
+      accessCode: doc.accessCode,
+      status: doc.status,
+    });
+  } catch (error) {
+    const isProd = process.env.NODE_ENV === "production";
+    if (error?.code === 11000) {
+      const dupField = Object.keys(error?.keyPattern || {})[0] || "field";
+      return res.status(409).json({
+        success: false,
+        message: `Duplicate ${dupField}`,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: isProd
+        ? "Failed to submit registration"
+        : `Failed to submit registration: ${String(error?.message || error)}`,
+    });
+  }
+};
+
 const getIdParts = (userType) => {
   const normalized = String(userType ?? "")
     .trim()
@@ -103,7 +312,7 @@ const generateNextMembershipId = async ({ userType }) => {
       : lastStaffGuest;
 
   const lastNum = Number(
-    String(lastCandidate?.membershipId ?? "").match(/(\d{3})$/)?.[1] ?? 0
+    String(lastCandidate?.membershipId ?? "").match(/(\d{3})$/)?.[1] ?? 0,
   );
   const nextNum = lastNum + 1;
 
@@ -123,7 +332,7 @@ export const verifyMember = async (req, res) => {
 
     const membershipIdRegex = new RegExp(
       `^${escapeRegExp(membershipId)}$`,
-      "i"
+      "i",
     );
 
     const [existingStudent, existingStaffGuest] = await Promise.all([

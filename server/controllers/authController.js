@@ -67,7 +67,7 @@ export const login = async (req, res) => {
         permissions: Array.isArray(user.permissions) ? user.permissions : [],
       },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "7d" },
     );
 
     res
@@ -262,12 +262,16 @@ const signOtpToken = ({ email }) => {
       scope: "makerspace_register",
     },
     secret,
-    { expiresIn: "10m" }
+    { expiresIn: "10m" },
   );
 };
 
 export const sendOTP = async (req, res) => {
   try {
+    const purpose = String(req.body?.purpose ?? req.body?.flow ?? "")
+      .trim()
+      .toLowerCase();
+
     const email = await resolveEmailFromEmailOrMembershipId({
       email: req.body?.email,
       membershipId: req.body?.membershipId ?? req.body?.id,
@@ -275,13 +279,33 @@ export const sendOTP = async (req, res) => {
 
     if (!email) {
       const hasMembership = Boolean(
-        String(req.body?.membershipId ?? req.body?.id ?? "").trim()
+        String(req.body?.membershipId ?? req.body?.id ?? "").trim(),
       );
       return res.status(hasMembership ? 404 : 400).json({
         message: hasMembership
           ? "Member not found for provided membershipId"
           : "Provide a valid email or membershipId",
       });
+    }
+
+    // For the membership registration flow, block OTP spam if the email already exists.
+    // Important: do NOT block makerspace/member flows that identify via membershipId.
+    const hasMembershipId = Boolean(
+      String(req.body?.membershipId ?? req.body?.id ?? "").trim(),
+    );
+
+    if (!hasMembershipId && purpose === "registration") {
+      const [existingStudent, existingStaffGuest] = await Promise.all([
+        Registration.findOne({ email }).select("_id").lean(),
+        StaffGuestRegistration.findOne({ email }).select("_id").lean(),
+      ]);
+
+      if (existingStudent || existingStaffGuest) {
+        return res.status(409).json({
+          success: false,
+          message: "Email already registered",
+        });
+      }
     }
 
     const otpPlain = generateNumericOtp();
@@ -333,7 +357,7 @@ export const verifyOTP = async (req, res) => {
     const otp = String(req.body?.otp ?? "").trim();
 
     const rawMembershipId = String(
-      req.body?.membershipId ?? req.body?.id ?? ""
+      req.body?.membershipId ?? req.body?.id ?? "",
     ).trim();
     const hasMembershipId = Boolean(rawMembershipId);
 

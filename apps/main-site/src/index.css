@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+@theme {
+  /* Primary Colors */
+  --color-primary: #F5F5DC;
+  --color-primary-light: #FAFAED;
+  --color-primary-dark: #E5E5CC;
+  
+  /* Accent Colors */
+  --color-accent: #FF6B6B;
+  --color-accent-light: #FF8A8A;
+  --color-accent-dark: #E55A5A;
+  
+  /* Text & UI */
+  --color-text-dark: #2E2E2E;
+  --color-text-light: #6E6E6E;
+  --color-bg-main: #FAFAFA;
+  --color-bg-secondary: #F0F0F0;
+  
+  /* Call to Action */
+  --color-cta: #A8D5BA;
+  --color-cta-hover: #98C5AA;
+
+  /* Custom Animation Durations */
+  --spacing-marquee: 40s;
+}
+
+/* Base Styles */
+@layer base {
+  body {
+    @apply font-sans antialiased text-text-dark bg-bg-main;
+    line-height: 1.6;
+  }
+  
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-accent-light);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent);
+}
+
+/* Keep your custom Keyframes here */
+@keyframes marqueeAnimation {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(calc(-260px * 14 - 1.5rem * 14)); }
+}
+
+/* Custom Utility Classes */
+.marquee-track {
+  display: flex;
+  animation: marqueeAnimation var(--spacing-marquee) linear infinite;
+}
+
+.community-card {
+  @apply transition-all duration-300 flex flex-col flex-shrink-0 h-[280px];
+}
+
+.community-card:hover {
+  @apply -translate-y-1 shadow-xl;
+}
