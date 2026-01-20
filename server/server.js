@@ -30,11 +30,11 @@ const allowedOrigins = [
   "https://portal.iedclbscek.in",
   "https://makerspace.iedclbscek.in",
   "https://dev.iedclbscek.in",
-  "http://localhost:5173",  
+  "http://localhost:5173",
 ];
 
 const isAllowedDevLocalhost = (origin) => {
-  const o = String(or igin || "");
+  const o = String(origin || "");
   return (
     /^http:\/\/localhost:\d+$/.test(o) || /^http:\/\/127\.0\.0\.1:\d+$/.test(o)
   );
