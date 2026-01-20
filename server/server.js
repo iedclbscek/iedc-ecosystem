@@ -29,12 +29,12 @@ const allowedOrigins = [
   "https://admin.iedclbscek.in",
   "https://portal.iedclbscek.in",
   "https://makerspace.iedclbscek.in",
-  "http://localhost:5173",
-  "http://localhost:5174", // For local development
+  "https://dev.iedclbscek.in",
+  "http://localhost:5173",  
 ];
 
 const isAllowedDevLocalhost = (origin) => {
-  const o = String(origin || "");
+  const o = String(or igin || "");
   return (
     /^http:\/\/localhost:\d+$/.test(o) || /^http:\/\/127\.0\.0\.1:\d+$/.test(o)
   );
@@ -63,15 +63,17 @@ app.use(cookieParser());
 
 // Swagger (OpenAPI)
 const openApiSpec = buildOpenApiSpec();
+const swaggerSetup = swaggerUi.setup(openApiSpec, {
+  explorer: true,
+  customSiteTitle: "IEDC Ecosystem API Docs",
+});
+
 app.get("/api-docs.json", (req, res) => res.json(openApiSpec));
-app.use(
-  "/api-docs",
-  swaggerUi.serve,
-  swaggerUi.setup(openApiSpec, {
-    explorer: true,
-    customSiteTitle: "IEDC Ecosystem API Docs",
-  }),
-);
+app.use("/api-docs", swaggerUi.serve, swaggerSetup);
+
+// Aliases (useful when deploying behind a proxy that forwards only /api/*)
+app.get("/api/api-docs.json", (req, res) => res.json(openApiSpec));
+app.use("/api/api-docs", swaggerUi.serve, swaggerSetup);
 
 // 2. Routes
 app.use("/api/admin", adminRoutes);
