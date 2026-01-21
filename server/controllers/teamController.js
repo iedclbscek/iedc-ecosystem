@@ -153,19 +153,18 @@ export const searchStudents = async (req, res) => {
       { email: regex },
     ];
 
+    
     const [fromRegistrations, fromStaffGuests] = await Promise.all([
       memberType === "staff" || memberType === "guest"
-        ? Registration.find({ userType: memberType, $or: baseOr })
-            .sort({ createdAt: -1 })
-            .limit(20)
+        ? []
         : memberType === "all"
-          ? Registration.find({ userType: "student", $or: baseOr })
+          ? Registration.find({ $or: baseOr })
               .sort({ createdAt: -1 })
               .limit(20)
-          : Registration.find({ userType: "student", $or: baseOr })
+          : Registration.find({ $or: baseOr })
               .sort({ createdAt: -1 })
               .limit(20),
-
+              
       memberType === "student"
         ? []
         : memberType === "all"
