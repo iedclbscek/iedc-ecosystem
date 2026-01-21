@@ -100,7 +100,12 @@ router.get("/execom", async (req, res) => {
               membershipId: u.membershipId,
               registration: u.registrationRef || null,
             }
-          : null,
+          : {
+              id: null,
+              name: entry.customName || "",
+              membershipId: entry.customMembershipId || "",
+              registration: null,
+            },
       });
     }
 

@@ -41,7 +41,7 @@ export const teamData = {
       {
         id: "core-1-2025",
         name: "Abdul Afuw",
-        role: "Lead & CEO",
+        role: " ",
         image:
           "https://res.cloudinary.com/dd3bry4rs/image/upload/v1757838890/afuw_mlncbk.jpg",
         linkedin: "https://www.linkedin.com/in/afuwabdulsathar/",

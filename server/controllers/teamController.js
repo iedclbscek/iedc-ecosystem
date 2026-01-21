@@ -133,11 +133,9 @@ export const searchStudents = async (req, res) => {
     const memberType = normalizeMemberType(req.query.memberType);
 
     if (!memberType) {
-      return res
-        .status(400)
-        .json({
-          message: "memberType must be 'student', 'staff', 'guest', or 'all'",
-        });
+      return res.status(400).json({
+        message: "memberType must be 'student', 'staff', 'guest', or 'all'",
+      });
     }
 
     if (!query) {
@@ -153,18 +151,15 @@ export const searchStudents = async (req, res) => {
       { email: regex },
     ];
 
-    
     const [fromRegistrations, fromStaffGuests] = await Promise.all([
       memberType === "staff" || memberType === "guest"
         ? []
         : memberType === "all"
-          ? Registration.find({ $or: baseOr })
-              .sort({ createdAt: -1 })
-              .limit(20)
+          ? Registration.find({ $or: baseOr }).sort({ createdAt: -1 }).limit(20)
           : Registration.find({ $or: baseOr })
               .sort({ createdAt: -1 })
               .limit(20),
-              
+
       memberType === "student"
         ? []
         : memberType === "all"
@@ -272,6 +267,7 @@ export const listWebsiteTeamEntries = async (req, res) => {
 };
 
 export const createWebsiteTeamEntry = async (req, res) => {
+  let entryType = "user";
   try {
     if (!hasPermission(req.user, "users")) {
       return res.status(403).json({ message: "Forbidden" });
@@ -279,18 +275,38 @@ export const createWebsiteTeamEntry = async (req, res) => {
 
     const category = normalize(req.body?.category) || "execom";
     const year = String(req.body?.year ?? "").trim();
+    entryType = normalize(req.body?.entryType) === "custom" ? "custom" : "user";
     const userId = String(req.body?.userId ?? "").trim();
+    const customName = String(req.body?.customName ?? "").trim();
+    const customEmail = String(req.body?.customEmail ?? "").trim();
+    const customMembershipId = String(
+      req.body?.customMembershipId ?? "",
+    ).trim();
     const roleTitle = String(req.body?.roleTitle ?? "").trim() || undefined;
     const visible =
       req.body?.visible !== undefined ? Boolean(req.body.visible) : true;
 
-    if (!year || !userId) {
-      return res.status(400).json({ message: "year and userId are required" });
+    if (!year) {
+      return res.status(400).json({ message: "year is required" });
     }
 
-    const user = await User.findById(userId).select("_id");
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
+    let user = null;
+    if (entryType === "user") {
+      if (!userId) {
+        return res
+          .status(400)
+          .json({ message: "userId is required for user entries" });
+      }
+      user = await User.findById(userId).select("_id");
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+    } else if (entryType === "custom") {
+      if (!customName) {
+        return res
+          .status(400)
+          .json({ message: "customName is required for custom entries" });
+      }
     }
 
     const last = await WebsiteTeamEntry.findOne({ category, year })
@@ -305,7 +321,13 @@ export const createWebsiteTeamEntry = async (req, res) => {
     const entry = await WebsiteTeamEntry.create({
       category,
       year,
-      userRef: user._id,
+      entryType,
+      userRef: user?._id,
+      customName: entryType === "custom" ? customName : undefined,
+      customEmail:
+        entryType === "custom" ? customEmail || undefined : undefined,
+      customMembershipId:
+        entryType === "custom" ? customMembershipId || undefined : undefined,
       roleTitle,
       visible,
       order: nextOrder,
@@ -319,9 +341,11 @@ export const createWebsiteTeamEntry = async (req, res) => {
     return res.status(201).json({ entry: populated });
   } catch (error) {
     if (error?.code === 11000) {
-      return res
-        .status(409)
-        .json({ message: "Entry already exists for this year" });
+      const message =
+        entryType === "user"
+          ? "This user is already added for this year"
+          : "An entry already exists for this year";
+      return res.status(409).json({ message });
     }
     return res
       .status(500)
@@ -455,11 +479,9 @@ export const promoteToTeam = async (req, res) => {
   const requestedMemberType =
     memberTypeRaw !== undefined ? normalizeMemberType(memberTypeRaw) : null;
   if (memberTypeRaw !== undefined && !requestedMemberType) {
-    return res
-      .status(400)
-      .json({
-        message: "memberType must be 'student', 'staff', 'guest', or omit it",
-      });
+    return res.status(400).json({
+      message: "memberType must be 'student', 'staff', 'guest', or omit it",
+    });
   }
 
   const roleInput = String(role ?? "").trim();

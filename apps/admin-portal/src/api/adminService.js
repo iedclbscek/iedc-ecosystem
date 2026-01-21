@@ -159,14 +159,22 @@ export const fetchWebsiteTeamEntries = async ({
 export const createWebsiteTeamEntry = async ({
   category = "execom",
   year,
+  entryType = "user",
   userId,
+  customName,
+  customEmail,
+  customMembershipId,
   roleTitle,
   visible,
 } = {}) => {
   const { data } = await api.post("/admin/team/entries", {
     category,
     year,
+    entryType,
     userId,
+    customName,
+    customEmail,
+    customMembershipId,
     roleTitle,
     visible,
   });

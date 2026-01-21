@@ -30,6 +30,9 @@ function SortableRow({ entry, onUpdate, onDelete }) {
   };
 
   const user = entry?.userRef || entry?.user || null;
+  const displayName = user?.name || entry?.customName || '—';
+  const displayMembership = user?.membershipId || entry?.customMembershipId;
+  const displayEmail = user?.email || entry?.customEmail;
 
   return (
     <div
@@ -51,14 +54,14 @@ function SortableRow({ entry, onUpdate, onDelete }) {
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <div className="font-semibold text-slate-900 truncate">{user?.name || '—'}</div>
-          {user?.membershipId ? (
+          <div className="font-semibold text-slate-900 truncate">{displayName}</div>
+          {displayMembership ? (
             <span className="text-xs font-semibold px-2 py-1 rounded-full bg-slate-100 text-slate-700">
-              {String(user.membershipId).toUpperCase()}
+              {String(displayMembership).toUpperCase()}
             </span>
           ) : null}
         </div>
-        <div className="text-xs text-slate-500 truncate">{user?.email || ''}</div>
+        <div className="text-xs text-slate-500 truncate">{displayEmail || ''}</div>
       </div>
 
       <div className="w-full sm:w-56">
@@ -221,9 +224,25 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [newUserId, setNewUserId] = useState('');
+  const [newEntryType, setNewEntryType] = useState('user');
+  const [newUserSearch, setNewUserSearch] = useState('');
+  const [customName, setCustomName] = useState('');
+  const [customEmail, setCustomEmail] = useState('');
+  const [customMembershipId, setCustomMembershipId] = useState('');
   const [newRoleTitle, setNewRoleTitle] = useState('');
   const [newVisible, setNewVisible] = useState(true);
   const [newYear, setNewYear] = useState('');
+
+  const filteredExecomUsers = useMemo(() => {
+    const q = normalize(newUserSearch);
+    if (!q) return execomUsers;
+    return execomUsers.filter((u) => {
+      const name = normalize(u?.name);
+      const mid = normalize(u?.membershipId);
+      const email = normalize(u?.email);
+      return name.includes(q) || mid.includes(q) || email.includes(q);
+    });
+  }, [execomUsers, newUserSearch]);
 
   if (!canManageUsers) {
     return null;
@@ -333,13 +352,6 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
           <div className="w-full max-w-lg bg-white rounded-2xl border border-slate-200 shadow-xl">
             <div className="p-5 border-b border-slate-100 flex items-center justify-between">
               <div className="font-bold text-slate-900">Add Execom Entry</div>
-              <button
-                type="button"
-                className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold"
-                onClick={() => setIsAddOpen(false)}
-              >
-                Close
-              </button>
             </div>
 
             <div className="p-5 space-y-4">
@@ -354,23 +366,100 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
               </div>
 
               <div>
-                <div className="text-sm font-semibold text-slate-700 mb-1">User</div>
-                <select
-                  value={newUserId}
-                  onChange={(e) => setNewUserId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white"
-                >
-                  <option value="">Select user...</option>
-                  {execomUsers.map((u) => (
-                    <option key={String(u?._id)} value={String(u?._id)}>
-                      {u?.name || '—'} ({String(u?.membershipId || '').toUpperCase()})
-                    </option>
-                  ))}
-                </select>
-                <div className="text-xs text-slate-500 mt-1">
-                  Users shown are those with portal role “Execom”.
+                <div className="text-sm font-semibold text-slate-700 mb-2">Entry type</div>
+                <div className="flex flex-col gap-2">
+                  <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="radio"
+                      name="entryType"
+                      value="user"
+                      checked={newEntryType === 'user'}
+                      onChange={() => setNewEntryType('user')}
+                    />
+                    Existing portal user (Execom role)
+                  </label>
+                  <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="radio"
+                      name="entryType"
+                      value="custom"
+                      checked={newEntryType === 'custom'}
+                      onChange={() => setNewEntryType('custom')}
+                    />
+                    Custom (not registered)
+                  </label>
                 </div>
               </div>
+
+              {newEntryType === 'user' ? (
+                <div className="space-y-2">
+                  <div className="text-sm font-semibold text-slate-700 mb-1">User</div>
+                  <div className="space-y-2">
+                    <input
+                      value={newUserSearch}
+                      onChange={(e) => setNewUserSearch(e.target.value)}
+                      placeholder="Search by name or membershipId"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                    />
+                    <div className="max-h-40 overflow-y-auto rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
+                      {filteredExecomUsers.length === 0 ? (
+                        <div className="px-3 py-2 text-sm text-slate-500">No matches</div>
+                      ) : (
+                        filteredExecomUsers.map((u) => (
+                          <button
+                            type="button"
+                            key={String(u?._id)}
+                            onClick={() => {
+                              setNewUserId(String(u?._id));
+                              setNewUserSearch(`${u?.name || '—'} (${String(u?.membershipId || '').toUpperCase()})`);
+                            }}
+                            className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-50 ${
+                              String(newUserId) === String(u?._id)
+                                ? 'bg-blue-50 text-blue-700'
+                                : 'text-slate-800'
+                            }`}
+                          >
+                            <div className="font-semibold">{u?.name || '—'}</div>
+                            <div className="text-xs text-slate-600 flex items-center gap-2">
+                              <span>{String(u?.membershipId || '').toUpperCase()}</span>
+                              {u?.email ? <span className="text-slate-400">{u.email}</span> : null}
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    Users shown are those with portal role “Execom”.
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="text-sm font-semibold text-slate-700">Custom member</div>
+                  <input
+                    value={customName}
+                    onChange={(e) => setCustomName(e.target.value)}
+                    placeholder="Full name"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                  />
+                  <input
+                    value={customMembershipId}
+                    onChange={(e) => setCustomMembershipId(e.target.value)}
+                    placeholder="Membership ID (optional)"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                  />
+                  <input
+                    type="email"
+                    value={customEmail}
+                    onChange={(e) => setCustomEmail(e.target.value)}
+                    placeholder="Email (optional)"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                  />
+                  <div className="text-xs text-slate-500">
+                    Use this when the person isn’t in the portal yet.
+                  </div>
+                </div>
+              )}
 
               <div>
                 <div className="text-sm font-semibold text-slate-700 mb-1">Role title (website)</div>
@@ -405,15 +494,29 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
                 disabled={createMutation.isPending}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold disabled:opacity-50"
                 onClick={() => {
-                  if (!newYear.trim() || !newUserId) {
-                    toast.error('Year and user are required');
+                  const trimmedYear = newYear.trim();
+                  if (!trimmedYear) {
+                    toast.error('Year is required');
+                    return;
+                  }
+                  if (newEntryType === 'user' && !newUserId) {
+                    toast.error('Select a user');
+                    return;
+                  }
+                  if (newEntryType === 'custom' && !customName.trim()) {
+                    toast.error('Name is required');
                     return;
                   }
                   createMutation.mutate(
                     {
                       category: 'execom',
-                      year: newYear.trim(),
-                      userId: newUserId,
+                      year: trimmedYear,
+                      entryType: newEntryType,
+                      userId: newEntryType === 'user' ? newUserId : undefined,
+                      customName: newEntryType === 'custom' ? customName.trim() : undefined,
+                      customEmail: newEntryType === 'custom' ? customEmail.trim() : undefined,
+                      customMembershipId:
+                        newEntryType === 'custom' ? customMembershipId.trim() : undefined,
                       roleTitle: newRoleTitle.trim(),
                       visible: newVisible,
                     },
@@ -422,8 +525,13 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
                         setIsAddOpen(false);
                         setNewRoleTitle('');
                         setNewUserId('');
+                        setNewUserSearch('');
+                        setCustomName('');
+                        setCustomEmail('');
+                        setCustomMembershipId('');
                         setNewVisible(true);
-                                  setYear(newYear.trim());
+                        setYear(trimmedYear);
+                        setNewEntryType('user');
                       },
                     }
                   );
