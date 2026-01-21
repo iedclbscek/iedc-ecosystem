@@ -65,21 +65,60 @@ app.use(cookieParser());
 
 // Swagger (OpenAPI)
 const openApiSpec = buildOpenApiSpec();
-const swaggerSetup = swaggerUi.setup(openApiSpec, {
-  explorer: true,
-  customSiteTitle: "IEDC Ecosystem API Docs",
-});
 
-// Ensure trailing slash so Swagger UI asset URLs resolve correctly
-app.get("/api-docs", (req, res) => res.redirect(301, "/api-docs/"));
-app.get("/api/api-docs", (req, res) => res.redirect(301, "/api/api-docs/"));
+const renderSwaggerUiHtml = ({ basePath, specUrl, title }) => `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${title}</title>
+    <link rel="stylesheet" href="${basePath}/swagger-ui.css" />
+    <style>
+      html, body { height: 100%; margin: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="swagger-ui"></div>
+    <script src="${basePath}/swagger-ui-bundle.js" crossorigin></script>
+    <script src="${basePath}/swagger-ui-standalone-preset.js" crossorigin></script>
+    <script>
+      window.onload = () => {
+        window.ui = SwaggerUIBundle({
+          url: ${JSON.stringify(specUrl)},
+          dom_id: '#swagger-ui',
+          deepLinking: true,
+          presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+          layout: 'StandaloneLayout'
+        });
+      };
+    </script>
+  </body>
+</html>`;
 
 app.get("/api-docs.json", (req, res) => res.json(openApiSpec));
-app.use("/api-docs", swaggerUi.serve, swaggerSetup);
+app.use("/api-docs", swaggerUi.serve);
+app.get(["/api-docs", "/api-docs/"], (req, res) => {
+  res.type("html").send(
+    renderSwaggerUiHtml({
+      basePath: "/api-docs",
+      specUrl: "/api-docs.json",
+      title: "IEDC Ecosystem API Docs",
+    }),
+  );
+});
 
 // Aliases (useful when deploying behind a proxy that forwards only /api/*)
 app.get("/api/api-docs.json", (req, res) => res.json(openApiSpec));
-app.use("/api/api-docs", swaggerUi.serve, swaggerSetup);
+app.use("/api/api-docs", swaggerUi.serve);
+app.get(["/api/api-docs", "/api/api-docs/"], (req, res) => {
+  res.type("html").send(
+    renderSwaggerUiHtml({
+      basePath: "/api/api-docs",
+      specUrl: "/api/api-docs.json",
+      title: "IEDC Ecosystem API Docs",
+    }),
+  );
+});
 
 // 2. Routes
 app.use("/api/admin", adminRoutes);
