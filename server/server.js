@@ -70,6 +70,10 @@ const swaggerSetup = swaggerUi.setup(openApiSpec, {
   customSiteTitle: "IEDC Ecosystem API Docs",
 });
 
+// Ensure trailing slash so Swagger UI asset URLs resolve correctly
+app.get("/api-docs", (req, res) => res.redirect(301, "/api-docs/"));
+app.get("/api/api-docs", (req, res) => res.redirect(301, "/api/api-docs/"));
+
 app.get("/api-docs.json", (req, res) => res.json(openApiSpec));
 app.use("/api-docs", swaggerUi.serve, swaggerSetup);
 
