@@ -1,9 +1,14 @@
 import swaggerJSDoc from "swagger-jsdoc";
+import path from "path";
+import { fileURLToPath } from "url";
 
 const isProd = process.env.NODE_ENV === "production";
 
 const serverUrl =
   process.env.SWAGGER_SERVER_URL || process.env.PUBLIC_SERVER_URL;
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export function buildOpenApiSpec() {
   const servers = [];
@@ -43,6 +48,7 @@ export function buildOpenApiSpec() {
       },
       tags: [
         { name: "Health" },
+        { name: "Check-In" },
         { name: "Admin Auth" },
         { name: "Admin Registrations" },
         { name: "Admin Users" },
@@ -54,7 +60,10 @@ export function buildOpenApiSpec() {
         { name: "Registrations" },
       ],
     },
-    apis: ["./routes/*.js", "./controllers/*.js"],
+    apis: [
+      path.join(__dirname, "../routes/*.js"),
+      path.join(__dirname, "../controllers/*.js"),
+    ],
   };
 
   return swaggerJSDoc(options);

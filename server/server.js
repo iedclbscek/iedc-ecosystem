@@ -14,6 +14,7 @@ import adminRoutes from "./routes/adminRoutes.js";
 import publicRoutes from "./routes/publicRoutes.js";
 import usersPublicRoutes from "./routes/usersPublicRoutes.js";
 import registrationRoutes from "./routes/registrationRoutes.js";
+import checkinRoutes from "./routes/checkinRoutes.js";
 
 dotenv.config();
 await connectDB();
@@ -81,6 +82,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/public", publicRoutes);
 app.use("/api/users", usersPublicRoutes);
 app.use("/api/registrations", registrationRoutes);
+app.use("/api", checkinRoutes);
 
 // Health
 /**
