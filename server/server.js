@@ -27,6 +27,7 @@ const app = express();
 const allowedOrigins = [
   "https://iedclbscek.in",
   "https://www.iedclbscek.in",
+  "https://api.iedclbscek.in",
   "https://admin.iedclbscek.in",
   "https://portal.iedclbscek.in",
   "https://makerspace.iedclbscek.in",
