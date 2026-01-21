@@ -24,16 +24,10 @@ await seedEmailTemplates();
 const app = express();
 
 // 1. Advanced CORS Configuration
-const allowedOrigins = [
-  "https://iedclbscek.in",
-  "https://www.iedclbscek.in",
-  "https://api.iedclbscek.in",
-  "https://admin.iedclbscek.in",
-  "https://portal.iedclbscek.in",
-  "https://makerspace.iedclbscek.in",
-  "https://dev.iedclbscek.in",
-  "http://localhost:5173",
-];
+const baseDomain = (process.env.COOKIE_DOMAIN || ".iedclbscek.in").replace(
+  /^[.]/,
+  "",
+);
 
 const isAllowedDevLocalhost = (origin) => {
   const o = String(origin || "");
@@ -42,13 +36,28 @@ const isAllowedDevLocalhost = (origin) => {
   );
 };
 
+const isAllowedProdOrigin = (origin) => {
+  const o = String(origin || "");
+  if (!o.startsWith("https://")) return false;
+  try {
+    const { hostname } = new URL(o);
+    return (
+      hostname === baseDomain ||
+      hostname === `www.${baseDomain}` ||
+      hostname.endsWith(`.${baseDomain}`)
+    );
+  } catch {
+    return false;
+  }
+};
+
 app.use(
   cors({
     origin: (origin, callback) => {
       const isProd = process.env.NODE_ENV === "production";
       if (
         !origin ||
-        allowedOrigins.includes(origin) ||
+        isAllowedProdOrigin(origin) ||
         (!isProd && isAllowedDevLocalhost(origin))
       ) {
         callback(null, true);
