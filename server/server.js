@@ -6,7 +6,6 @@ import connectDB from "./config/db.js";
 import { seedAdminUser } from "./utils/seedAdmin.js";
 import { seedEmailTemplates } from "./utils/seedEmailTemplates.js";
 import { ensureRegistrationAdmissionNoIndex } from "./utils/ensureIndexes.js";
-import swaggerUi from "swagger-ui-express";
 import { buildOpenApiSpec } from "./config/swagger.js";
 
 // Route Imports
@@ -66,21 +65,26 @@ app.use(cookieParser());
 // Swagger (OpenAPI)
 const openApiSpec = buildOpenApiSpec();
 
+const SWAGGER_UI_DIST_VERSION = "5.31.0";
+const SWAGGER_CSS_URL = `https://cdn.jsdelivr.net/npm/swagger-ui-dist@${SWAGGER_UI_DIST_VERSION}/swagger-ui.css`;
+const SWAGGER_BUNDLE_URL = `https://cdn.jsdelivr.net/npm/swagger-ui-dist@${SWAGGER_UI_DIST_VERSION}/swagger-ui-bundle.js`;
+const SWAGGER_STANDALONE_URL = `https://cdn.jsdelivr.net/npm/swagger-ui-dist@${SWAGGER_UI_DIST_VERSION}/swagger-ui-standalone-preset.js`;
+
 const renderSwaggerUiHtml = ({ basePath, specUrl, title }) => `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${title}</title>
-    <link rel="stylesheet" href="${basePath}/swagger-ui.css" />
+    <link rel="stylesheet" href="${SWAGGER_CSS_URL}" />
     <style>
       html, body { height: 100%; margin: 0; }
     </style>
   </head>
   <body>
     <div id="swagger-ui"></div>
-    <script src="${basePath}/swagger-ui-bundle.js" crossorigin></script>
-    <script src="${basePath}/swagger-ui-standalone-preset.js" crossorigin></script>
+    <script src="${SWAGGER_BUNDLE_URL}" crossorigin="anonymous"></script>
+    <script src="${SWAGGER_STANDALONE_URL}" crossorigin="anonymous"></script>
     <script>
       window.onload = () => {
         window.ui = SwaggerUIBundle({
@@ -95,9 +99,12 @@ const renderSwaggerUiHtml = ({ basePath, specUrl, title }) => `<!DOCTYPE html>
   </body>
 </html>`;
 
-app.get("/api-docs.json", (req, res) => res.json(openApiSpec));
-app.use("/api-docs", swaggerUi.serve);
+app.get("/api-docs.json", (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json(openApiSpec);
+});
 app.get(["/api-docs", "/api-docs/"], (req, res) => {
+  res.set("Cache-Control", "no-store");
   res.type("html").send(
     renderSwaggerUiHtml({
       basePath: "/api-docs",
@@ -108,9 +115,12 @@ app.get(["/api-docs", "/api-docs/"], (req, res) => {
 });
 
 // Aliases (useful when deploying behind a proxy that forwards only /api/*)
-app.get("/api/api-docs.json", (req, res) => res.json(openApiSpec));
-app.use("/api/api-docs", swaggerUi.serve);
+app.get("/api/api-docs.json", (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json(openApiSpec);
+});
 app.get(["/api/api-docs", "/api/api-docs/"], (req, res) => {
+  res.set("Cache-Control", "no-store");
   res.type("html").send(
     renderSwaggerUiHtml({
       basePath: "/api/api-docs",
