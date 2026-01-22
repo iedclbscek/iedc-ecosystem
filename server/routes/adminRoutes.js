@@ -156,6 +156,11 @@ router.get("/auth/me", me);
  */
 router.post("/auth/set-password", setPassword);
 
+// Allow CORS preflight requests (OPTIONS) without authentication
+router.options("*", (req, res) => {
+  res.sendStatus(200);
+});
+
 // Require auth for everything below
 router.use(requireAuth);
 
