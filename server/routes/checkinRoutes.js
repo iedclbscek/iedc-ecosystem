@@ -2,6 +2,7 @@ import express from "express";
 import User from "../models/User.js";
 import CheckInLog from "../models/CheckInLog.js";
 import UserStatus from "../models/UserStatus.js";
+import BannedMembershipId from "../models/BannedMembershipId.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 
 const router = express.Router();
@@ -36,7 +37,7 @@ const parsePositiveInt = (value, fallback) => {
 
 /**
  * @openapi
- * /api/checkin:
+ * /api/makerspace/checkin:
  *   post:
  *     tags:
  *       - Check-In
@@ -69,7 +70,7 @@ const parsePositiveInt = (value, fallback) => {
  *       429:
  *         description: Scan too frequent (cooldown)
  */
-router.post("/checkin", async (req, res) => {
+router.post("/makerspace/checkin", async (req, res) => {
   const membershipId = normalizeMembershipId(req.body?.membershipId);
   const action = String(req.body?.action ?? "")
     .trim()
@@ -81,6 +82,14 @@ router.post("/checkin", async (req, res) => {
 
   if (action !== "IN" && action !== "OUT") {
     return res.status(400).json({ message: "action must be one of: IN, OUT" });
+  }
+
+  // Check if banned
+  const isBanned = await BannedMembershipId.findOne({ membershipId }).lean();
+  if (isBanned && action === "IN") {
+    return res
+      .status(403)
+      .json({ message: "This membership ID is banned from makerspace" });
   }
 
   const user = await User.findOne({ membershipId }).select("name membershipId");
@@ -169,7 +178,7 @@ router.post("/checkin", async (req, res) => {
 
 /**
  * @openapi
- * /api/active:
+ * /api/makerspace/active:
  *   get:
  *     tags:
  *       - Check-In
@@ -183,7 +192,7 @@ router.post("/checkin", async (req, res) => {
  *       401:
  *         description: Not authenticated
  */
-router.get("/active", requireAuth, async (req, res) => {
+router.get("/makerspace/active", requireAuth, async (req, res) => {
   const active = await UserStatus.find({ currentStatus: "IN" })
     .sort({ userName: 1 })
     .lean();
@@ -193,7 +202,7 @@ router.get("/active", requireAuth, async (req, res) => {
 
 /**
  * @openapi
- * /api/history:
+ * /api/makerspace/history:
  *   get:
  *     tags:
  *       - Check-In
@@ -222,7 +231,7 @@ router.get("/active", requireAuth, async (req, res) => {
  *       401:
  *         description: Not authenticated
  */
-router.get("/history", requireAuth, async (req, res) => {
+router.get("/makerspace/history", requireAuth, async (req, res) => {
   const page = parsePositiveInt(req.query?.page, 1);
   const limit = Math.min(parsePositiveInt(req.query?.limit, 20), 100);
 
@@ -252,6 +261,202 @@ router.get("/history", requireAuth, async (req, res) => {
     total,
     totalPages: Math.max(1, Math.ceil(total / limit)),
     data,
+  });
+});
+
+/**
+ * @openapi
+ * /api/makerspace/checkout:
+ *   post:
+ *     tags:
+ *       - Check-In
+ *     summary: Force checkout a member
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               membershipId:
+ *                 type: string
+ *             required:
+ *               - membershipId
+ *     responses:
+ *       200:
+ *         description: Member checked out
+ *       400:
+ *         description: Invalid input
+ *       404:
+ *         description: User not found
+ *       409:
+ *         description: User not checked in
+ */
+router.post("/makerspace/checkout", requireAuth, async (req, res) => {
+  const membershipId = normalizeMembershipId(req.body?.membershipId);
+
+  if (!membershipId) {
+    return res.status(400).json({ message: "membershipId is required" });
+  }
+
+  const user = await User.findOne({ membershipId }).select("name membershipId");
+  if (!user) {
+    return res.status(404).json({ message: "User not found" });
+  }
+
+  const existingStatus = await UserStatus.findOne({
+    membershipId: user.membershipId,
+  })
+    .select("currentStatus")
+    .lean();
+
+  if (existingStatus?.currentStatus !== "IN") {
+    return res.status(409).json({
+      message: "User is not currently checked in",
+      membershipId: user.membershipId,
+      currentStatus: existingStatus?.currentStatus ?? "OUT",
+    });
+  }
+
+  const now = new Date();
+
+  await CheckInLog.create({
+    membershipId: user.membershipId,
+    userName: user.name,
+    action: "OUT",
+    timestamp: now,
+  });
+
+  const status = await UserStatus.findOneAndUpdate(
+    { membershipId: user.membershipId },
+    {
+      $set: {
+        currentStatus: "OUT",
+        lastUpdated: now,
+      },
+    },
+    { new: true },
+  ).lean();
+
+  return res.json({
+    message: "Checked out",
+    membershipId: user.membershipId,
+    userName: user.name,
+    currentStatus: status.currentStatus,
+    lastUpdated: status.lastUpdated,
+  });
+});
+
+/**
+ * @openapi
+ * /api/makerspace/ban:
+ *   post:
+ *     tags:
+ *       - Check-In
+ *     summary: Ban a membership ID from makerspace
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               membershipId:
+ *                 type: string
+ *               reason:
+ *                 type: string
+ *             required:
+ *               - membershipId
+ *     responses:
+ *       201:
+ *         description: Membership ID banned
+ *       400:
+ *         description: Invalid input
+ *       409:
+ *         description: Already banned
+ */
+router.post("/makerspace/ban", requireAuth, async (req, res) => {
+  const membershipId = normalizeMembershipId(req.body?.membershipId);
+  const reason = String(req.body?.reason ?? "").trim();
+
+  if (!membershipId) {
+    return res.status(400).json({ message: "membershipId is required" });
+  }
+
+  const existing = await BannedMembershipId.findOne({ membershipId }).lean();
+  if (existing) {
+    return res.status(409).json({ message: "Membership ID is already banned" });
+  }
+
+  await BannedMembershipId.create({
+    membershipId,
+    reason,
+    bannedBy: req.user?.membershipId || "unknown",
+  });
+
+  // Force checkout if currently checked in
+  await UserStatus.updateOne(
+    { membershipId },
+    { $set: { currentStatus: "OUT" } },
+  );
+
+  return res.status(201).json({
+    message: "Banned",
+    membershipId,
+  });
+});
+
+/**
+ * @openapi
+ * /api/makerspace/unban:
+ *   post:
+ *     tags:
+ *       - Check-In
+ *     summary: Unban a membership ID from makerspace
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               membershipId:
+ *                 type: string
+ *             required:
+ *               - membershipId
+ *     responses:
+ *       200:
+ *         description: Membership ID unbanned
+ *       400:
+ *         description: Invalid input
+ *       404:
+ *         description: Not banned
+ */
+router.post("/makerspace/unban", requireAuth, async (req, res) => {
+  const membershipId = normalizeMembershipId(req.body?.membershipId);
+
+  if (!membershipId) {
+    return res.status(400).json({ message: "membershipId is required" });
+  }
+
+  const result = await BannedMembershipId.deleteOne({ membershipId });
+
+  if (result.deletedCount === 0) {
+    return res.status(404).json({ message: "Membership ID is not banned" });
+  }
+
+  return res.json({
+    message: "Unbanned",
+    membershipId,
   });
 });
 

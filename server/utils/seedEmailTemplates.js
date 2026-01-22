@@ -486,20 +486,11 @@ export const seedEmailTemplates = async () => {
     },
   ];
 
-  for (const t of templatesToSeed) {
-    // eslint-disable-next-line no-await-in-loop
-    const existing = await EmailTemplate.findOne({ key: t.key });
-    if (existing) {
-      // Update existing base templates to ensure they have the latest content
-      existing.name = t.name;
-      existing.subject = t.subject;
-      existing.html = t.html;
-      existing.isBase = t.isBase;
-      // eslint-disable-next-line no-await-in-loop
-      await existing.save();
-      continue;
-    }
-    // eslint-disable-next-line no-await-in-loop
-    await EmailTemplate.create(t);
-  }
+	for (const t of templatesToSeed) {
+		// eslint-disable-next-line no-await-in-loop
+		const existing = await EmailTemplate.findOne({ key: t.key });
+		if (existing) continue; // never overwrite user-edited templates
+		// eslint-disable-next-line no-await-in-loop
+		await EmailTemplate.create(t);
+	}
 };

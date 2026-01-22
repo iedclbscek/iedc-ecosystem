@@ -14,12 +14,16 @@ const COOKIE_NAME = "token";
 
 const getCookieOptions = () => {
   const isProd = process.env.NODE_ENV === "production";
+  const domain = process.env.COOKIE_DOMAIN
+    ? String(process.env.COOKIE_DOMAIN).trim() || undefined
+    : undefined;
 
   return {
     httpOnly: true,
     secure: isProd,
     sameSite: isProd ? "none" : "lax",
-    domain: isProd ? process.env.COOKIE_DOMAIN : undefined,
+    // Only set domain when explicitly configured to avoid cookie rejection on preview/staging hosts.
+    domain,
     path: "/",
   };
 };

@@ -24,10 +24,17 @@ await seedEmailTemplates();
 const app = express();
 
 // 1. Advanced CORS Configuration
-const baseDomain = (process.env.COOKIE_DOMAIN || ".iedclbscek.in").replace(
-  /^[.]/,
-  "",
-);
+const configuredCookieDomain = String(process.env.COOKIE_DOMAIN || "").trim();
+const baseDomain = configuredCookieDomain
+  ? configuredCookieDomain.replace(/^[.]/, "")
+  : "iedclbscek.in"; // legacy default for existing prod domain
+const allowVercelPreview = String(process.env.ALLOW_VERCEL_PREVIEW || "true")
+  .toLowerCase()
+  .trim() !== "false";
+const extraAllowedOrigins = (process.env.ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
 
 const isAllowedDevLocalhost = (origin) => {
   const o = String(origin || "");
@@ -41,11 +48,19 @@ const isAllowedProdOrigin = (origin) => {
   if (!o.startsWith("https://")) return false;
   try {
     const { hostname } = new URL(o);
-    return (
-      hostname === baseDomain ||
-      hostname === `www.${baseDomain}` ||
-      hostname.endsWith(`.${baseDomain}`)
-    );
+    if (extraAllowedOrigins.includes(o)) return true;
+
+    const matchesBaseDomain = baseDomain
+      ? hostname === baseDomain ||
+        hostname === `www.${baseDomain}` ||
+        hostname.endsWith(`.${baseDomain}`)
+      : false;
+
+    const matchesVercelPreview = allowVercelPreview
+      ? hostname.endsWith(".vercel.app")
+      : false;
+
+    return matchesBaseDomain || matchesVercelPreview;
   } catch {
     return false;
   }

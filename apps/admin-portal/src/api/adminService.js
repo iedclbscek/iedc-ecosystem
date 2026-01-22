@@ -496,3 +496,49 @@ export const deleteClubEvent = async ({ clubId, eventId }) => {
   const { data } = await api.delete(`/admin/clubs/${clubId}/events/${eventId}`);
   return data; // { message }
 };
+
+// Makerspace Check-In API
+export const checkInMember = async ({ membershipId, action }) => {
+  const { data } = await api.post("/makerspace/checkin", {
+    membershipId,
+    action,
+  });
+  return data;
+};
+
+export const getActiveMembers = async () => {
+  const { data } = await api.get("/makerspace/active");
+  return data;
+};
+
+export const getCheckInHistory = async (page = 1, limit = 20, filters = {}) => {
+  const { data } = await api.get("/makerspace/history", {
+    params: {
+      page,
+      limit,
+      ...filters,
+    },
+  });
+  return data;
+};
+
+export const forceCheckOutMember = async (membershipId) => {
+  const { data } = await api.post("/makerspace/checkout", {
+    membershipId,
+  });
+  return data;
+};
+
+export const banMembershipId = async (membershipId) => {
+  const { data } = await api.post("/makerspace/ban", {
+    membershipId,
+  });
+  return data;
+};
+
+export const unbanMembershipId = async (membershipId) => {
+  const { data } = await api.post("/makerspace/unban", {
+    membershipId,
+  });
+  return data;
+};

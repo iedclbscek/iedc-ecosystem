@@ -14,6 +14,7 @@ import Settings from './pages/Settings';
 import Login from './pages/Login';
 import SetPassword from './pages/SetPassword';
 import Mailer from './pages/Mailer';
+import Makerspace from './pages/Makerspace';
 import TeamEntryUpdate from './pages/TeamEntryUpdate';
 
 function App() {
@@ -84,6 +85,15 @@ function App() {
             element={
               <RequirePermission permission="mailer">
                 <Mailer />
+              </RequirePermission>
+            }
+          />
+          
+          <Route
+            path="makerspace"
+            element={
+              <RequirePermission permission="makerspace">
+                <Makerspace />
               </RequirePermission>
             }
           />
