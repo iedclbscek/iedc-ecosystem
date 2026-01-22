@@ -28,9 +28,10 @@ const configuredCookieDomain = String(process.env.COOKIE_DOMAIN || "").trim();
 const baseDomain = configuredCookieDomain
   ? configuredCookieDomain.replace(/^[.]/, "")
   : "iedclbscek.in"; // legacy default for existing prod domain
-const allowVercelPreview = String(process.env.ALLOW_VERCEL_PREVIEW || "true")
-  .toLowerCase()
-  .trim() !== "false";
+const allowVercelPreview =
+  String(process.env.ALLOW_VERCEL_PREVIEW || "true")
+    .toLowerCase()
+    .trim() !== "false";
 const extraAllowedOrigins = (process.env.ALLOWED_ORIGINS || "")
   .split(",")
   .map((o) => o.trim())
