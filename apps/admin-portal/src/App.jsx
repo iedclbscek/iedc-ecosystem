@@ -14,6 +14,7 @@ import Settings from './pages/Settings';
 import Login from './pages/Login';
 import SetPassword from './pages/SetPassword';
 import Mailer from './pages/Mailer';
+import TeamEntryUpdate from './pages/TeamEntryUpdate';
 
 function App() {
   return (
@@ -23,6 +24,7 @@ function App() {
         <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/set-password" element={<SetPassword />} />
+        <Route path="/team-entry/update" element={<TeamEntryUpdate />} />
 
         {/* Main Admin Route */}
         <Route

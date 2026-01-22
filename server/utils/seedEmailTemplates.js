@@ -367,7 +367,86 @@ const MAKERSPACE_ACCESS_GRANTED_HTML = `
 	</body>
 </html>
 `;
+const TEAM_PROFILE_UPDATE_HTML = `<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Update your IEDC website profile</title>
+	</head>
+	<body style="margin:0;padding:0;background:#0b1220;">
+		<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#0b1220;padding:28px 12px;">
+			<tr>
+				<td align="center">
+					<table width="600" cellpadding="0" cellspacing="0" role="presentation" style="width:600px;max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;">
+						<tr>
+							<td style="padding:22px 22px 10px 22px;background:linear-gradient(135deg,#111827,#0b1220);">
+								<div style="text-align:center;">
+									<img src="https://1a5da14deb.imgdist.com/pub/bfra/uqpdfms1/wx7/bcf/n6i/iedc-lbs-logo.png" alt="IEDC LBSCEK" width="140" style="display:inline-block;border:0;max-width:140px;height:auto;" />
+								</div>
+								<div style="text-align:center;color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:20px;font-weight:800;margin-top:14px;">
+									Profile Update Request
+								</div>
+								<div style="text-align:center;color:#cbd5e1;font-family:Arial,Helvetica,sans-serif;font-size:13px;margin-top:6px;line-height:1.6;">
+									We need your latest photo and social links.
+								</div>
+							</td>
+						</tr>
+						<tr>
+							<td style="padding:22px;font-family:Arial,Helvetica,sans-serif;color:#111827;">
+								<p style="margin:0 0 14px 0;font-size:14px;line-height:1.7;">Hi {{name}},</p>
+								<p style="margin:0 0 16px 0;font-size:14px;line-height:1.7;">
+									We're refreshing the IEDC website roster and need your latest information. Please update your photo and social media links using the secure link below.
+								</p>
 
+								<div style="border:1px solid #e5e7eb;border-radius:14px;background:#f8fafc;padding:16px 14px;margin-bottom:16px;">
+									<div style="font-size:12px;color:#64748b;letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px;">Current Info</div>
+									<div style="margin:6px 0;font-size:14px;color:#1e293b;">
+										<strong>Year:</strong> {{year}}
+									</div>
+									<div style="margin:6px 0;font-size:14px;color:#1e293b;">
+										<strong>Role:</strong> {{role}}
+									</div>
+									<div style="margin:6px 0;font-size:13px;color:#475569;">
+										<strong>LinkedIn:</strong> {{linkedin}}
+									</div>
+									<div style="margin:6px 0;font-size:13px;color:#475569;">
+										<strong>GitHub:</strong> {{github}}
+									</div>
+									<div style="margin:6px 0;font-size:13px;color:#475569;">
+										<strong>Twitter:</strong> {{twitter}}
+									</div>
+								</div>
+
+								<p style="margin:0 0 18px 0;font-size:13px;color:#64748b;line-height:1.7;">
+									This link is valid for 7 days. You can upload a square photo and update your social links. Year, role, and visibility are managed by the admin team.
+								</p>
+
+								<div style="text-align:center;margin:20px 0;">
+									<a href="{{updateLink}}" style="display:inline-block;padding:14px 28px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:10px;font-weight:700;font-size:15px;">
+										Open Update Page
+									</a>
+								</div>
+
+								<p style="margin:16px 0 0 0;font-size:12px;color:#94a3b8;line-height:1.6;">
+									If the button doesn't work, copy and paste this link:<br/>
+									<a href="{{updateLink}}" style="color:#3b82f6;word-break:break-all;">{{updateLink}}</a>
+								</p>
+							</td>
+						</tr>
+						<tr>
+							<td style="padding:14px 22px;background:#0b1220;color:#94a3b8;font-family:Arial,Helvetica,sans-serif;font-size:12px;text-align:center;">
+								© 2026 IEDC LBSCEK Web Team<br/>
+								<span style="font-size:11px;color:#64748b;margin-top:4px;display:inline-block;">If you didn't expect this email, you can safely ignore it.</span>
+							</td>
+						</tr>
+					</table>
+				</td>
+			</tr>
+		</table>
+	</body>
+</html>
+`;
 export const seedEmailTemplates = async () => {
   const templatesToSeed = [
     {
@@ -398,12 +477,28 @@ export const seedEmailTemplates = async () => {
       html: STUDENT_REGISTRATION_CONFIRMATION_HTML,
       isBase: true,
     },
+    {
+      key: "team_profile_update",
+      name: "Team Profile Update",
+      subject: "Update your IEDC website profile",
+      html: TEAM_PROFILE_UPDATE_HTML,
+      isBase: true,
+    },
   ];
 
   for (const t of templatesToSeed) {
     // eslint-disable-next-line no-await-in-loop
     const existing = await EmailTemplate.findOne({ key: t.key });
-    if (existing) continue;
+    if (existing) {
+      // Update existing base templates to ensure they have the latest content
+      existing.name = t.name;
+      existing.subject = t.subject;
+      existing.html = t.html;
+      existing.isBase = t.isBase;
+      // eslint-disable-next-line no-await-in-loop
+      await existing.save();
+      continue;
+    }
     // eslint-disable-next-line no-await-in-loop
     await EmailTemplate.create(t);
   }

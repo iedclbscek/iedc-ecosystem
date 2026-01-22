@@ -11,7 +11,18 @@ const normalizeKey = (key) =>
 
 export const listEmailTemplates = async (req, res) => {
   try {
-    const templates = await EmailTemplate.find({})
+    const search = String(req.query.search ?? req.query.q ?? "").trim();
+    const filter = search
+      ? {
+          $or: [
+            { name: { $regex: search, $options: "i" } },
+            { subject: { $regex: search, $options: "i" } },
+            { key: { $regex: search, $options: "i" } },
+          ],
+        }
+      : {};
+
+    const templates = await EmailTemplate.find(filter)
       .select("key name subject isBase updatedAt createdAt")
       .sort({ updatedAt: -1 });
     res.json({ templates });
@@ -20,6 +31,53 @@ export const listEmailTemplates = async (req, res) => {
       .status(500)
       .json({ message: "Failed to fetch templates", error: error.message });
   }
+};
+
+export const deleteEmailTemplate = async (req, res) => {
+  try {
+    if (!hasPermission(req.user, "mailer")) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const template = await EmailTemplate.findById(req.params.id);
+    if (!template)
+      return res.status(404).json({ message: "Template not found" });
+    if (template.isBase) {
+      return res
+        .status(400)
+        .json({ message: "Base templates cannot be deleted" });
+    }
+
+    await template.deleteOne();
+    return res.json({ message: "Deleted" });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "Failed to delete template", error: error.message });
+  }
+};
+
+export const upsertSystemTemplate = async ({ key, name, subject, html }) => {
+  const finalKey = normalizeKey(key);
+  if (!finalKey) throw new Error("key is required");
+
+  const existing = await EmailTemplate.findOne({ key: finalKey });
+  if (existing) {
+    existing.name = name ?? existing.name;
+    existing.subject = subject ?? existing.subject;
+    existing.html = html ?? existing.html;
+    existing.isBase = true;
+    await existing.save();
+    return existing;
+  }
+
+  return EmailTemplate.create({
+    key: finalKey,
+    name,
+    subject,
+    html,
+    isBase: true,
+  });
 };
 
 export const getEmailTemplate = async (req, res) => {
@@ -175,7 +233,7 @@ export const sendBulkEmailTemplate = async (req, res) => {
         email: { $exists: true, $ne: "" },
       })
         .select(
-          "email firstName lastName membershipId admissionNo department semester status"
+          "email firstName lastName membershipId admissionNo department semester status",
         )
         .lean();
 

@@ -227,6 +227,42 @@ export const deleteWebsiteTeamEntry = async (id) => {
   return data; // { message }
 };
 
+export const sendWebsiteTeamUpdateEmail = async (id) => {
+  const { data } = await api.post(
+    `/admin/team/entries/${id}/request-update-email`,
+  );
+  return data; // { sent, message }
+};
+
+export const fetchWebsiteTeamEntrySelf = async ({ token }) => {
+  const { data } = await api.get("/public/team-entry/self", {
+    params: { token },
+  });
+  return data; // { entry }
+};
+
+export const updateWebsiteTeamEntrySelf = async ({
+  token,
+  linkedin,
+  github,
+  twitter,
+  imageUrl,
+  imageBase64,
+} = {}) => {
+  const { data } = await api.post(
+    "/public/team-entry/self",
+    {
+      linkedin,
+      github,
+      twitter,
+      imageUrl,
+      imageBase64,
+    },
+    { params: { token } },
+  );
+  return data; // { entry }
+};
+
 export const reorderWebsiteTeamEntries = async ({
   category = "execom",
   year,
@@ -241,8 +277,9 @@ export const reorderWebsiteTeamEntries = async ({
 };
 
 // Email templates
-export const fetchEmailTemplates = async () => {
-  const { data } = await api.get("/admin/email/templates");
+export const fetchEmailTemplates = async ({ search = "" } = {}) => {
+  const params = search ? { q: search } : {};
+  const { data } = await api.get("/admin/email/templates", { params });
   return data; // { templates }
 };
 
@@ -259,6 +296,11 @@ export const createEmailTemplate = async ({ key, name, subject, html }) => {
     html,
   });
   return data; // { template }
+};
+
+export const deleteEmailTemplate = async (id) => {
+  const { data } = await api.delete(`/admin/email/templates/${id}`);
+  return data; // { message }
 };
 
 export const updateEmailTemplate = async ({ id, name, subject, html }) => {

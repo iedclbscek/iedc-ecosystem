@@ -270,7 +270,7 @@ const TeamPage = () => {
                     variants={containerVariants}
                     initial="hidden"
                     animate="visible"
-                    className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"
+                    className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4"
                   >
                     {displayData.facultyMembers.map((member) => (
                       <DirectoryCard key={member.id} member={member} />
@@ -290,7 +290,7 @@ const TeamPage = () => {
                     variants={containerVariants}
                     initial="hidden"
                     animate="visible"
-                    className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"
+                    className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4"
                   >
                     {displayData.coreTeam.map((member) => (
                       <DirectoryCard key={member.id} member={member} />
@@ -310,7 +310,7 @@ const TeamPage = () => {
                     variants={containerVariants}
                     initial="hidden"
                     animate="visible"
-                    className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4"
+                    className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3"
                   >
                     {displayData.teamMembers.map((member) => (
                       <CompactMemberCard key={member.id} member={member} />
@@ -357,9 +357,9 @@ const DirectoryCard = ({ member }) => {
         hidden: { opacity: 0, y: 20 },
         visible: { opacity: 1, y: 0 }
       }}
-      className="group relative h-[380px] bg-white border border-gray-200 hover:border-text-dark transition-all duration-300 overflow-hidden flex flex-col"
+      className="group relative h-[320px] bg-white border border-gray-200 hover:border-text-dark transition-all duration-300 overflow-hidden flex flex-col"
     >
-      <div className="relative h-[75%] overflow-hidden bg-gray-100">
+      <div className="relative h-[65%] overflow-hidden bg-gray-100">
         <img 
           src={member.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}&background=1a1a1a&color=fff`}
           alt={member.name}
@@ -394,18 +394,43 @@ const CompactMemberCard = ({ member }) => {
         hidden: { opacity: 0, scale: 0.9 },
         visible: { opacity: 1, scale: 1 }
       }}
-      className="group bg-white p-4 border border-gray-200 hover:border-accent/50 hover:shadow-lg transition-all duration-300 text-center"
+      className="group bg-white p-4 border border-gray-200 rounded-xl hover:border-accent/50 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 text-center"
     >
       <div className="w-16 h-16 mx-auto rounded-full overflow-hidden mb-3 bg-gray-100 ring-2 ring-gray-100 group-hover:ring-accent transition-all">
          <img 
             src={member.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}&background=random`}
             alt={member.name}
             className="w-full h-full object-cover"
+            onError={(e) => {
+              e.target.onerror = null;
+              e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}&background=random`;
+            }}
          />
       </div>
-      <h4 className="font-bold text-sm text-text-dark truncate">{member.name}</h4>
-      <p className="text-[10px] text-gray-400 font-mono uppercase truncate">{member.role}</p>
+      <h4 className="font-bold text-sm text-text-dark truncate group-hover:text-accent">{member.name}</h4>
+      <p className="text-[10px] text-gray-500 font-mono uppercase truncate tracking-wide">{member.role}</p>
+      {(member.linkedin || member.github || member.twitter) && (
+        <div className="flex items-center justify-center gap-2 mt-3 opacity-80 group-hover:opacity-100 transition-opacity">
+          {member.linkedin && <MiniSocialIcon href={member.linkedin} icon={<FaLinkedinIn />} />}
+          {member.github && <MiniSocialIcon href={member.github} icon={<FaGithub />} />}
+          {member.twitter && <MiniSocialIcon href={member.twitter} icon={<FaTwitter />} />}
+        </div>
+      )}
     </motion.div>
+  );
+};
+
+const MiniSocialIcon = ({ href, icon }) => {
+  if (!href) return null;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="w-7 h-7 flex items-center justify-center rounded-full bg-gray-100 text-text-dark hover:bg-accent hover:text-white transition-colors"
+    >
+      <span className="text-xs">{icon}</span>
+    </a>
   );
 };
 

@@ -5,9 +5,11 @@ import EmailTemplate from "../models/EmailTemplate.js";
 import Club from "../models/Club.js";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 import { sendMail } from "../utils/mailer.js";
 import { renderTemplate } from "../utils/templateRenderer.js";
 import { hasPermission } from "../middleware/requireAuth.js";
+import { upsertSystemTemplate } from "./emailTemplateController.js";
 import WebsiteTeamEntry from "../models/WebsiteTeamEntry.js";
 
 const normalize = (v) =>
@@ -53,6 +55,30 @@ const isClubManager = (club, userId) => {
   const id = String(userId);
   const managers = Array.isArray(club?.managerUsers) ? club.managerUsers : [];
   return managers.some((u) => String(u) === id);
+};
+
+const getSelfUpdateTokenSecret = () => {
+  const secret = String(process.env.JWT_SECRET || "").trim();
+  if (!secret) {
+    throw new Error("JWT_SECRET is not configured");
+  }
+  return secret;
+};
+
+const signSelfUpdateToken = (entryId) => {
+  const secret = getSelfUpdateTokenSecret();
+  return jwt.sign({ entryId, typ: "team-self-update" }, secret, {
+    expiresIn: "7d",
+  });
+};
+
+const verifySelfUpdateToken = (token) => {
+  const secret = getSelfUpdateTokenSecret();
+  const payload = jwt.verify(String(token || ""), secret);
+  if (payload?.typ !== "team-self-update") {
+    throw new Error("Invalid token type");
+  }
+  return payload;
 };
 
 const getAdminPortalUrl = () => {
@@ -429,6 +455,159 @@ export const updateWebsiteTeamEntry = async (req, res) => {
   }
 };
 
+export const requestWebsiteTeamUpdateEmail = async (req, res) => {
+  try {
+    if (!hasPermission(req.user, "users")) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const id = String(req.params.id ?? "").trim();
+    if (!id) return res.status(400).json({ message: "id is required" });
+
+    const entry = await WebsiteTeamEntry.findById(id).populate(
+      "userRef",
+      "name email membershipId",
+    );
+    if (!entry) return res.status(404).json({ message: "Entry not found" });
+
+    const to = entry.userRef?.email || entry.customEmail;
+    if (!to) {
+      return res
+        .status(400)
+        .json({ message: "No email available for this member" });
+    }
+
+    const name = entry.userRef?.name || entry.customName || "there";
+    const year = entry.year || "";
+    const role = entry.roleTitle || "Member";
+    const token = signSelfUpdateToken(entry._id);
+    const portalUrl = getAdminPortalUrl();
+    const updateLink = `${portalUrl}/team-entry/update?token=${encodeURIComponent(token)}`;
+    const subject = `Update your IEDC website profile${year ? ` (${year})` : ""}`;
+
+    const htmlTemplate = `
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Update your IEDC website profile</title>
+	</head>
+	<body style="margin:0;padding:0;background:#0b1220;">
+		<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#0b1220;padding:28px 12px;">
+			<tr>
+				<td align="center">
+					<table width="600" cellpadding="0" cellspacing="0" role="presentation" style="width:600px;max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;">
+						<tr>
+							<td style="padding:22px 22px 10px 22px;background:linear-gradient(135deg,#111827,#0b1220);">
+								<div style="text-align:center;">
+									<img src="https://1a5da14deb.imgdist.com/pub/bfra/uqpdfms1/wx7/bcf/n6i/iedc-lbs-logo.png" alt="IEDC LBSCEK" width="140" style="display:inline-block;border:0;max-width:140px;height:auto;" />
+								</div>
+								<div style="text-align:center;color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:20px;font-weight:800;margin-top:14px;">
+									Profile Update Request
+								</div>
+								<div style="text-align:center;color:#cbd5e1;font-family:Arial,Helvetica,sans-serif;font-size:13px;margin-top:6px;line-height:1.6;">
+									We need your latest photo and social links.
+								</div>
+							</td>
+						</tr>
+						<tr>
+							<td style="padding:22px;font-family:Arial,Helvetica,sans-serif;color:#111827;">
+								<p style="margin:0 0 14px 0;font-size:14px;line-height:1.7;">Hi {{name}},</p>
+								<p style="margin:0 0 16px 0;font-size:14px;line-height:1.7;">
+									We're refreshing the IEDC website roster and need your latest information. Please update your photo and social media links using the secure link below.
+								</p>
+
+								<div style="border:1px solid #e5e7eb;border-radius:14px;background:#f8fafc;padding:16px 14px;margin-bottom:16px;">
+									<div style="font-size:12px;color:#64748b;letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px;">Current Info</div>
+									<div style="margin:6px 0;font-size:14px;color:#1e293b;">
+										<strong>Year:</strong> {{year}}
+									</div>
+									<div style="margin:6px 0;font-size:14px;color:#1e293b;">
+										<strong>Role:</strong> {{role}}
+									</div>
+									<div style="margin:6px 0;font-size:13px;color:#475569;">
+										<strong>LinkedIn:</strong> {{linkedin}}
+									</div>
+									<div style="margin:6px 0;font-size:13px;color:#475569;">
+										<strong>GitHub:</strong> {{github}}
+									</div>
+									<div style="margin:6px 0;font-size:13px;color:#475569;">
+										<strong>Twitter:</strong> {{twitter}}
+									</div>
+								</div>
+
+								<p style="margin:0 0 18px 0;font-size:13px;color:#64748b;line-height:1.7;">
+									This link is valid for 7 days. You can upload a square photo and update your social links. Year, role, and visibility are managed by the admin team.
+								</p>
+
+								<div style="text-align:center;margin:20px 0;">
+									<a href="{{updateLink}}" style="display:inline-block;padding:14px 28px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:10px;font-weight:700;font-size:15px;">
+										Open Update Page
+									</a>
+								</div>
+
+								<p style="margin:16px 0 0 0;font-size:12px;color:#94a3b8;line-height:1.6;">
+									If the button doesn't work, copy and paste this link:<br/>
+									<a href="{{updateLink}}" style="color:#3b82f6;word-break:break-all;">{{updateLink}}</a>
+								</p>
+							</td>
+						</tr>
+						<tr>
+							<td style="padding:14px 22px;background:#0b1220;color:#94a3b8;font-family:Arial,Helvetica,sans-serif;font-size:12px;text-align:center;">
+								© 2026 IEDC LBSCEK Web Team<br/>
+								<span style="font-size:11px;color:#64748b;margin-top:4px;display:inline-block;">If you didn't expect this email, you can safely ignore it.</span>
+							</td>
+						</tr>
+					</table>
+				</td>
+			</tr>
+		</table>
+	</body>
+</html>
+    `;
+
+    const template = await EmailTemplate.findOne({
+      key: "team_profile_update",
+    });
+    const htmlSource = template?.html || htmlTemplate;
+    const subjectFromTemplate = template?.subject || subject;
+
+    const html = renderTemplate(htmlSource, {
+      name,
+      year: year || "—",
+      role,
+      linkedin: entry.linkedin || "—",
+      github: entry.github || "—",
+      twitter: entry.twitter || "—",
+      updateLink,
+    });
+
+    // Ensure template exists in email center without overwriting user edits
+    if (!template) {
+      await upsertSystemTemplate({
+        key: "team_profile_update",
+        name: "Team Profile Update",
+        subject: "Update your IEDC website profile",
+        html: htmlTemplate,
+      });
+    }
+
+    const result = await sendMail({ to, subject: subjectFromTemplate, html });
+    if (!result?.sent) {
+      return res
+        .status(500)
+        .json({ message: "Failed to send email", reason: result?.reason });
+    }
+
+    return res.json({ sent: true, message: "Update request email sent" });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ message: "Failed to send email", error: error.message });
+  }
+};
+
 export const deleteWebsiteTeamEntry = async (req, res) => {
   try {
     if (!hasPermission(req.user, "users")) {
@@ -541,6 +720,131 @@ export const uploadFreeImage = async (req, res) => {
     return res
       .status(500)
       .json({ message: "Failed to upload image", error: error.message });
+  }
+};
+
+const uploadImageFromBase64 = async (source) => {
+  const apiKey = String(
+    process.env.FREEIMAGE_API_KEY || process.env.VITE_FREEIMAGE_API_KEY || "",
+  ).trim();
+  if (!apiKey) {
+    throw new Error("Image upload key not configured");
+  }
+
+  const form = new URLSearchParams();
+  form.append("key", apiKey);
+  form.append("action", "upload");
+  form.append("source", source);
+  form.append("format", "json");
+
+  const response = await fetch("https://freeimage.host/api/1/upload", {
+    method: "POST",
+    body: form,
+  });
+
+  const result = await response.json();
+  if (!response.ok || !result?.image?.url) {
+    const status =
+      result?.status_txt || result?.error?.message || "Upload failed";
+    const err = new Error(status);
+    err.statusCode = 502;
+    throw err;
+  }
+
+  return { url: result.image.url, response: result };
+};
+
+export const getWebsiteTeamEntrySelf = async (req, res) => {
+  try {
+    const token = String(req.query.token || "").trim();
+    if (!token) return res.status(400).json({ message: "token is required" });
+
+    const payload = verifySelfUpdateToken(token);
+    const entry = await WebsiteTeamEntry.findById(payload.entryId).populate(
+      "userRef",
+      "name email membershipId",
+    );
+    if (!entry) return res.status(404).json({ message: "Entry not found" });
+
+    return res.json({
+      entry: {
+        id: entry._id,
+        year: entry.year,
+        roleTitle: entry.roleTitle || "",
+        visible: Boolean(entry.visible),
+        imageUrl: entry.imageUrl || "",
+        linkedin: entry.linkedin || "",
+        github: entry.github || "",
+        twitter: entry.twitter || "",
+        name: entry.userRef?.name || entry.customName || "",
+        email: entry.userRef?.email || entry.customEmail || "",
+      },
+    });
+  } catch (error) {
+    const status = error?.name === "TokenExpiredError" ? 401 : 400;
+    return res
+      .status(status)
+      .json({ message: error?.message || "Invalid token" });
+  }
+};
+
+export const updateWebsiteTeamEntrySelf = async (req, res) => {
+  try {
+    const token = String(req.body?.token || req.query.token || "").trim();
+    if (!token) return res.status(400).json({ message: "token is required" });
+
+    const payload = verifySelfUpdateToken(token);
+    const entry = await WebsiteTeamEntry.findById(payload.entryId).populate(
+      "userRef",
+      "name email membershipId",
+    );
+    if (!entry) return res.status(404).json({ message: "Entry not found" });
+
+    const next = {
+      linkedin: req.body?.linkedin,
+      github: req.body?.github,
+      twitter: req.body?.twitter,
+      imageUrl: req.body?.imageUrl,
+    };
+
+    if (next.linkedin !== undefined)
+      entry.linkedin = String(next.linkedin || "").trim() || undefined;
+    if (next.github !== undefined)
+      entry.github = String(next.github || "").trim() || undefined;
+    if (next.twitter !== undefined)
+      entry.twitter = String(next.twitter || "").trim() || undefined;
+
+    // Allow either direct URL or base64 upload
+    const imageBase64 = String(req.body?.imageBase64 || "").trim();
+    if (imageBase64) {
+      const uploaded = await uploadImageFromBase64(imageBase64);
+      entry.imageUrl = uploaded.url;
+    } else if (next.imageUrl !== undefined) {
+      entry.imageUrl = String(next.imageUrl || "").trim() || undefined;
+    }
+
+    await entry.save();
+
+    return res.json({
+      entry: {
+        id: entry._id,
+        year: entry.year,
+        roleTitle: entry.roleTitle || "",
+        visible: Boolean(entry.visible),
+        imageUrl: entry.imageUrl || "",
+        linkedin: entry.linkedin || "",
+        github: entry.github || "",
+        twitter: entry.twitter || "",
+        name: entry.userRef?.name || entry.customName || "",
+        email: entry.userRef?.email || entry.customEmail || "",
+      },
+    });
+  } catch (error) {
+    const status = error?.name === "TokenExpiredError" ? 401 : 400;
+    const message = error?.statusCode ? error.message : error?.message;
+    return res
+      .status(error?.statusCode || status)
+      .json({ message: message || "Failed to update" });
   }
 };
 

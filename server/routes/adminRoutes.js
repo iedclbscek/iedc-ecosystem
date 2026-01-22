@@ -24,6 +24,7 @@ import {
   deleteWebsiteTeamEntry,
   reorderWebsiteTeamEntries,
   uploadFreeImage,
+  requestWebsiteTeamUpdateEmail,
 } from "../controllers/teamController.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import {
@@ -31,6 +32,7 @@ import {
   getEmailTemplate,
   createEmailTemplate,
   updateEmailTemplate,
+  deleteEmailTemplate,
   sendTestEmailTemplate,
   sendBulkEmailTemplate,
 } from "../controllers/emailTemplateController.js";
@@ -461,6 +463,27 @@ router.patch("/team/entries/:id", updateWebsiteTeamEntry);
 
 /**
  * @openapi
+ * /api/admin/team/entries/{id}/request-update-email:
+ *   post:
+ *     tags:
+ *       - Admin Website Team
+ *     summary: Send self-update email for a team entry
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Email sent
+ */
+router.post(
+  "/team/entries/:id/request-update-email",
+  requestWebsiteTeamUpdateEmail,
+);
+
+/**
+ * @openapi
  * /api/admin/team/entries/{id}:
  *   delete:
  *     tags:
@@ -670,6 +693,29 @@ router.post("/email/templates", createEmailTemplate);
  *         description: Updated
  */
 router.patch("/email/templates/:id", updateEmailTemplate);
+
+/**
+ * @openapi
+ * /api/admin/email/templates/{id}:
+ *   delete:
+ *     tags:
+ *       - Admin Email Templates
+ *     summary: Delete an email template (non-base only)
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Deleted
+ *       400:
+ *         description: Cannot delete base template
+ */
+router.delete("/email/templates/:id", deleteEmailTemplate);
 
 /**
  * @openapi

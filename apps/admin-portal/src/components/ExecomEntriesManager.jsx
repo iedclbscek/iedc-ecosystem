@@ -8,7 +8,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Loader2, Plus, Trash2 } from 'lucide-react';
+import { GripVertical, Loader2, Plus, Trash2, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ReactCrop from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
@@ -20,11 +20,12 @@ import {
   reorderWebsiteTeamEntries,
   updateWebsiteTeamEntry,
   uploadFreeImage,
+  sendWebsiteTeamUpdateEmail,
 } from '../api/adminService';
 
 const normalize = (v) => String(v ?? '').trim().toLowerCase();
 
-function SortableRow({ entry, onUpdate, onDelete, onEdit }) {
+function SortableRow({ entry, onUpdate, onDelete, onEdit, onSendEmail, sendingEmailId }) {
   const id = String(entry?._id ?? entry?.id ?? '');
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = {
@@ -91,6 +92,15 @@ function SortableRow({ entry, onUpdate, onDelete, onEdit }) {
       </label>
 
       <div className="flex items-center gap-2">
+        <button
+          type="button"
+          className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-white text-blue-700 text-sm font-semibold hover:bg-slate-50"
+          onClick={() => onSendEmail?.(entry)}
+          disabled={sendingEmailId === id}
+        >
+          {sendingEmailId === id ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+          Send email
+        </button>
         <button
           type="button"
           className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-50"
@@ -231,10 +241,33 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
     },
   });
 
+  const sendUpdateEmailMutation = useMutation({
+    mutationFn: ({ id }) => sendWebsiteTeamUpdateEmail(id),
+    onMutate: ({ id }) => {
+      setSendingEmailId(id);
+    },
+    onSuccess: () => {
+      toast.success('Update email sent');
+    },
+    onError: (e) => {
+      toast.error(e?.response?.data?.message || 'Failed to send email');
+    },
+    onSettled: () => {
+      setSendingEmailId('');
+    },
+  });
+
+  const handleSendEmail = (entry) => {
+    const id = String(entry?._id ?? entry?.id ?? '');
+    if (!id) return;
+    sendUpdateEmailMutation.mutate({ id });
+  };
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const [isUploading, setIsUploading] = useState(false);
   const [editEntry, setEditEntry] = useState(null);
+  const [sendingEmailId, setSendingEmailId] = useState('');
   const [editForm, setEditForm] = useState({
     year: '',
     roleTitle: '',
@@ -543,6 +576,8 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
                     onUpdate={(patch) => updateMutation.mutate({ ...patch })}
                     onDelete={(id) => deleteMutation.mutate(id)}
                     onEdit={startEdit}
+                    onSendEmail={handleSendEmail}
+                    sendingEmailId={sendingEmailId}
                   />
                 ))}
               </div>

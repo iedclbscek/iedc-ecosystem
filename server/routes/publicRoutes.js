@@ -8,6 +8,10 @@ import {
   registerStaffGuest,
 } from "../controllers/registrationController.js";
 import { createCheckIn } from "../controllers/checkInController.js";
+import {
+  getWebsiteTeamEntrySelf,
+  updateWebsiteTeamEntrySelf,
+} from "../controllers/teamController.js";
 
 const router = express.Router();
 
@@ -371,6 +375,50 @@ router.get("/makerspace/verify-member", verifyMember);
  *         description: Validation error
  */
 router.post("/makerspace/register-staff-guest", registerStaffGuest);
+
+// Public: self-update link for website team entries (via emailed token)
+/**
+ * @openapi
+ * /api/public/team-entry/self:
+ *   get:
+ *     tags:
+ *       - Public
+ *     summary: Fetch a website team entry via self-update token
+ *     parameters:
+ *       - in: query
+ *         name: token
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Entry details
+ *   post:
+ *     tags:
+ *       - Public
+ *     summary: Update a website team entry via self-update token
+ *     parameters:
+ *       - in: query
+ *         name: token
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               linkedin: { type: string }
+ *               github: { type: string }
+ *               twitter: { type: string }
+ *               imageUrl: { type: string }
+ *               imageBase64: { type: string }
+ *     responses:
+ *       200:
+ *         description: Updated entry
+ */
+router.get("/team-entry/self", getWebsiteTeamEntrySelf);
+router.post("/team-entry/self", updateWebsiteTeamEntrySelf);
 
 // Aliases (short paths): /api/public/verify-member and /api/public/register-staff-guest
 /**

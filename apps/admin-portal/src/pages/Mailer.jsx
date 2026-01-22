@@ -1,11 +1,12 @@
 import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { Loader2, Plus, Save, Send, Eye } from 'lucide-react';
+import { Loader2, Plus, Save, Send, Eye, Trash2, Search } from 'lucide-react';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import {
   createEmailTemplate,
+  deleteEmailTemplate,
   fetchEmailTemplate,
   fetchEmailTemplates,
   sendBulkEmailTemplate,
@@ -37,6 +38,7 @@ export default function Mailer() {
   const latestSelectedIdRef = useRef(null);
 
   const [selectedId, setSelectedId] = useState(null);
+  const [search, setSearch] = useState('');
 
   // editor state
   const [mode, setMode] = useState('view'); // view | new
@@ -54,8 +56,8 @@ export default function Mailer() {
   const [bulkParseSummary, setBulkParseSummary] = useState(null);
 
   const { data: listData, isLoading: listLoading, isError: listError } = useQuery({
-    queryKey: ['email-templates'],
-    queryFn: fetchEmailTemplates,
+    queryKey: ['email-templates', search],
+    queryFn: () => fetchEmailTemplates({ search }),
     retry: false,
   });
 
@@ -117,6 +119,19 @@ export default function Mailer() {
       setBulkParseSummary(null);
     },
     onError: (err) => toast.error(err?.response?.data?.message || 'Failed to bulk send email'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteEmailTemplate,
+    onSuccess: () => {
+      toast.success('Template deleted');
+      if (selectedId && mode === 'view') {
+        setSelectedId(null);
+        setDraft({ key: '', name: '', subject: '', html: '' });
+      }
+      queryClient.invalidateQueries({ queryKey: ['email-templates'] });
+    },
+    onError: (err) => toast.error(err?.response?.data?.message || 'Failed to delete template'),
   });
 
   const startNew = () => {
@@ -323,7 +338,18 @@ export default function Mailer() {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         {/* Left: templates list */}
         <div className="xl:col-span-1 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-slate-100 font-bold">Templates</div>
+          <div className="p-4 border-b border-slate-100 flex items-center gap-2">
+            <div className="font-bold flex-1">Templates</div>
+            <div className="relative w-40">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search"
+                className="w-full pl-8 pr-2 py-1.5 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-blue-500/20"
+              />
+            </div>
+          </div>
 
           {listLoading ? (
             <div className="p-6 flex items-center gap-2 text-slate-500">
@@ -337,19 +363,41 @@ export default function Mailer() {
           ) : (
             <div className="divide-y divide-slate-100">
               {templates.map((t) => (
-                <button
+                <div
                   key={t._id}
-                  type="button"
-                  onClick={() => selectTemplate(t._id)}
-                  className={`w-full text-left p-4 hover:bg-slate-50 transition-colors ${
+                  className={`flex items-center gap-2 p-4 hover:bg-slate-50 transition-colors ${
                     selectedId === t._id && mode === 'view' ? 'bg-blue-50' : 'bg-white'
                   }`}
                 >
-                  <div className="font-semibold text-slate-900">{t.name}</div>
-                  <div className="text-xs text-slate-500">
-                    {t.key}{t.isBase ? ' • Base' : ''}
-                  </div>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => selectTemplate(t._id)}
+                    className="flex-1 text-left"
+                  >
+                    <div className="font-semibold text-slate-900">{t.name}</div>
+                    <div className="text-xs text-slate-500">
+                      {t.key}{t.isBase ? ' • Base' : ''}
+                    </div>
+                  </button>
+                  {!t.isBase && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (deleteMutation.isPending) return;
+                        if (!window.confirm('Delete this template?')) return;
+                        deleteMutation.mutate(t._id);
+                      }}
+                      className="p-2 rounded-lg border border-slate-200 text-red-600 hover:bg-red-50"
+                    >
+                      {deleteMutation.isPending ? (
+                        <Loader2 className="animate-spin" size={14} />
+                      ) : (
+                        <Trash2 size={14} />
+                      )}
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           )}
