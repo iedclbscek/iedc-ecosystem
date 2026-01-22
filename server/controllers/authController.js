@@ -18,12 +18,16 @@ const getCookieOptions = () => {
     ? String(process.env.COOKIE_DOMAIN).trim() || undefined
     : undefined;
 
-  // In production, we need secure cookies with SameSite=none for cross-origin
-  // In development, we use lax for easier local testing
+  // Safari/iOS has strict cross-origin cookie policies.
+  // If admin portal and API share the same parent domain (e.g., admin.domain.com + api.domain.com),
+  // use SameSite=lax with a domain cookie for better iOS compatibility.
+  // If they're completely different domains, SameSite=none is required but may be blocked by Safari ITP.
+  const useLaxForSameDomain = domain && isProd;
+
   const cookieOpts = {
     httpOnly: true,
-    secure: isProd,
-    sameSite: isProd ? "none" : "lax",
+    secure: isProd, // Required for SameSite=none
+    sameSite: useLaxForSameDomain ? "lax" : isProd ? "none" : "lax",
     // Only set domain when explicitly configured to avoid cookie rejection on preview/staging hosts.
     domain,
     path: "/",
