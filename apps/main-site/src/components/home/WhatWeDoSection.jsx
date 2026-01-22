@@ -130,10 +130,10 @@ const WhatWeDoSection = () => {
           <p className="text-text-dark font-bold italic">
             Ready to convert your potential energy into kinetic?
           </p>
-          <button className="group flex items-center gap-2 px-8 py-3 bg-accent text-white font-black uppercase tracking-widest text-xs hover:bg-text-dark transition-colors">
-            Init_Sequence
+          <a href='/register' className="group flex items-center gap-2 px-8 py-3 bg-accent text-white font-black uppercase tracking-widest text-xs hover:bg-text-dark transition-colors">
+            Join_Network
             <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-          </button>
+          </a>
         </div>
       </div>
     </section>

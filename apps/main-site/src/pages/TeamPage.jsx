@@ -85,15 +85,22 @@ const TeamPage = () => {
         const membersList = yearData.members || [];
         
         // Transform API data to UI format
-        const formattedMembers = membersList.map(m => ({
-          id: m.id || m._id,
-          name: m.user?.name || m.name || "Unknown",
-          role: m.roleTitle || m.role || "Member",
-          image: m.user?.image, 
-          linkedin: m.user?.linkedin,
-          github: m.user?.github,
-          twitter: m.user?.twitter
-        }));
+        const formattedMembers = membersList.map(m => {
+          const rawName = m.user?.name || m.name || "Unknown";
+          const imageUrl = m.imageUrl || m.user?.image;
+          const linkedin = m.linkedin || m.user?.linkedin;
+          const github = m.github || m.user?.github;
+          const twitter = m.twitter || m.user?.twitter;
+          return {
+            id: m.id || m._id,
+            name: typeof rawName === "string" ? rawName.toUpperCase() : String(rawName).toUpperCase(),
+            role: m.roleTitle || m.role || "Member",
+            image: imageUrl, 
+            linkedin,
+            github,
+            twitter
+          };
+        });
 
         setRawData(formattedMembers);
         processMembers(formattedMembers, searchQuery); // Process initial view
@@ -356,7 +363,7 @@ const DirectoryCard = ({ member }) => {
         <img 
           src={member.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}&background=1a1a1a&color=fff`}
           alt={member.name}
-          className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500 group-hover:scale-105"
+          className="w-full h-full object-cover transition-all duration-500 group-hover:scale-105"
           onError={(e) => {
              e.target.onerror = null;
              e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}&background=1a1a1a&color=fff`;

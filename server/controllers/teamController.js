@@ -282,6 +282,10 @@ export const createWebsiteTeamEntry = async (req, res) => {
     const customMembershipId = String(
       req.body?.customMembershipId ?? "",
     ).trim();
+    const imageUrl = String(req.body?.imageUrl ?? "").trim();
+    const linkedin = String(req.body?.linkedin ?? "").trim();
+    const github = String(req.body?.github ?? "").trim();
+    const twitter = String(req.body?.twitter ?? "").trim();
     const roleTitle = String(req.body?.roleTitle ?? "").trim() || undefined;
     const visible =
       req.body?.visible !== undefined ? Boolean(req.body.visible) : true;
@@ -328,6 +332,10 @@ export const createWebsiteTeamEntry = async (req, res) => {
         entryType === "custom" ? customEmail || undefined : undefined,
       customMembershipId:
         entryType === "custom" ? customMembershipId || undefined : undefined,
+      imageUrl: imageUrl || undefined,
+      linkedin: linkedin || undefined,
+      github: github || undefined,
+      twitter: twitter || undefined,
       roleTitle,
       visible,
       order: nextOrder,
@@ -362,23 +370,53 @@ export const updateWebsiteTeamEntry = async (req, res) => {
     const id = String(req.params.id ?? "").trim();
     if (!id) return res.status(400).json({ message: "id is required" });
 
-    const patch = {};
+    const entry = await WebsiteTeamEntry.findById(id);
+    if (!entry) return res.status(404).json({ message: "Entry not found" });
+
     if (req.body?.year !== undefined)
-      patch.year = String(req.body.year ?? "").trim();
+      entry.year = String(req.body.year ?? "").trim();
     if (req.body?.visible !== undefined)
-      patch.visible = Boolean(req.body.visible);
+      entry.visible = Boolean(req.body.visible);
     if (req.body?.roleTitle !== undefined) {
       const v = String(req.body.roleTitle ?? "").trim();
-      patch.roleTitle = v || undefined;
+      entry.roleTitle = v || undefined;
+    }
+    if (req.body?.customName !== undefined) {
+      const v = String(req.body.customName ?? "").trim();
+      entry.customName = v || undefined;
+    }
+    if (req.body?.customEmail !== undefined) {
+      const v = String(req.body.customEmail ?? "").trim();
+      entry.customEmail = v || undefined;
+    }
+    if (req.body?.customMembershipId !== undefined) {
+      const v = String(req.body.customMembershipId ?? "").trim();
+      entry.customMembershipId = v || undefined;
+    }
+    if (req.body?.imageUrl !== undefined) {
+      const v = String(req.body.imageUrl ?? "").trim();
+      entry.imageUrl = v || undefined;
+    }
+    if (req.body?.linkedin !== undefined) {
+      const v = String(req.body.linkedin ?? "").trim();
+      entry.linkedin = v || undefined;
+    }
+    if (req.body?.github !== undefined) {
+      const v = String(req.body.github ?? "").trim();
+      entry.github = v || undefined;
+    }
+    if (req.body?.twitter !== undefined) {
+      const v = String(req.body.twitter ?? "").trim();
+      entry.twitter = v || undefined;
     }
 
-    const updated = await WebsiteTeamEntry.findByIdAndUpdate(id, patch, {
-      new: true,
-      runValidators: true,
-    }).populate("userRef", "name email membershipId role portalAccessEnabled");
+    await entry.save();
+    await entry.populate(
+      "userRef",
+      "name email membershipId role portalAccessEnabled",
+    );
 
-    if (!updated) return res.status(404).json({ message: "Entry not found" });
-    return res.json({ entry: updated });
+    return res.json({ entry });
   } catch (error) {
     if (error?.code === 11000) {
       return res
@@ -455,6 +493,54 @@ export const reorderWebsiteTeamEntries = async (req, res) => {
     return res
       .status(500)
       .json({ message: "Failed to reorder", error: error.message });
+  }
+};
+
+export const uploadFreeImage = async (req, res) => {
+  try {
+    if (!hasPermission(req.user, "users")) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const apiKey = String(
+      process.env.FREEIMAGE_API_KEY || process.env.VITE_FREEIMAGE_API_KEY || "",
+    ).trim();
+    if (!apiKey) {
+      return res
+        .status(500)
+        .json({ message: "Image upload key not configured" });
+    }
+
+    const source = String(req.body?.source ?? "").trim();
+    if (!source) {
+      return res
+        .status(400)
+        .json({ message: "source is required (base64 string)" });
+    }
+
+    const form = new URLSearchParams();
+    form.append("key", apiKey);
+    form.append("action", "upload");
+    form.append("source", source);
+    form.append("format", "json");
+
+    const response = await fetch("https://freeimage.host/api/1/upload", {
+      method: "POST",
+      body: form,
+    });
+
+    const result = await response.json();
+    if (!response.ok || !result?.image?.url) {
+      const status =
+        result?.status_txt || result?.error?.message || "Upload failed";
+      return res.status(502).json({ message: status });
+    }
+
+    return res.json({ url: result.image.url, response: result });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ message: "Failed to upload image", error: error.message });
   }
 };
 

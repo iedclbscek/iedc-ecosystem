@@ -10,6 +10,8 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Loader2, Plus, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import ReactCrop from 'react-image-crop';
+import 'react-image-crop/dist/ReactCrop.css';
 import {
   createWebsiteTeamEntry,
   deleteWebsiteTeamEntry,
@@ -17,11 +19,12 @@ import {
   fetchWebsiteTeamYears,
   reorderWebsiteTeamEntries,
   updateWebsiteTeamEntry,
+  uploadFreeImage,
 } from '../api/adminService';
 
 const normalize = (v) => String(v ?? '').trim().toLowerCase();
 
-function SortableRow({ entry, onUpdate, onDelete }) {
+function SortableRow({ entry, onUpdate, onDelete, onEdit }) {
   const id = String(entry?._id ?? entry?.id ?? '');
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = {
@@ -90,6 +93,13 @@ function SortableRow({ entry, onUpdate, onDelete }) {
       <div className="flex items-center gap-2">
         <button
           type="button"
+          className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-50"
+          onClick={() => onEdit?.(entry)}
+        >
+          Edit
+        </button>
+        <button
+          type="button"
           className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-white text-red-600 text-sm font-semibold hover:bg-slate-50"
           onClick={() => onDelete(id)}
         >
@@ -156,6 +166,7 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
     mutationFn: updateWebsiteTeamEntry,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['websiteTeamEntries', 'execom', effectiveYear] });
+      toast.success('Updated entry');
     },
     onError: (e) => {
       toast.error(e?.response?.data?.message || 'Failed to update');
@@ -222,6 +233,25 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
+  const [isUploading, setIsUploading] = useState(false);
+  const [editEntry, setEditEntry] = useState(null);
+  const [editForm, setEditForm] = useState({
+    year: '',
+    roleTitle: '',
+    visible: true,
+    customName: '',
+    customEmail: '',
+    customMembershipId: '',
+    imageUrl: '',
+    linkedin: '',
+    github: '',
+    twitter: '',
+  });
+  const [cropper, setCropper] = useState(null);
+  const [cropSrc, setCropSrc] = useState(null);
+  const [cropState, setCropState] = useState({ unit: 'px', x: 0, y: 0, width: 200, height: 200, aspect: 1 });
+  const [cropImageEl, setCropImageEl] = useState(null);
+
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [newUserId, setNewUserId] = useState('');
   const [newEntryType, setNewEntryType] = useState('user');
@@ -243,6 +273,179 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
       return name.includes(q) || mid.includes(q) || email.includes(q);
     });
   }, [execomUsers, newUserSearch]);
+
+  const startEdit = (entry) => {
+    if (!entry) return;
+    setEditEntry(entry);
+    setEditForm({
+      year: String(entry.year || effectiveYear || ''),
+      roleTitle: entry.roleTitle || '',
+      visible: Boolean(entry.visible),
+      customName: entry.customName || entry.userRef?.name || '',
+      customEmail: entry.customEmail || entry.userRef?.email || '',
+      customMembershipId: entry.customMembershipId || entry.userRef?.membershipId || '',
+      imageUrl: entry.imageUrl || '',
+      linkedin: entry.linkedin || '',
+      github: entry.github || '',
+      twitter: entry.twitter || '',
+    });
+  };
+
+  const handleEditChange = (field, value) => {
+    setEditForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const fileToBase64 = (file) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result;
+        const base64 = typeof result === 'string' ? result.split(',')[1] : '';
+        if (!base64) {
+          reject(new Error('Could not read file'));
+        } else {
+          resolve(base64);
+        }
+      };
+      reader.onerror = () => reject(new Error('Could not read file'));
+      reader.readAsDataURL(file);
+    });
+
+  const blobToBase64 = (blob) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result;
+        const base64 = typeof result === 'string' ? result.split(',')[1] : '';
+        if (!base64) {
+          reject(new Error('Could not read file'));
+        } else {
+          resolve(base64);
+        }
+      };
+      reader.onerror = () => reject(new Error('Could not read file'));
+      reader.readAsDataURL(blob);
+    });
+
+  const openCropper = (file) => {
+    const maxBytes = 3 * 1024 * 1024; // ~3MB limit
+    if (file.size > maxBytes) {
+      toast.error('File too large. Max 3MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      setCropSrc(dataUrl);
+      setCropper({ file });
+    };
+    reader.onerror = () => toast.error('Could not read file');
+    reader.readAsDataURL(file);
+  };
+
+  const applyCropAndUpload = async () => {
+    if (!cropper || !cropImageEl) return;
+    try {
+      setIsUploading(true);
+      const image = cropImageEl;
+      const scaleX = image.naturalWidth / image.width;
+      const scaleY = image.naturalHeight / image.height;
+      const { x = 0, y = 0, width = 0, height = 0 } = cropState;
+
+      // Render a higher-resolution square to preserve clarity.
+      const targetSize = Math.min(Math.max(Math.round(Math.min(width, height)), 800), 1600); // clamp between 800-1600px
+
+      const canvas = document.createElement('canvas');
+      canvas.width = targetSize;
+      canvas.height = targetSize;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(
+        image,
+        x * scaleX,
+        y * scaleY,
+        width * scaleX,
+        height * scaleY,
+        0,
+        0,
+        targetSize,
+        targetSize,
+      );
+
+      const blob = await new Promise((resolve, reject) => {
+        canvas.toBlob(
+          (b) => {
+            if (!b) return reject(new Error('Failed to crop image'));
+            resolve(b);
+          },
+          cropper.file?.type || 'image/jpeg',
+          0.96,
+        );
+      });
+
+      const base64 = await blobToBase64(blob);
+      const { url } = await uploadFreeImage({ source: base64 });
+      setEditForm((prev) => ({ ...prev, imageUrl: url }));
+      toast.success('Image uploaded');
+      setCropper(null);
+      setCropSrc(null);
+      setCropImageEl(null);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || err?.message || 'Upload failed');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleImageFile = (file) => {
+    if (!file) return;
+    openCropper(file);
+  };
+
+  const onCropImageLoaded = (img) => {
+    if (!img) return;
+    setCropImageEl(img);
+    const size = Math.min(img.naturalWidth, img.naturalHeight, 320);
+    const x = (img.naturalWidth - size) / 2;
+    const y = (img.naturalHeight - size) / 2;
+    setCropState({ unit: 'px', x, y, width: size, height: size, aspect: 1 });
+  };
+
+  const handleSaveEdit = () => {
+    if (!editEntry) return;
+    const trimmedYear = String(editForm.year || '').trim();
+    if (!trimmedYear) {
+      toast.error('Year is required');
+      return;
+    }
+
+    const payload = {
+      id: editEntry._id,
+      year: trimmedYear,
+      roleTitle: editForm.roleTitle.trim(),
+      visible: Boolean(editForm.visible),
+      imageUrl: editForm.imageUrl.trim(),
+      linkedin: editForm.linkedin.trim(),
+      github: editForm.github.trim(),
+      twitter: editForm.twitter.trim(),
+    };
+
+    if (editEntry.entryType === 'custom') {
+      payload.customName = editForm.customName.trim();
+      payload.customEmail = editForm.customEmail.trim();
+      payload.customMembershipId = editForm.customMembershipId.trim();
+      if (!payload.customName) {
+        toast.error('Name is required for custom entries');
+        return;
+      }
+    }
+
+    updateMutation.mutate(payload, {
+      onSuccess: () => {
+        setEditEntry(null);
+      },
+    });
+  };
 
   if (!canManageUsers) {
     return null;
@@ -339,6 +542,7 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
                     entry={entry}
                     onUpdate={(patch) => updateMutation.mutate({ ...patch })}
                     onDelete={(id) => deleteMutation.mutate(id)}
+                    onEdit={startEdit}
                   />
                 ))}
               </div>
@@ -346,6 +550,246 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
           </DndContext>
         )}
       </div>
+
+      {editEntry ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30">
+          <div className="w-full max-w-2xl bg-white rounded-2xl border border-slate-200 shadow-xl">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <div className="font-bold text-slate-900">Edit Execom Entry</div>
+                <div className="text-sm text-slate-500">Update image, socials, and displayed details.</div>
+              </div>
+              <button
+                type="button"
+                className="text-slate-500 hover:text-slate-800"
+                onClick={() => setEditEntry(null)}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <div className="text-sm font-semibold text-slate-700 mb-1">Year</div>
+                  <input
+                    value={editForm.year}
+                    onChange={(e) => handleEditChange('year', e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                  />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-slate-700 mb-1">Role title</div>
+                  <input
+                    value={editForm.roleTitle}
+                    onChange={(e) => handleEditChange('roleTitle', e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                    placeholder="e.g. CEO"
+                  />
+                </div>
+              </div>
+
+              {editEntry.entryType === 'custom' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-700 mb-1">Name</div>
+                    <input
+                      value={editForm.customName}
+                      onChange={(e) => handleEditChange('customName', e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                      placeholder="Full name"
+                    />
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold text-slate-700 mb-1">Membership ID</div>
+                    <input
+                      value={editForm.customMembershipId}
+                      onChange={(e) => handleEditChange('customMembershipId', e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                      placeholder="Optional"
+                    />
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold text-slate-700 mb-1">Email</div>
+                    <input
+                      value={editForm.customEmail}
+                      onChange={(e) => handleEditChange('customEmail', e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                      placeholder="Optional"
+                      type="email"
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="space-y-2">
+                <div className="text-sm font-semibold text-slate-700 mb-1">Image</div>
+                <div className="flex flex-col md:flex-row gap-2">
+                  <input
+                    value={editForm.imageUrl}
+                    onChange={(e) => handleEditChange('imageUrl', e.target.value)}
+                    placeholder="Image URL"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                  />
+                  <label className="inline-flex items-center justify-center px-4 py-2 rounded-xl border border-slate-200 bg-white text-sm font-semibold cursor-pointer hover:bg-slate-50">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleImageFile(file);
+                        e.target.value = '';
+                      }}
+                    />
+                    {isUploading ? 'Uploading...' : 'Upload'}
+                  </label>
+                </div>
+                <div className="text-xs text-slate-500">
+                  Upload is proxied through the server (freeimage.host). No browser CORS issues.
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <div className="text-sm font-semibold text-slate-700 mb-1">LinkedIn</div>
+                  <input
+                    value={editForm.linkedin}
+                    onChange={(e) => handleEditChange('linkedin', e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                    placeholder="https://..."
+                  />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-slate-700 mb-1">GitHub</div>
+                  <input
+                    value={editForm.github}
+                    onChange={(e) => handleEditChange('github', e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                    placeholder="https://..."
+                  />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-slate-700 mb-1">Twitter</div>
+                  <input
+                    value={editForm.twitter}
+                    onChange={(e) => handleEditChange('twitter', e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                    placeholder="https://..."
+                  />
+                </div>
+                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(editForm.visible)}
+                    onChange={(e) => handleEditChange('visible', e.target.checked)}
+                  />
+                  Visible on website
+                </label>
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-slate-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold"
+                onClick={() => setEditEntry(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={updateMutation.isPending || isUploading}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold disabled:opacity-50"
+                onClick={handleSaveEdit}
+              >
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : null}
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {cropper && cropSrc ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30">
+          <div className="w-full max-w-3xl bg-white rounded-2xl border border-slate-200 shadow-xl">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <div className="font-bold text-slate-900">Crop Image</div>
+                <div className="text-sm text-slate-500">Adjust the square crop before uploading.</div>
+              </div>
+              <button
+                type="button"
+                className="text-slate-500 hover:text-slate-800"
+                onClick={() => {
+                  setCropper(null);
+                  setCropSrc(null);
+                  setCropImageEl(null);
+                }}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                <div className="space-y-3">
+                  <div className="text-sm font-semibold text-slate-700">Crop (square)</div>
+                  <div className="w-full max-w-md">
+                    <ReactCrop
+                      crop={cropState}
+                      onChange={(c) => setCropState(c)}
+                      aspect={1}
+                      keepSelection
+                      locked={false}
+                    >
+                      <img
+                        src={cropSrc}
+                        alt="Crop"
+                        onLoad={(e) => onCropImageLoaded(e.currentTarget)}
+                        style={{ maxWidth: '100%', maxHeight: '70vh' }}
+                      />
+                    </ReactCrop>
+                  </div>
+                </div>
+
+                <div className="space-y-2 text-sm text-slate-600">
+                  <div className="font-semibold text-slate-700">Tips</div>
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>Drag the handles to set the square area.</li>
+                    <li>File size limit is ~3MB.</li>
+                    <li>Aspect ratio is fixed to 1:1.</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-slate-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold"
+                onClick={() => {
+                  setCropper(null);
+                  setCropSrc(null);
+                  setCropImageEl(null);
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isUploading}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold disabled:opacity-50"
+                onClick={applyCropAndUpload}
+              >
+                {isUploading ? <Loader2 className="animate-spin" size={16} /> : null}
+                Crop & Upload
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {isAddOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30">

@@ -164,6 +164,10 @@ export const createWebsiteTeamEntry = async ({
   customName,
   customEmail,
   customMembershipId,
+  imageUrl,
+  linkedin,
+  github,
+  twitter,
   roleTitle,
   visible,
 } = {}) => {
@@ -175,6 +179,10 @@ export const createWebsiteTeamEntry = async ({
     customName,
     customEmail,
     customMembershipId,
+    imageUrl,
+    linkedin,
+    github,
+    twitter,
     roleTitle,
     visible,
   });
@@ -185,14 +193,33 @@ export const updateWebsiteTeamEntry = async ({
   id,
   year,
   roleTitle,
+  customName,
+  customEmail,
+  customMembershipId,
+  imageUrl,
+  linkedin,
+  github,
+  twitter,
   visible,
 } = {}) => {
   const { data } = await api.patch(`/admin/team/entries/${id}`, {
     year,
     roleTitle,
+    customName,
+    customEmail,
+    customMembershipId,
+    imageUrl,
+    linkedin,
+    github,
+    twitter,
     visible,
   });
   return data; // { entry }
+};
+
+export const uploadFreeImage = async ({ source }) => {
+  const { data } = await api.post("/admin/uploads/freeimage", { source });
+  return data; // { url, response }
 };
 
 export const deleteWebsiteTeamEntry = async (id) => {

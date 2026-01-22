@@ -23,6 +23,7 @@ import {
   updateWebsiteTeamEntry,
   deleteWebsiteTeamEntry,
   reorderWebsiteTeamEntries,
+  uploadFreeImage,
 } from "../controllers/teamController.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import {
@@ -509,6 +510,9 @@ router.delete("/team/entries/:id", deleteWebsiteTeamEntry);
  *         description: Reordered
  */
 router.post("/team/entries/reorder", reorderWebsiteTeamEntries);
+
+// Media uploads (proxy to freeimage.host)
+router.post("/uploads/freeimage", uploadFreeImage);
 
 // Club-scoped portal members (club leads)
 /**

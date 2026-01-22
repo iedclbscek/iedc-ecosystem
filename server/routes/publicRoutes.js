@@ -88,11 +88,17 @@ router.get("/execom", async (req, res) => {
       if (!yearsMap.has(y)) yearsMap.set(y, []);
 
       const u = entry.userRef;
+      const preferredImage = entry.imageUrl || "";
+
       yearsMap.get(y).push({
         id: entry._id,
         year: y,
         order: entry.order,
         roleTitle: entry.roleTitle || "",
+        imageUrl: preferredImage,
+        linkedin: entry.linkedin || "",
+        github: entry.github || "",
+        twitter: entry.twitter || "",
         user: u
           ? {
               id: u._id,

@@ -152,7 +152,8 @@ const EventsPage = () => {
             ))}
           </div>
 
-          {/* Action Button */}
+          {/* Action Button temporarily hidden */}
+          {/*
           <button 
             onClick={() => setShowProposeModal(true)}
             className="flex items-center gap-2 px-6 py-2 bg-accent text-white font-bold text-sm hover:bg-accent-dark transition-colors shadow-lg shadow-accent/20 whitespace-nowrap"
@@ -160,6 +161,7 @@ const EventsPage = () => {
             <FaPlus className="text-xs" />
             <span className="uppercase tracking-wide">Initiate_Event</span>
           </button>
+          */}
         </div>
       </section>
 
