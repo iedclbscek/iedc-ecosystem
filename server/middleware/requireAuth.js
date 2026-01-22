@@ -6,7 +6,15 @@ const COOKIE_NAME = "token";
 export const requireAuth = async (req, res, next) => {
   try {
     const token = req.cookies?.[COOKIE_NAME];
-    if (!token) return res.status(401).json({ message: "Not authenticated" });
+    if (!token) {
+      // Debug logging in development
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[requireAuth] No token found in cookies:", req.cookies);
+        console.log("[requireAuth] Request origin:", req.headers.origin);
+        console.log("[requireAuth] Request host:", req.headers.host);
+      }
+      return res.status(401).json({ message: "Not authenticated" });
+    }
 
     if (!process.env.JWT_SECRET) {
       return res.status(500).json({ message: "JWT_SECRET is not configured" });
@@ -33,6 +41,9 @@ export const requireAuth = async (req, res, next) => {
 
     next();
   } catch (error) {
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[requireAuth] Error:", error.message);
+    }
     return res.status(401).json({ message: "Not authenticated" });
   }
 };

@@ -18,7 +18,9 @@ const getCookieOptions = () => {
     ? String(process.env.COOKIE_DOMAIN).trim() || undefined
     : undefined;
 
-  return {
+  // In production, we need secure cookies with SameSite=none for cross-origin
+  // In development, we use lax for easier local testing
+  const cookieOpts = {
     httpOnly: true,
     secure: isProd,
     sameSite: isProd ? "none" : "lax",
@@ -26,6 +28,13 @@ const getCookieOptions = () => {
     domain,
     path: "/",
   };
+
+  // Debug logging in development
+  if (!isProd) {
+    console.log("[Cookie Options]", cookieOpts);
+  }
+
+  return cookieOpts;
 };
 
 export const login = async (req, res) => {
