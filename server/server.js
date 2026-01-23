@@ -108,8 +108,22 @@ app.use(
       "Accept",
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    exposedHeaders: ["Content-Length", "X-JSON-Response-Code"],
   }),
 );
+
+// Ensure CORS headers are set for all requests (double-check for credentials)
+app.use((req, res, next) => {
+  // If the origin was allowed by CORS middleware, these headers should already be set
+  // But we explicitly set Access-Control-Allow-Credentials if not already set
+  if (!res.getHeader("Access-Control-Allow-Credentials")) {
+    const origin = req.get("Origin");
+    if (origin) {
+      res.set("Access-Control-Allow-Credentials", "true");
+    }
+  }
+  next();
+});
 
 app.use(express.json({ limit: "50mb" }));
 app.use(cookieParser());
