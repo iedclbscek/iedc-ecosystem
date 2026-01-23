@@ -8,7 +8,6 @@ import 'react-image-crop/dist/ReactCrop.css';
 import {
   fetchWebsiteTeamEntrySelf,
   updateWebsiteTeamEntrySelf,
-  uploadFreeImage,
 } from '../api/adminService';
 
 const normalize = (v) => String(v ?? '').trim();
@@ -180,13 +179,14 @@ export default function TeamEntryUpdate() {
             }
 
             try {
-              const { url } = await uploadFreeImage({ source: base64 });
-              setForm((prev) => ({ ...prev, imageUrl: url }));
-              toast.success('Photo uploaded');
+              // For public page, directly set the base64 to be sent with form
+              // instead of calling admin upload endpoint (which has CORS issues)
+              setForm((prev) => ({ ...prev, imageBase64: base64 }));
+              toast.success('Photo cropped and ready');
               setCropper(null);
               setCropSrc(null);
             } catch (err) {
-              toast.error(err?.response?.data?.message || err?.message || 'Upload failed');
+              toast.error(err?.message || 'Failed to process image');
             } finally {
               setIsUploading(false);
             }
@@ -224,9 +224,14 @@ export default function TeamEntryUpdate() {
       twitter: form.twitter,
     };
     
-    // Only include imageUrl if it has a value
+    // Include imageUrl if it has a value
     if (form.imageUrl) {
       payload.imageUrl = form.imageUrl;
+    }
+    
+    // Include imageBase64 if it has a value (from crop)
+    if (form.imageBase64) {
+      payload.imageBase64 = form.imageBase64;
     }
     
     updateMutation.mutate(payload);
@@ -301,6 +306,25 @@ export default function TeamEntryUpdate() {
               </div>
               <div className="space-y-2">
                 <div className="text-sm font-semibold text-slate-700 mb-1">Photo</div>
+                
+                {/* Photo Preview */}
+                {(form.imageUrl || form.imageBase64) && (
+                  <div className="mb-3 relative inline-block">
+                    <img
+                      src={form.imageBase64 ? `data:image/jpeg;base64,${form.imageBase64}` : form.imageUrl}
+                      alt="Preview"
+                      className="w-24 h-24 rounded-lg object-cover border border-slate-200"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setForm((p) => ({ ...p, imageBase64: '', imageUrl: '' }))}
+                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold hover:bg-red-600"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+
                 <input
                   value={form.imageUrl}
                   onChange={(e) => setForm((p) => ({ ...p, imageUrl: e.target.value }))}
