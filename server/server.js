@@ -67,21 +67,34 @@ const isAllowedProdOrigin = (origin) => {
   }
 };
 
+console.log(
+  `[CORS] Base domain: ${baseDomain}, NODE_ENV: ${process.env.NODE_ENV}`,
+);
+
 app.use(
   cors({
     origin: (origin, callback) => {
       const isProd = process.env.NODE_ENV === "production";
-      if (
+      const isAllowed =
         !origin ||
         isAllowedProdOrigin(origin) ||
-        (!isProd && isAllowedDevLocalhost(origin))
-      ) {
+        (!isProd && isAllowedDevLocalhost(origin));
+
+      if (isAllowed) {
         callback(null, true);
       } else {
+        console.warn(`[CORS] Blocked origin: ${origin} (isProd: ${isProd})`);
         callback(new Error("Not allowed by CORS"));
       }
     },
     credentials: true, // Crucial for JWT cookies
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "Accept",
+    ],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   }),
 );
 
