@@ -100,30 +100,20 @@ app.use(
         callback(new Error("Not allowed by CORS"));
       }
     },
-    credentials: true, // Crucial for JWT cookies
+    credentials: true, // Allow credentials
     allowedHeaders: [
       "Content-Type",
       "Authorization",
       "X-Requested-With",
       "Accept",
     ],
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    exposedHeaders: ["Content-Length", "X-JSON-Response-Code"],
+    methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
+    maxAge: 86400, // Cache preflight for 24 hours
   }),
 );
 
-// Ensure CORS headers are set for all requests (double-check for credentials)
-app.use((req, res, next) => {
-  // If the origin was allowed by CORS middleware, these headers should already be set
-  // But we explicitly set Access-Control-Allow-Credentials if not already set
-  if (!res.getHeader("Access-Control-Allow-Credentials")) {
-    const origin = req.get("Origin");
-    if (origin) {
-      res.set("Access-Control-Allow-Credentials", "true");
-    }
-  }
-  next();
-});
+// Ensure OPTIONS requests always succeed for CORS preflight
+app.options("*", cors());
 
 app.use(express.json({ limit: "50mb" }));
 app.use(cookieParser());
