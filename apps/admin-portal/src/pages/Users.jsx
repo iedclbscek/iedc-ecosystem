@@ -257,6 +257,7 @@ const permissionOptions = [
   { id: 'registrations', label: 'Registrations' },
   { id: 'events', label: 'Events' },
   { id: 'users', label: 'Team' },
+  { id: 'makerspace', label: 'Makerspace' },
   { id: 'mailer', label: 'Email Center' },
   { id: 'settings', label: 'Settings' },
 ];

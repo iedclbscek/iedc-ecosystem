@@ -29,6 +29,7 @@ const CLUB_PORTAL_ALLOWED_PERMISSIONS = new Set([
   "dashboard",
   "events",
   "users",
+  "makerspace",
 ]);
 
 const limitPermissionsToActor = (requestedPermissions, actorPermissions) => {
