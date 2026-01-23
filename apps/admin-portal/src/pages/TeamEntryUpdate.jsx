@@ -75,9 +75,9 @@ export default function TeamEntryUpdate() {
 
   const handleFile = async (file) => {
     if (!file) return;
-    const maxBytes = 3 * 1024 * 1024;
+    const maxBytes = 1.5 * 1024 * 1024; // Reduced to 1.5MB
     if (file.size > maxBytes) {
-      toast.error('File too large (max 3MB)');
+      toast.error('File too large (max 1.5MB)');
       return;
     }
     try {
@@ -165,7 +165,7 @@ export default function TeamEntryUpdate() {
                 resolve(b);
               },
               cropper.file?.type || 'image/jpeg',
-              0.96,
+              0.75, // Reduced quality for smaller size
             );
           });
 
@@ -352,7 +352,7 @@ export default function TeamEntryUpdate() {
                     'Upload photo'
                   )}
                 </label>
-                <div className="text-xs text-slate-500">Square photo recommended. Max 3MB.</div>
+                <div className="text-xs text-slate-500">Square photo recommended. Max 1.5MB.</div>
               </div>
             </div>
 
