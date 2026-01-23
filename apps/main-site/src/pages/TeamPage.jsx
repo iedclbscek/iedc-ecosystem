@@ -9,7 +9,7 @@ const TeamPage = () => {
   const [availableYears, setAvailableYears] = useState([]);
   const [selectedYear, setSelectedYear] = useState(null); // Initially null until years are fetched
   
-  const [displayData, setDisplayData] = useState({ facultyMembers: [], coreTeam: [], teamMembers: [] });
+  const [displayData, setDisplayData] = useState({ nodalOfficers: [], facultyMembers: [], coreTeam: [], teamMembers: [] });
   const [rawData, setRawData] = useState([]); // Store raw members list for local search
   
   const [searchQuery, setSearchQuery] = useState("");
@@ -103,7 +103,7 @@ const TeamPage = () => {
         });
 
         setRawData(formattedMembers);
-        processMembers(formattedMembers, searchQuery); // Process initial view
+        processMembers(formattedMembers, searchQuery, membersList); // Pass raw members for membership ID check
 
       } catch (error) {
         console.error(`Error fetching data for year ${selectedYear}:`, error);
@@ -120,13 +120,19 @@ const TeamPage = () => {
   // 3. Handle Search (Client-side filtering)
   useEffect(() => {
     if (rawData.length > 0) {
-      processMembers(rawData, searchQuery);
+      processMembers(rawData, searchQuery, rawData);
     }
   }, [searchQuery, rawData]);
 
   // Helper: Categorize members
-  const processMembers = (members, query) => {
+  const processMembers = (members, query, rawMembers = []) => {
     const lowerQuery = query.toLowerCase().trim();
+    
+    // Create a map of formatted members to raw members for membership ID lookup
+    const memberMap = {};
+    members.forEach((formatted, idx) => {
+      memberMap[formatted.id] = rawMembers[idx] || {};
+    });
     
     const filtered = members.filter(m => 
       m.name.toLowerCase().includes(lowerQuery) || 
@@ -134,6 +140,7 @@ const TeamPage = () => {
     );
 
     const categorized = {
+      nodalOfficers: [],
       facultyMembers: [],
       coreTeam: [],
       teamMembers: []
@@ -141,8 +148,14 @@ const TeamPage = () => {
 
     filtered.forEach(member => {
       const role = member.role.toLowerCase();
+      const rawMember = memberMap[member.id] || {};
+      const membershipId = rawMember.user?.membershipId || "";
+      const isStaff = membershipId.includes("st"); // Staff membership IDs contain "ST"
       
-      if (role.includes("nodal officer") || role.includes("faculty") || role.includes("advisor") || role.includes("mentor") || role.includes("principal")) {
+      // Nodal Officers category: explicitly "Nodel Officer" role (note typo in data) or staff members
+      if (role.includes("nodal officer") || role.includes("president") || isStaff) {
+        categorized.nodalOfficers.push(member);
+      } else if (role.includes("faculty") || role.includes("advisor") || role.includes("mentor") || role.includes("principal")) {
         categorized.facultyMembers.push(member);
       } else if (
         role.includes("ceo") || 
@@ -161,7 +174,6 @@ const TeamPage = () => {
         categorized.teamMembers.push(member);
       }
     });
-
     setDisplayData(categorized);
   };
 
@@ -259,7 +271,27 @@ const TeamPage = () => {
              </div>
           ) : (
             <>
-              {/* 1. Faculty Section */}
+              {/* 1. Nodal Officers Section - Shown at Top */}
+              {displayData.nodalOfficers?.length > 0 && (
+                <div className="mb-24">
+                  <div className="flex items-center gap-4 mb-8">
+                    <div className="w-2 h-8 bg-accent"></div>
+                    <h2 className="text-3xl font-black text-text-dark uppercase tracking-tight">Nodal Officers</h2>
+                  </div>
+                  <motion.div 
+                    variants={containerVariants}
+                    initial="hidden"
+                    animate="visible"
+                    className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4"
+                  >
+                    {displayData.nodalOfficers.map((member) => (
+                      <DirectoryCard key={member.id} member={member} />
+                    ))}
+                  </motion.div>
+                </div>
+              )}
+
+              {/* 2. Faculty Section */}
               {displayData.facultyMembers?.length > 0 && (
                 <div className="mb-24">
                   <div className="flex items-center gap-4 mb-8">
@@ -279,7 +311,7 @@ const TeamPage = () => {
                 </div>
               )}
 
-              {/* 2. Core Team Section */}
+              {/* 3. Core Team Section */}
               {displayData.coreTeam?.length > 0 && (
                 <div className="mb-24">
                   <div className="flex items-center gap-4 mb-8">
@@ -299,7 +331,7 @@ const TeamPage = () => {
                 </div>
               )}
 
-              {/* 3. General Members Section */}
+              {/* 4. General Members Section */}
               {displayData.teamMembers?.length > 0 && (
                 <div className="mb-24">
                   <div className="flex items-center gap-4 mb-8">
@@ -320,7 +352,8 @@ const TeamPage = () => {
               )}
 
               {/* Empty State */}
-              {!displayData.facultyMembers?.length && 
+              {!displayData.nodalOfficers?.length && 
+               !displayData.facultyMembers?.length && 
                !displayData.coreTeam?.length && 
                !displayData.teamMembers?.length && (
                 <div className="text-center py-20 border-2 border-dashed border-gray-200">
