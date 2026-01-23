@@ -46,17 +46,18 @@ const isAllowedDevLocalhost = (origin) => {
 
 const isAllowedProdOrigin = (origin) => {
   const o = String(origin || "");
-  if (!o.startsWith("https://")) return false;
   try {
     const { hostname } = new URL(o);
     if (extraAllowedOrigins.includes(o)) return true;
 
+    // Check if it matches base domain (production subdomains only)
     const matchesBaseDomain = baseDomain
       ? hostname === baseDomain ||
         hostname === `www.${baseDomain}` ||
         hostname.endsWith(`.${baseDomain}`)
       : false;
 
+    // Check for Vercel preview deployments
     const matchesVercelPreview = allowVercelPreview
       ? hostname.endsWith(".vercel.app")
       : false;
@@ -80,10 +81,22 @@ app.use(
         isAllowedProdOrigin(origin) ||
         (!isProd && isAllowedDevLocalhost(origin));
 
+      const hostname = (() => {
+        try {
+          return new URL(origin || "").hostname;
+        } catch {
+          return "N/A";
+        }
+      })();
+
+      console.log(
+        `[CORS] origin=${origin || "(none)"} | hostname=${hostname} | isProd=${isProd} | isAllowed=${isAllowed}`,
+      );
+
       if (isAllowed) {
         callback(null, true);
       } else {
-        console.warn(`[CORS] Blocked origin: ${origin} (isProd: ${isProd})`);
+        console.warn(`[CORS] ❌ BLOCKED`);
         callback(new Error("Not allowed by CORS"));
       }
     },
@@ -98,7 +111,7 @@ app.use(
   }),
 );
 
-app.use(express.json({ limit: "10mb" }));
+app.use(express.json({ limit: "50mb" }));
 app.use(cookieParser());
 
 // Swagger (OpenAPI)
