@@ -116,7 +116,7 @@ export const updateRegistration = async (req, res) => {
     const doc = await Model.findByIdAndUpdate(
       req.params.id,
       { $set: updateData },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
     );
 
     if (!doc) return res.status(404).json({ message: "Member not found" });

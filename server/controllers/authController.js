@@ -14,11 +14,12 @@ const COOKIE_NAME = "token";
 
 const getCookieOptions = () => {
   const isProd = process.env.NODE_ENV === "production";
-  
+
   // Only use COOKIE_DOMAIN in production to avoid issues with localhost
-  const domain = isProd && process.env.COOKIE_DOMAIN
-    ? String(process.env.COOKIE_DOMAIN).trim() || undefined
-    : undefined;
+  const domain =
+    isProd && process.env.COOKIE_DOMAIN
+      ? String(process.env.COOKIE_DOMAIN).trim() || undefined
+      : undefined;
 
   // Safari/iOS has strict cross-origin cookie policies.
   // If admin portal and API share the same parent domain (e.g., admin.domain.com + api.domain.com),

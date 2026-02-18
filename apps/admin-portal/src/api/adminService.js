@@ -46,7 +46,11 @@ export const deleteMember = async ({ id, memberType = "student" } = {}) => {
   return data;
 };
 
-export const updateMember = async ({ id, memberType = "student", updateData } = {}) => {
+export const updateMember = async ({
+  id,
+  memberType = "student",
+  updateData,
+} = {}) => {
   const { data } = await api.patch(`/admin/registrations/${id}`, updateData, {
     params: { memberType },
   });
