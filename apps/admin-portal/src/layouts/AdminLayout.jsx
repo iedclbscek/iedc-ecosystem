@@ -92,12 +92,14 @@ export default function AdminLayout() {
 
   const canUseIedcMode = useMemo(() => {
     if (isAdmin) return true;
+    const isClubLead = Boolean(meData?.isClubLead);
     const perms = Array.isArray(meData?.permissions)
       ? meData.permissions.map((p) => normalize(p)).filter(Boolean)
       : [];
     // If the user has any permission outside the club-only pages,
     // allow them to switch back to IEDC mode.
-    return perms.some((p) => !CLUB_VIEW_PAGES.has(p));
+    // Also allow club leads with any execom permissions to see IEDC mode.
+    return perms.some((p) => !CLUB_VIEW_PAGES.has(p)) || (isClubLead && perms.length > 0);
   }, [isAdmin, meData]);
 
   useEffect(() => {
@@ -139,8 +141,7 @@ export default function AdminLayout() {
   const visibleMenuItems = meData?.id
     ? menuItems
         .filter((m) => {
-          if (isAdmin) return isAllowed(meData, m.permission);
-          if (mode === 'club') return CLUB_VIEW_PAGES.has(normalize(m.permission));
+          // Always check permissions, even in club view mode
           return isAllowed(meData, m.permission);
         })
     : menuItems;
@@ -149,7 +150,12 @@ export default function AdminLayout() {
   const roleLabel = String(meData?.role || '').trim() || 'Member';
   const initials = getInitials(meData?.name || meData?.membershipId);
 
-  const viewLabel = mode === 'club' && activeClubName ? `Viewing: ${activeClubName}` : 'Viewing: IEDC';
+  const isClubLead = Boolean(meData?.isClubLead);
+  const hasBothRoles = canUseIedcMode && (isClubLead || myClubs.length > 0);
+  
+  const viewLabel = mode === 'club' && activeClubName 
+    ? (hasBothRoles ? `Club View: ${activeClubName}` : `Viewing: ${activeClubName}`)
+    : (hasBothRoles ? 'Execom View' : 'Viewing: IEDC');
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden">
@@ -242,11 +248,19 @@ export default function AdminLayout() {
               {profileOpen ? (
                 <div className="absolute right-0 mt-2 w-72 rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden z-50">
                   <div className="px-4 py-3 border-b border-slate-100">
-                    <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">View mode</div>
+                    <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                      {hasBothRoles ? 'Switch View' : 'View Mode'}
+                    </div>
                     <div className="mt-1 text-sm font-semibold text-slate-900">{viewLabel}</div>
                   </div>
 
                   <div className="p-2">
+                    {hasBothRoles && (
+                      <div className="mb-2 px-3 py-1">
+                        <p className="text-xs text-slate-500">You have access to multiple views</p>
+                      </div>
+                    )}
+
                     {canUseIedcMode ? (
                       <button
                         type="button"
@@ -256,22 +270,35 @@ export default function AdminLayout() {
                         }}
                         className={`w-full text-left px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
                           mode === 'iedc'
-                            ? 'bg-blue-600 text-white'
+                            ? 'bg-blue-600 text-white shadow-lg'
                             : 'hover:bg-slate-50 text-slate-700'
                         }`}
                       >
-                        IEDC
+                        <div className="flex items-center justify-between">
+                          <span>{hasBothRoles ? '🏛️ Execom View' : 'IEDC'}</span>
+                          {mode === 'iedc' && (
+                            <span className="text-xs opacity-75">✓ Active</span>
+                          )}
+                        </div>
+                        {hasBothRoles && (
+                          <p className="text-xs opacity-75 mt-1">Full admin access</p>
+                        )}
                       </button>
                     ) : null}
 
                     {myClubs.length > 0 ? (
-                      <div className="mt-2">
-                        <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                          Clubs
-                        </div>
+                      <div className={canUseIedcMode ? 'mt-2' : ''}>
+                        {hasBothRoles && (
+                          <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                            Club Views
+                          </div>
+                        )}
                         {myClubs.map((c) => {
                           const cid = String(c?._id);
                           const active = mode === 'club' && String(clubId) === cid;
+                          const isManager = Array.isArray(c?.managerUsers) && 
+                            c.managerUsers.some(u => String(u?._id) === String(meData?.id));
+                          
                           return (
                             <button
                               key={cid}
@@ -282,11 +309,21 @@ export default function AdminLayout() {
                               }}
                               className={`w-full text-left px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
                                 active
-                                  ? 'bg-blue-600 text-white'
+                                  ? 'bg-blue-600 text-white shadow-lg'
                                   : 'hover:bg-slate-50 text-slate-700'
                               }`}
                             >
-                              {c?.name || 'Club'}
+                              <div className="flex items-center justify-between">
+                                <span>{hasBothRoles ? '👥 ' : ''}{c?.name || 'Club'}</span>
+                                {active && (
+                                  <span className="text-xs opacity-75">✓ Active</span>
+                                )}
+                              </div>
+                              {hasBothRoles && (
+                                <p className="text-xs opacity-75 mt-1">
+                                  {isManager ? 'Club Lead' : 'Club Member'}
+                                </p>
+                              )}
                             </button>
                           );
                         })}

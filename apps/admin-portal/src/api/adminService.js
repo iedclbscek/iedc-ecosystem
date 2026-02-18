@@ -46,7 +46,14 @@ export const deleteMember = async ({ id, memberType = "student" } = {}) => {
   return data;
 };
 
-// (Optional) Add this for the Edit feature later
+export const updateMember = async ({ id, memberType = "student", updateData } = {}) => {
+  const { data } = await api.patch(`/admin/registrations/${id}`, updateData, {
+    params: { memberType },
+  });
+  return data;
+};
+
+// Deprecated - use updateMember instead
 export const updateStudent = async (id, updateData) => {
   const { data } = await api.patch(`/admin/registrations/${id}`, updateData);
   return data;

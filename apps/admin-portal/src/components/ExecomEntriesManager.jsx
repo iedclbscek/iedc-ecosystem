@@ -361,6 +361,7 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
     });
 
   const openCropper = (file) => {
+    console.log('Opening cropper for file:', file.name, file.type, file.size, 'bytes');
     const maxBytes = 3 * 1024 * 1024; // ~3MB limit
     if (file.size > maxBytes) {
       toast.error('File too large. Max 3MB.');
@@ -370,10 +371,14 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result;
+      console.log('File read successfully, data URL length:', dataUrl.length);
       setCropSrc(dataUrl);
       setCropper({ file });
     };
-    reader.onerror = () => toast.error('Could not read file');
+    reader.onerror = (err) => {
+      console.error('FileReader error:', err);
+      toast.error('Could not read file');
+    };
     reader.readAsDataURL(file);
   };
 
@@ -416,14 +421,21 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
         );
       });
 
+      console.log('Blob created, size:', blob.size, 'bytes');
       const base64 = await blobToBase64(blob);
+      console.log('Base64 created, length:', base64.length);
+      
       const { url } = await uploadFreeImage({ source: base64 });
+      console.log('Upload successful, URL:', url);
+      
       setEditForm((prev) => ({ ...prev, imageUrl: url }));
       toast.success('Image uploaded');
       setCropper(null);
       setCropSrc(null);
       setCropImageEl(null);
     } catch (err) {
+      console.error('Image upload error:', err);
+      console.error('Error response:', err?.response);
       toast.error(err?.response?.data?.message || err?.message || 'Upload failed');
     } finally {
       setIsUploading(false);
@@ -669,7 +681,8 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
                   <label className="inline-flex items-center justify-center px-4 py-2 rounded-xl border border-slate-200 bg-white text-sm font-semibold cursor-pointer hover:bg-slate-50">
                     <input
                       type="file"
-                      accept="image/*"
+                      accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
+                      capture="environment"
                       className="hidden"
                       onChange={(e) => {
                         const file = e.target.files?.[0];

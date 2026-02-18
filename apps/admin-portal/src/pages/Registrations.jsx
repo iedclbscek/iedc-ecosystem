@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchMembers, deleteMember } from '../api/adminService';
+import { fetchMembers, deleteMember, updateMember } from '../api/adminService';
 import { 
   Search, Loader2, Pencil, Trash2, AlertCircle, 
-  RefreshCcw, ChevronLeft, ChevronRight, User 
+  RefreshCcw, ChevronLeft, ChevronRight, User, X 
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -27,6 +27,11 @@ export default function Registrations() {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
+  
+  // Edit modal states
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editingMember, setEditingMember] = useState(null);
+  const [editForm, setEditForm] = useState({});
 
   // 1. Debounce Search Logic (Wait 500ms after typing stops)
   useEffect(() => {
@@ -59,6 +64,55 @@ export default function Registrations() {
       toast.error(err.response?.data?.message || 'Failed to delete');
     }
   });
+
+  // 4. Update Mutation
+  const updateMutation = useMutation({
+    mutationFn: updateMember,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['registrations'] });
+      toast.success('Member updated successfully');
+      setIsEditOpen(false);
+      setEditingMember(null);
+      setEditForm({});
+    },
+    onError: (err) => {
+      toast.error(err.response?.data?.message || 'Failed to update');
+    }
+  });
+
+  const handleEdit = (member) => {
+    console.log('Edit clicked for member:', member);
+    setEditingMember(member);
+    setEditForm({
+      firstName: member.firstName || '',
+      lastName: member.lastName || '',
+      email: member.email || '',
+      phoneNumber: member.phoneNumber || '',
+      whatsappNumber: member.whatsappNumber || '',
+      department: member.department || '',
+      ...(memberType === 'student' ? {
+        admissionNo: member.admissionNo || '',
+        semester: member.semester || '',
+      } : {}),
+      ...(memberType !== 'student' ? {
+        membershipId: member.membershipId || '',
+      } : {}),
+      ...(memberType === 'guest' ? {
+        organization: member.organization || '',
+      } : {}),
+    });
+    setIsEditOpen(true);
+    console.log('isEditOpen set to true');
+  };
+
+  const handleSubmitEdit = () => {
+    if (!editingMember?._id) return;
+    updateMutation.mutate({
+      id: editingMember._id,
+      memberType,
+      updateData: editForm,
+    });
+  };
 
   const handleDelete = (id, name) => {
   toast((t) => (
@@ -194,8 +248,8 @@ export default function Registrations() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {members?.map((member, index) => (
-                <tr key={member._id} className="hover:bg-slate-50/80 transition-colors group">
+              {members.map((member, index) => (
+                <tr key={member._id} className="group hover:bg-slate-50/50 transition-colors">
                   <td className="p-5 text-sm font-medium text-slate-400">
                     {(page - 1) * 10 + (index + 1)}
                   </td>
@@ -235,7 +289,8 @@ export default function Registrations() {
                     <div className="flex justify-end gap-1">
                       <button 
                         className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
-                        onClick={() => toast('Edit feature coming soon')}
+                        onClick={() => handleEdit(member)}
+                        title="Edit member"
                       >
                         <Pencil size={18} />
                       </button>
@@ -243,6 +298,7 @@ export default function Registrations() {
                         onClick={() => handleDelete(member._id, member.firstName)}
                         disabled={deleteMutation.isPending}
                         className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all disabled:opacity-30"
+                        title="Delete member"
                       >
                         <Trash2 size={18} />
                       </button>
@@ -302,6 +358,188 @@ export default function Registrations() {
           </div>
         </div>
       </div>
+
+      {/* Edit Modal */}
+      {isEditOpen && editingMember && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50">
+          <div className="relative w-full max-w-2xl bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-slate-900">Edit Member</h3>
+                <p className="text-sm text-slate-500">Update member information</p>
+              </div>
+              <button
+                onClick={() => {
+                  if (updateMutation.isPending) return;
+                  setIsEditOpen(false);
+                  setEditingMember(null);
+                  setEditForm({});
+                }}
+                className="p-2 rounded-xl hover:bg-slate-50 text-slate-500"
+                title="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1">
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700">First Name</label>
+                    <input
+                      type="text"
+                      value={editForm.firstName || ''}
+                      onChange={(e) => setEditForm({ ...editForm, firstName: e.target.value })}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                      placeholder="First name"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700">Last Name</label>
+                    <input
+                      type="text"
+                      value={editForm.lastName || ''}
+                      onChange={(e) => setEditForm({ ...editForm, lastName: e.target.value })}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                      placeholder="Last name"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-slate-700">Email</label>
+                  <input
+                    type="email"
+                    value={editForm.email || ''}
+                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                    placeholder="email@example.com"
+                  />
+                </div>
+
+                {memberType === 'student' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-slate-700">Admission No</label>
+                      <input
+                        type="text"
+                        value={editForm.admissionNo || ''}
+                        onChange={(e) => setEditForm({ ...editForm, admissionNo: e.target.value })}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                        placeholder="Admission number"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-slate-700">Semester</label>
+                      <input
+                        type="text"
+                        value={editForm.semester || ''}
+                        onChange={(e) => setEditForm({ ...editForm, semester: e.target.value })}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                        placeholder="e.g., S1, S3"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {memberType !== 'student' && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700">Membership ID</label>
+                    <input
+                      type="text"
+                      value={editForm.membershipId || ''}
+                      onChange={(e) => setEditForm({ ...editForm, membershipId: e.target.value })}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                      placeholder="Membership ID"
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-slate-700">Department</label>
+                  <input
+                    type="text"
+                    value={editForm.department || ''}
+                    onChange={(e) => setEditForm({ ...editForm, department: e.target.value })}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                    placeholder="Department"
+                  />
+                </div>
+
+                {memberType === 'guest' && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700">Organization</label>
+                    <input
+                      type="text"
+                      value={editForm.organization || ''}
+                      onChange={(e) => setEditForm({ ...editForm, organization: e.target.value })}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                      placeholder="Organization name"
+                    />
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700">Phone Number</label>
+                    <input
+                      type="tel"
+                      value={editForm.phoneNumber || ''}
+                      onChange={(e) => setEditForm({ ...editForm, phoneNumber: e.target.value })}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                      placeholder="Phone number"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700">WhatsApp Number</label>
+                    <input
+                      type="tel"
+                      value={editForm.whatsappNumber || ''}
+                      onChange={(e) => setEditForm({ ...editForm, whatsappNumber: e.target.value })}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                      placeholder="WhatsApp number"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEditOpen(false);
+                  setEditingMember(null);
+                  setEditForm({});
+                }}
+                disabled={updateMutation.isPending}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold hover:bg-slate-50 disabled:opacity-50 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitEdit}
+                disabled={updateMutation.isPending}
+                className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold disabled:opacity-50 transition-all flex items-center gap-2"
+              >
+                {updateMutation.isPending ? (
+                  <>
+                    <Loader2 className="animate-spin" size={16} />
+                    Updating...
+                  </>
+                ) : (
+                  'Save Changes'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

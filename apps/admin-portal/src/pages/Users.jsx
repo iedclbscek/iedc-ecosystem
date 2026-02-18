@@ -494,7 +494,7 @@ function ClubPortalMemberManager({ meData, forcedClubId }) {
               </button>
             </div>
 
-            <div className="p-6 space-y-6">
+            <div className="p-6 space-y-6 overflow-y-auto flex-1">
               <div className="space-y-2">
                 <label className="text-sm font-bold text-slate-700">Search Registrations</label>
                 <div className="relative">
@@ -770,6 +770,12 @@ export default function Users() {
     : [];
   const canManageUsers = isAdmin || mePerms.includes('users');
   const isClubLead = Boolean(meData?.isClubLead);
+
+  // Filter permissions that the current user can assign (only permissions they have)
+  const availablePermissionOptions = useMemo(() => {
+    if (isAdmin) return permissionOptions; // Admins can assign all permissions
+    return permissionOptions.filter(opt => mePerms.includes(normalize(opt.id)));
+  }, [isAdmin, mePerms]);
 
   const [activeCategory, setActiveCategory] = useState('execom');
   const [showWebsiteExecomOrder, setShowWebsiteExecomOrder] = useState(false);
@@ -1606,8 +1612,8 @@ export default function Users() {
             }}
           />
 
-          <div className="relative w-full max-w-2xl bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+          <div className="relative w-full max-w-2xl max-h-[90vh] bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between shrink-0">
               <div>
                 <h3 className="font-bold text-slate-900">Edit Member</h3>
                 <p className="text-sm text-slate-500">Update role and permissions.</p>
@@ -1624,8 +1630,7 @@ export default function Users() {
               </button>
             </div>
 
-            <div className="p-6 space-y-6">
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+            <div className="p-6 space-y-6 overflow-y-auto flex-1">\n              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Member</p>
                 <div className="mt-2">
                   <p className="font-bold text-slate-900">{selectedUser?.name || '—'}</p>
@@ -1744,7 +1749,7 @@ export default function Users() {
               <div className="space-y-2">
                 <label className="text-sm font-bold text-slate-700">Page Permissions</label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {permissionOptions.map((opt) => (
+                  {availablePermissionOptions.map((opt) => (
                     <label
                       key={opt.id}
                       className="flex items-center gap-2 text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer"
@@ -1761,15 +1766,14 @@ export default function Users() {
               </div>
             </div>
 
-            <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
+            <div className="p-6 border-t border-slate-100 flex justify-end gap-3 shrink-0">
               <button
                 type="button"
                 onClick={() => {
                   if (updateMutation.isPending) return;
                   setIsEditOpen(false);
                 }}
-                className="px-5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold"
-              >
+                className="px-5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold">
                 Cancel
               </button>
               <button
@@ -2145,7 +2149,7 @@ export default function Users() {
               <div className="space-y-2">
                 <label className="text-sm font-bold text-slate-700">Page Permissions</label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {permissionOptions.map((opt) => (
+                  {availablePermissionOptions.map((opt) => (
                     <label
                       key={opt.id}
                       className="flex items-center gap-2 text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer"

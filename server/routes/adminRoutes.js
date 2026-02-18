@@ -1,6 +1,7 @@
 import express from "express";
 import {
   getRegistrations,
+  updateRegistration,
   deleteRegistration,
 } from "../controllers/adminController.js";
 import {
@@ -192,6 +193,38 @@ router.use(requireAuth);
  *         description: List response
  */
 router.get("/registrations", getRegistrations);
+
+/**
+ * @openapi
+ * /api/admin/registrations/{id}:
+ *   patch:
+ *     tags:
+ *       - Admin Registrations
+ *     summary: Update a registration/member
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *       - in: query
+ *         name: memberType
+ *         schema:
+ *           type: string
+ *           enum: [student, staff, guest]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *     responses:
+ *       200:
+ *         description: Updated
+ */
+router.patch("/registrations/:id", updateRegistration);
 
 /**
  * @openapi

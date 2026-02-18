@@ -14,7 +14,9 @@ const COOKIE_NAME = "token";
 
 const getCookieOptions = () => {
   const isProd = process.env.NODE_ENV === "production";
-  const domain = process.env.COOKIE_DOMAIN
+  
+  // Only use COOKIE_DOMAIN in production to avoid issues with localhost
+  const domain = isProd && process.env.COOKIE_DOMAIN
     ? String(process.env.COOKIE_DOMAIN).trim() || undefined
     : undefined;
 

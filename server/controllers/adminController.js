@@ -69,6 +69,63 @@ export const getRegistrations = async (req, res) => {
   }
 };
 
+// UPDATE a registration
+export const updateRegistration = async (req, res) => {
+  try {
+    const memberType = normalizeMemberType(req.query.memberType);
+    if (!memberType) {
+      return res
+        .status(400)
+        .json({ message: "memberType must be 'student', 'staff', or 'guest'" });
+    }
+
+    const Model =
+      memberType === "student" ? Registration : StaffGuestRegistration;
+
+    // Build update object from request body
+    const updateData = {};
+    const allowedFields =
+      memberType === "student"
+        ? [
+            "firstName",
+            "lastName",
+            "email",
+            "admissionNo",
+            "department",
+            "semester",
+            "phoneNumber",
+            "whatsappNumber",
+          ]
+        : [
+            "firstName",
+            "lastName",
+            "email",
+            "membershipId",
+            "department",
+            "phoneNumber",
+            "whatsappNumber",
+            ...(memberType === "guest" ? ["organization"] : []),
+          ];
+
+    allowedFields.forEach((field) => {
+      if (req.body[field] !== undefined) {
+        updateData[field] = req.body[field];
+      }
+    });
+
+    const doc = await Model.findByIdAndUpdate(
+      req.params.id,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    );
+
+    if (!doc) return res.status(404).json({ message: "Member not found" });
+    res.json({ message: "Record updated successfully", member: doc });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 // DELETE a registration
 export const deleteRegistration = async (req, res) => {
   try {

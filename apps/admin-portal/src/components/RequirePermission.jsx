@@ -25,7 +25,6 @@ const isAllowed = (user, permission) => {
   if (role === 'admin') return true;
 
   const required = normalize(permission);
-  if (CLUB_VIEW_PAGES.has(required) && user?.isClubLead) return true;
   if (!required) return true;
 
   const perms = Array.isArray(user?.permissions)
@@ -38,8 +37,6 @@ const isAllowed = (user, permission) => {
 const getFallbackPath = (user) => {
   const role = normalize(user?.role);
   if (role === 'admin') return '/';
-
-  if (user?.isClubLead) return '/';
 
   const perms = Array.isArray(user?.permissions)
     ? user.permissions.map((p) => normalize(p)).filter(Boolean)
