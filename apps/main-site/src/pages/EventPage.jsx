@@ -28,6 +28,7 @@ const EventPage = () => {
   const [loading, setLoading] = useState(true);
   const [showRegistrationModal, setShowRegistrationModal] = useState(false);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(null);
+  const [copyStatus, setCopyStatus] = useState('');
 
   useEffect(() => {
     fetchEvent();
@@ -69,6 +70,46 @@ const EventPage = () => {
     }
   };
 
+  const normalizeLink = (value) => {
+    const url = String(value || '').trim();
+    if (!url) return '';
+    if (/^https?:\/\//i.test(url) || /^mailto:/i.test(url)) return url;
+    return `https://${url}`;
+  };
+
+  const parseEventDate = (value) => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const copyEventLink = async () => {
+    const currentUrl = window.location.href;
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(currentUrl);
+      } else {
+        const temp = document.createElement('textarea');
+        temp.value = currentUrl;
+        temp.style.position = 'fixed';
+        temp.style.left = '-9999px';
+        document.body.appendChild(temp);
+        temp.focus();
+        temp.select();
+        document.execCommand('copy');
+        document.body.removeChild(temp);
+      }
+
+      setCopyStatus('Copied');
+      setTimeout(() => setCopyStatus(''), 1500);
+    } catch (error) {
+      console.error('Copy failed:', error);
+      setCopyStatus('Copy failed');
+      setTimeout(() => setCopyStatus(''), 1500);
+    }
+  };
+
   const getEventStatus = () => {
     const now = new Date();
     const startDate = new Date(event.startDate);
@@ -101,6 +142,30 @@ const EventPage = () => {
   if (!event) return <div>Event not found</div>;
 
   const eventStatus = getEventStatus();
+  const registrationHref = normalizeLink(event?.registrationLink || event?.registrationUrl || '');
+  const externalHref = normalizeLink(event?.externalLink || '');
+
+  const eventStartDate = parseEventDate(event.startAt || event.startDate);
+  const eventEndDateRaw = parseEventDate(event.endAt || event.endDate) || null;
+  const eventEndDate =
+    eventEndDateRaw && eventEndDateRaw.getTime() > eventStartDate?.getTime()
+      ? eventEndDateRaw
+      : eventStartDate
+      ? new Date(eventStartDate.getTime() + 60 * 60 * 1000)
+      : null;
+
+  const hasCalendarData = Boolean(eventStartDate && eventEndDate);
+
+  const toGoogleDate = (date) =>
+    date?.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+
+  const calendarHref = hasCalendarData
+    ? `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(
+        event.title || '',
+      )}&dates=${toGoogleDate(eventStartDate)}/${toGoogleDate(eventEndDate)}&details=${encodeURIComponent(
+        event.description || event.shortDescription || '',
+      )}&location=${encodeURIComponent(event.location || '')}&sf=true&output=xml`
+    : '';
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -293,26 +358,70 @@ const EventPage = () => {
                 </div>
               </div>
 
-              {event.isRegistrationOpen && !event.isFull && (
-                <button
-                  onClick={() => setShowRegistrationModal(true)}
-                  className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                >
-                  Register Now
-                </button>
-              )}
+              {event.isRegistrationOpen && !event.isFull ? (
+                registrationHref ? (
+                  <a
+                    href={registrationHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full block text-center bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium mb-3"
+                  >
+                    Register Now
+                  </a>
+                ) : (
+                  <button
+                    onClick={() => setShowRegistrationModal(true)}
+                    className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium mb-3"
+                  >
+                    Register Now
+                  </button>
+                )
+              ) : null}
 
               {event.isFull && (
-                <div className="w-full bg-red-100 text-red-800 py-3 px-4 rounded-lg text-center font-medium">
+                <div className="w-full bg-red-100 text-red-800 py-3 px-4 rounded-lg text-center font-medium mb-3">
                   Event Full
                 </div>
               )}
 
-              {!event.isRegistrationOpen && (
-                <div className="w-full bg-gray-100 text-gray-800 py-3 px-4 rounded-lg text-center font-medium">
+              {!event.isRegistrationOpen && !registrationHref && (
+                <div className="w-full bg-gray-100 text-gray-800 py-3 px-4 rounded-lg text-center font-medium mb-3">
                   Registration Closed
                 </div>
               )}
+
+              {externalHref ? (
+                <a
+                  href={externalHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full block text-center bg-gray-900 text-white py-3 px-4 rounded-lg hover:bg-black transition-colors font-medium mb-3"
+                >
+                  View More
+                </a>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={copyEventLink}
+                className="w-full border border-slate-200 bg-white text-slate-800 py-3 px-4 rounded-lg hover:bg-slate-50 transition-colors font-medium mb-3"
+              >
+                Copy Event Link
+              </button>
+              {copyStatus ? (
+                <div className="text-sm text-center text-slate-600 mb-3">{copyStatus}</div>
+              ) : null}
+
+              {hasCalendarData ? (
+                <a
+                  href={calendarHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full block text-center bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 transition-colors font-medium"
+                >
+                  Add to Calendar
+                </a>
+              ) : null}
 
               <div className="mt-6 pt-6 border-t">
                 <div className="flex items-center justify-between text-sm text-gray-600 mb-2">

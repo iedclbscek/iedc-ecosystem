@@ -3,6 +3,16 @@ import { FaMapMarkerAlt, FaClock, FaCalendarAlt, FaTimes, FaUser } from 'react-i
 
 const EventDetailModal = ({ event, isOpen, onClose }) => {
   if (!event) return null;
+
+  const normalizeLink = (value) => {
+    const url = String(value || '').trim();
+    if (!url) return '';
+    if (/^https?:\/\//i.test(url) || /^mailto:/i.test(url)) return url;
+    return `https://${url}`;
+  };
+
+  const registrationHref = normalizeLink(event.registrationLink || event.registrationUrl || '');
+  const externalHref = normalizeLink(event.externalLink || '');
   
   return (
     <AnimatePresence>
@@ -111,9 +121,27 @@ const EventDetailModal = ({ event, isOpen, onClose }) => {
               {/* Action Button */}
               {!event.isPast && (
                 <div className="mt-8">
-                  <button className="w-full py-3 bg-cta hover:bg-cta-hover text-white font-medium rounded-lg transition-colors">
-                    Register Now
-                  </button>
+                  {registrationHref ? (
+                    <a
+                      href={registrationHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full block text-center py-3 bg-cta hover:bg-cta-hover text-white font-medium rounded-lg transition-colors"
+                    >
+                      Register Now
+                    </a>
+                  ) : null}
+
+                  {externalHref ? (
+                    <a
+                      href={externalHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block text-center py-3 mt-3 border border-slate-200 text-slate-700 font-medium rounded-lg hover:bg-slate-50 transition-colors"
+                    >
+                      View More
+                    </a>
+                  ) : null}
                 </div>
               )}
             </div>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { CalendarDays, Loader2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
@@ -39,17 +39,20 @@ const toIsoOrEmpty = (value) => {
 };
 
 const displayDate = (value) => {
-  if (!value) return '—';
+  if (!value) return 'â€”';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
+  if (Number.isNaN(date.getTime())) return 'â€”';
   return date.toLocaleString();
 };
 
 const normalize = (v) => String(v ?? '').trim();
 
+const EVENT_STATUSES = ["draft", "published", "completed", "cancelled"];
+const EVENT_VISIBILITIES = ["public", "private"];
+
 const userLabel = (user) => {
   const name = user?.name || user?.membershipId || 'Member';
-  const meta = [user?.membershipId, user?.email].filter(Boolean).join(' • ');
+  const meta = [user?.membershipId, user?.email].filter(Boolean).join(' â€¢ ');
   return { name, meta };
 };
 
@@ -137,8 +140,8 @@ function RegistrationSearch({ query, onQueryChange, selectedIds, onToggleId, dis
                 const id = String(s?._id || '');
                 if (!id) return null;
                 const checked = Array.isArray(selectedIds) && selectedIds.includes(id);
-                const name = `${s?.firstName ?? ''} ${s?.lastName ?? ''}`.trim() || '—';
-                const meta = [s?.membershipId, s?.email].filter(Boolean).join(' • ');
+                const name = `${s?.firstName ?? ''} ${s?.lastName ?? ''}`.trim() || 'â€”';
+                const meta = [s?.membershipId, s?.email].filter(Boolean).join(' â€¢ ');
                 return (
                   <button
                     key={id}
@@ -197,7 +200,15 @@ function ClubsEvents() {
   const [createEventForm, setCreateEventForm] = useState({
     title: '',
     description: '',
+    shortDescription: '',
+    registrationLink: '',
+    externalLink: '',
+    scope: 'club',
+    status: 'draft',
+    visibility: 'public',
     location: '',
+    venue: '',
+    mode: '',
     startAt: '',
     endAt: '',
     coordinatorUserIds: [],
@@ -206,7 +217,15 @@ function ClubsEvents() {
   const [editEventForm, setEditEventForm] = useState({
     title: '',
     description: '',
+    shortDescription: '',
+    registrationLink: '',
+    externalLink: '',
+    scope: 'club',
+    status: 'draft',
+    visibility: 'public',
     location: '',
+    venue: '',
+    mode: '',
     startAt: '',
     endAt: '',
     coordinatorUserIds: [],
@@ -322,7 +341,15 @@ function ClubsEvents() {
       setCreateEventForm({
         title: '',
         description: '',
+        shortDescription: '',
+        registrationLink: '',
+        externalLink: '',
+        scope: 'club',
+        status: 'draft',
+        visibility: 'public',
         location: '',
+        venue: '',
+        mode: '',
         startAt: '',
         endAt: '',
         coordinatorUserIds: [],
@@ -415,7 +442,15 @@ function ClubsEvents() {
     setEditEventForm({
       title: event?.title || '',
       description: event?.description || '',
+      shortDescription: event?.shortDescription || '',
+      registrationLink: event?.registrationLink || event?.registrationUrl || '',
+      externalLink: event?.externalLink || '',
+      scope: event?.scope || 'club',
+      status: event?.status || 'draft',
+      visibility: event?.visibility || 'public',
       location: event?.location || '',
+      venue: event?.venue || '',
+      mode: event?.mode || '',
       startAt: toDatetimeLocalValue(event?.startAt),
       endAt: toDatetimeLocalValue(event?.endAt),
       coordinatorUserIds: (Array.isArray(event?.coordinatorUsers) ? event.coordinatorUsers : [])
@@ -494,7 +529,15 @@ function ClubsEvents() {
       clubId: selectedClubId,
       title: createEventForm.title.trim(),
       description: createEventForm.description,
+      shortDescription: createEventForm.shortDescription,
+      registrationLink: createEventForm.registrationLink,
+      externalLink: createEventForm.externalLink,
+      scope: createEventForm.scope || 'club',
+      status: createEventForm.status || 'draft',
+      visibility: createEventForm.visibility || 'public',
       location: createEventForm.location,
+      venue: createEventForm.venue,
+      mode: createEventForm.mode,
       startAt: toIsoOrEmpty(createEventForm.startAt),
       endAt: toIsoOrEmpty(createEventForm.endAt),
       coordinatorUserIds: createEventForm.coordinatorUserIds,
@@ -508,7 +551,15 @@ function ClubsEvents() {
       eventId: eventEditing._id,
       title: editEventForm.title.trim(),
       description: editEventForm.description,
+      shortDescription: editEventForm.shortDescription,
+      registrationLink: editEventForm.registrationLink,
+      externalLink: editEventForm.externalLink,
+      scope: editEventForm.scope,
+      status: editEventForm.status || 'draft',
+      visibility: editEventForm.visibility || 'public',
       location: editEventForm.location,
+      venue: editEventForm.venue,
+      mode: editEventForm.mode,
       startAt: toIsoOrEmpty(editEventForm.startAt),
       endAt: toIsoOrEmpty(editEventForm.endAt),
       coordinatorUserIds: editEventForm.coordinatorUserIds,
@@ -589,9 +640,9 @@ function ClubsEvents() {
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <div className="font-bold text-slate-900">{club?.name || '—'}</div>
+                          <div className="font-bold text-slate-900">{club?.name || 'â€”'}</div>
                           <div className="text-xs text-slate-500 mt-1">
-                            {managerCount} leads • {editorCount} editors • {memberCount} members
+                            {managerCount} leads â€¢ {editorCount} editors â€¢ {memberCount} members
                           </div>
                         </div>
 
@@ -665,7 +716,7 @@ function ClubsEvents() {
 
             {!selectedClubId ? (
               <div className="p-8 text-slate-500">
-                {mode === 'club' ? 'Loading club…' : 'Select a club to view its events.'}
+                {mode === 'club' ? 'Loading clubâ€¦' : 'Select a club to view its events.'}
               </div>
             ) : eventsLoading ? (
               <div className="p-8 flex items-center gap-3 text-slate-500">
@@ -683,6 +734,8 @@ function ClubsEvents() {
                     <tr className="text-left text-slate-500">
                       <th className="px-6 py-3 font-semibold">Title</th>
                       <th className="px-6 py-3 font-semibold">Location</th>
+                      <th className="px-6 py-3 font-semibold">Status</th>
+                      <th className="px-6 py-3 font-semibold">Visibility</th>
                       <th className="px-6 py-3 font-semibold">Start</th>
                       <th className="px-6 py-3 font-semibold">End</th>
                       <th className="px-6 py-3 font-semibold">Coordinators</th>
@@ -699,14 +752,16 @@ function ClubsEvents() {
                       const displayCoordinators =
                         coordinatorNames.length > 0
                           ? coordinatorNames.join(', ')
-                          : fallback || '—';
+                          : fallback || 'â€”';
 
                       return (
                         <tr key={e?._id} className="hover:bg-slate-50/50 transition-colors">
                           <td className="px-6 py-4 font-semibold text-slate-900 whitespace-nowrap">
-                            {e?.title || '—'}
+                            {e?.title || 'â€”'}
                           </td>
-                          <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{e?.location || '—'}</td>
+                          <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{e?.location || 'â€”'}</td>
+                          <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{e?.status || 'draft'}</td>
+                          <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{e?.visibility || 'public'}</td>
                           <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{displayDate(e?.startAt)}</td>
                           <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{displayDate(e?.endAt)}</td>
                           <td className="px-6 py-4 text-slate-600">{displayCoordinators}</td>
@@ -886,7 +941,7 @@ function ClubsEvents() {
                       {(Array.isArray(clubEditing?.managerUsers) ? clubEditing.managerUsers : [])
                         .map((u) => u?.name || u?.membershipId)
                         .filter(Boolean)
-                        .join(', ') || '—'}
+                        .join(', ') || 'â€”'}
                     </div>
                   )}
                 </div>
@@ -1006,7 +1061,7 @@ function ClubsEvents() {
       {/* Create Event modal */}
       {isCreateEventOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+          <div className="w-full max-w-3xl max-h-[90vh] bg-white rounded-2xl shadow-xl border border-slate-200 flex flex-col overflow-hidden">
             <div className="p-4 border-b border-slate-100 flex items-center justify-between">
               <div className="font-bold">Create Event</div>
               <button
@@ -1018,7 +1073,7 @@ function ClubsEvents() {
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
+            <div className="p-6 space-y-4 overflow-y-auto max-h-[calc(90vh-132px)]">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500">Title *</label>
@@ -1039,6 +1094,41 @@ function ClubsEvents() {
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
                     placeholder="Venue"
                   />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500">Status</label>
+                  <select
+                    value={createEventForm.status}
+                    onChange={(e) => setCreateEventForm((p) => ({ ...p, status: e.target.value }))}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
+                  >
+                    {EVENT_STATUSES.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500">Visibility</label>
+                  <select
+                    value={createEventForm.visibility}
+                    onChange={(e) =>
+                      setCreateEventForm((p) => ({
+                        ...p,
+                        visibility: e.target.value,
+                      }))
+                    }
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
+                  >
+                    {EVENT_VISIBILITIES.map((visibility) => (
+                      <option key={visibility} value={visibility}>
+                        {visibility}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="space-y-1">
@@ -1073,6 +1163,44 @@ function ClubsEvents() {
                       }))
                     }
                   />
+                </div>
+
+                <div className="sm:col-span-2 space-y-1">
+                  <label className="text-xs font-bold text-slate-500">Short Description</label>
+                  <textarea
+                    value={createEventForm.shortDescription}
+                    onChange={(e) =>
+                      setCreateEventForm((p) => ({ ...p, shortDescription: e.target.value }))
+                    }
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 min-h-20"
+                    placeholder="Optional"
+                  />
+                </div>
+                <div className="sm:col-span-2 space-y-1">
+                  <label className="text-xs font-bold text-slate-500">Registration Link</label>
+                  <input
+                    type="text"
+                    value={createEventForm.registrationLink}
+                    onChange={(e) =>
+                      setCreateEventForm((p) => ({ ...p, registrationLink: e.target.value }))
+                    }
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
+                    placeholder="Optional (Google Forms, Unstop, registration URL)"
+                  />
+                  <div className="text-[11px] text-slate-400">Optional</div>
+                </div>
+                <div className="sm:col-span-2 space-y-1">
+                  <label className="text-xs font-bold text-slate-500">External Link</label>
+                  <input
+                    type="text"
+                    value={createEventForm.externalLink}
+                    onChange={(e) =>
+                      setCreateEventForm((p) => ({ ...p, externalLink: e.target.value }))
+                    }
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
+                    placeholder="Optional (website, brochure, announcement, etc.)"
+                  />
+                  <div className="text-[11px] text-slate-400">Optional</div>
                 </div>
 
                 <div className="sm:col-span-2 space-y-1">
@@ -1114,7 +1242,7 @@ function ClubsEvents() {
       {/* Edit Event modal */}
       {isEditEventOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+          <div className="w-full max-w-3xl max-h-[90vh] bg-white rounded-2xl shadow-xl border border-slate-200 flex flex-col overflow-hidden">
             <div className="p-4 border-b border-slate-100 flex items-center justify-between">
               <div className="font-bold">Edit Event</div>
               <button
@@ -1129,7 +1257,7 @@ function ClubsEvents() {
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
+            <div className="p-6 space-y-4 overflow-y-auto max-h-[calc(90vh-132px)]">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500">Title *</label>
@@ -1148,6 +1276,38 @@ function ClubsEvents() {
                     onChange={(e) => setEditEventForm((p) => ({ ...p, location: e.target.value }))}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
                   />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500">Status</label>
+                  <select
+                    value={editEventForm.status}
+                    onChange={(e) => setEditEventForm((p) => ({ ...p, status: e.target.value }))}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
+                  >
+                    {EVENT_STATUSES.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500">Visibility</label>
+                  <select
+                    value={editEventForm.visibility}
+                    onChange={(e) =>
+                      setEditEventForm((p) => ({ ...p, visibility: e.target.value }))
+                    }
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
+                  >
+                    {EVENT_VISIBILITIES.map((visibility) => (
+                      <option key={visibility} value={visibility}>
+                        {visibility}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="space-y-1">
@@ -1182,6 +1342,43 @@ function ClubsEvents() {
                       }))
                     }
                   />
+                </div>
+
+                <div className="sm:col-span-2 space-y-1">
+                  <label className="text-xs font-bold text-slate-500">Short Description</label>
+                  <textarea
+                    value={editEventForm.shortDescription}
+                    onChange={(e) =>
+                      setEditEventForm((p) => ({ ...p, shortDescription: e.target.value }))
+                    }
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 min-h-20"
+                  />
+                </div>
+                <div className="sm:col-span-2 space-y-1">
+                  <label className="text-xs font-bold text-slate-500">Registration Link</label>
+                  <input
+                    type="text"
+                    value={editEventForm.registrationLink}
+                    onChange={(e) =>
+                      setEditEventForm((p) => ({ ...p, registrationLink: e.target.value }))
+                    }
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
+                    placeholder="Optional (Google Forms, Unstop, registration URL)"
+                  />
+                  <div className="text-[11px] text-slate-400">Optional</div>
+                </div>
+                <div className="sm:col-span-2 space-y-1">
+                  <label className="text-xs font-bold text-slate-500">External Link</label>
+                  <input
+                    type="text"
+                    value={editEventForm.externalLink}
+                    onChange={(e) =>
+                      setEditEventForm((p) => ({ ...p, externalLink: e.target.value }))
+                    }
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
+                    placeholder="Optional (website, brochure, announcement, etc.)"
+                  />
+                  <div className="text-[11px] text-slate-400">Optional</div>
                 </div>
 
                 <div className="sm:col-span-2 space-y-1">
@@ -1234,7 +1431,12 @@ function LegacyEvents() {
   const [createForm, setCreateForm] = useState({
     title: '',
     description: '',
+    shortDescription: '',
+    registrationLink: '',
+    externalLink: '',
     location: '',
+    status: 'draft',
+    visibility: 'public',
     startAt: '',
     endAt: '',
     coordinatorUserId: '',
@@ -1243,7 +1445,12 @@ function LegacyEvents() {
   const [editForm, setEditForm] = useState({
     title: '',
     description: '',
+    shortDescription: '',
+    registrationLink: '',
+    externalLink: '',
     location: '',
+    status: 'draft',
+    visibility: 'public',
     startAt: '',
     endAt: '',
     coordinatorUserId: '',
@@ -1267,7 +1474,7 @@ function LegacyEvents() {
     .map((u) => ({
       id: u?._id,
       name: u?.name || u?.membershipId || 'Member',
-      meta: [u?.membershipId, u?.email].filter(Boolean).join(' • '),
+      meta: [u?.membershipId, u?.email].filter(Boolean).join(' â€¢ '),
     }))
     .filter((u) => Boolean(u.id));
 
@@ -1280,7 +1487,12 @@ function LegacyEvents() {
       setCreateForm({
         title: '',
         description: '',
+        shortDescription: '',
+        registrationLink: '',
+        externalLink: '',
         location: '',
+        status: 'draft',
+        visibility: 'public',
         startAt: '',
         endAt: '',
         coordinatorUserId: '',
@@ -1315,7 +1527,12 @@ function LegacyEvents() {
     setEditForm({
       title: event?.title || '',
       description: event?.description || '',
+      shortDescription: event?.shortDescription || '',
+      registrationLink: event?.registrationLink || event?.registrationUrl || '',
+      externalLink: event?.externalLink || '',
       location: event?.location || '',
+      status: event?.status || 'draft',
+      visibility: event?.visibility || 'public',
       startAt: toDatetimeLocalValue(event?.startAt),
       endAt: toDatetimeLocalValue(event?.endAt),
       coordinatorUserId: event?.coordinatorUser?._id || '',
@@ -1366,7 +1583,12 @@ function LegacyEvents() {
     createMutation.mutate({
       title: createForm.title.trim(),
       description: createForm.description,
+      shortDescription: createForm.shortDescription,
+      registrationLink: createForm.registrationLink,
+      externalLink: createForm.externalLink,
       location: createForm.location,
+      status: createForm.status,
+      visibility: createForm.visibility,
       startAt: toIsoOrEmpty(createForm.startAt),
       endAt: toIsoOrEmpty(createForm.endAt),
       coordinatorUserId: createForm.coordinatorUserId || undefined,
@@ -1379,7 +1601,12 @@ function LegacyEvents() {
       id: selected._id,
       title: editForm.title.trim(),
       description: editForm.description,
+      shortDescription: editForm.shortDescription,
+      registrationLink: editForm.registrationLink,
+      externalLink: editForm.externalLink,
       location: editForm.location,
+      status: editForm.status || 'draft',
+      visibility: editForm.visibility || 'public',
       startAt: toIsoOrEmpty(editForm.startAt),
       endAt: toIsoOrEmpty(editForm.endAt),
       coordinatorUserId: editForm.coordinatorUserId || '',
@@ -1435,26 +1662,30 @@ function LegacyEvents() {
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-100">
-                <tr className="text-left text-slate-500">
-                  <th className="px-6 py-3 font-semibold">Title</th>
-                  <th className="px-6 py-3 font-semibold">Location</th>
-                  <th className="px-6 py-3 font-semibold">Start</th>
-                  <th className="px-6 py-3 font-semibold">End</th>
-                  <th className="px-6 py-3 font-semibold">Coordinator</th>
-                  <th className="px-6 py-3 font-semibold text-right">Actions</th>
-                </tr>
+                  <tr className="text-left text-slate-500">
+                    <th className="px-6 py-3 font-semibold">Title</th>
+                    <th className="px-6 py-3 font-semibold">Location</th>
+                    <th className="px-6 py-3 font-semibold">Status</th>
+                    <th className="px-6 py-3 font-semibold">Visibility</th>
+                    <th className="px-6 py-3 font-semibold">Start</th>
+                    <th className="px-6 py-3 font-semibold">End</th>
+                    <th className="px-6 py-3 font-semibold">Coordinator</th>
+                    <th className="px-6 py-3 font-semibold text-right">Actions</th>
+                  </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {events.map((e) => (
                   <tr key={e?._id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-6 py-4 font-semibold text-slate-900 whitespace-nowrap">
-                      {e?.title || '—'}
+                      {e?.title || 'â€”'}
                     </td>
-                    <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{e?.location || '—'}</td>
+                    <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{e?.location || 'â€”'}</td>
+                    <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{e?.status || 'draft'}</td>
+                    <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{e?.visibility || 'public'}</td>
                     <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{displayDate(e?.startAt)}</td>
                     <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{displayDate(e?.endAt)}</td>
                     <td className="px-6 py-4 text-slate-600 whitespace-nowrap">
-                      {e?.coordinatorUser?.name || e?.coordinatorUser?.membershipId || '—'}
+                      {e?.coordinatorUser?.name || e?.coordinatorUser?.membershipId || 'â€”'}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex justify-end gap-1">
@@ -1486,7 +1717,7 @@ function LegacyEvents() {
       {/* Create modal */}
       {isCreateOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+          <div className="w-full max-w-3xl max-h-[90vh] bg-white rounded-2xl shadow-xl border border-slate-200 flex flex-col overflow-hidden">
             <div className="p-4 border-b border-slate-100 flex items-center justify-between">
               <div className="font-bold">Create Event</div>
               <button
@@ -1498,7 +1729,7 @@ function LegacyEvents() {
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
+            <div className="p-6 space-y-4 overflow-y-auto max-h-[calc(90vh-132px)]">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500">Title *</label>
@@ -1520,7 +1751,7 @@ function LegacyEvents() {
                     }
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
                   >
-                    <option value="">—</option>
+                    <option value="">â€”</option>
                     {coordinatorOptions.map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.name}{u.meta ? ` (${u.meta})` : ''}
@@ -1541,6 +1772,36 @@ function LegacyEvents() {
                 </div>
 
                 <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500">Status</label>
+                  <select
+                    value={createForm.status}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, status: e.target.value }))}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
+                  >
+                    {EVENT_STATUSES.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500">Visibility</label>
+                  <select
+                    value={createForm.visibility}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, visibility: e.target.value }))}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
+                  >
+                    {EVENT_VISIBILITIES.map((visibility) => (
+                      <option key={visibility} value={visibility}>
+                        {visibility}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500">Start</label>
                   <input
                     type="datetime-local"
@@ -1558,6 +1819,38 @@ function LegacyEvents() {
                     onChange={(e) => setCreateForm((p) => ({ ...p, endAt: e.target.value }))}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
                   />
+                </div>
+
+                <div className="sm:col-span-2 space-y-1">
+                  <label className="text-xs font-bold text-slate-500">Short Description</label>
+                  <textarea
+                    value={createForm.shortDescription}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, shortDescription: e.target.value }))}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 min-h-20"
+                    placeholder="Optional"
+                  />
+                </div>
+                <div className="sm:col-span-2 space-y-1">
+                  <label className="text-xs font-bold text-slate-500">Registration Link</label>
+                  <input
+                    type="text"
+                    value={createForm.registrationLink}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, registrationLink: e.target.value }))}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
+                    placeholder="Optional (Google Forms, Unstop, registration URL)"
+                  />
+                  <div className="text-[11px] text-slate-400">Optional</div>
+                </div>
+                <div className="sm:col-span-2 space-y-1">
+                  <label className="text-xs font-bold text-slate-500">External Link</label>
+                  <input
+                    type="text"
+                    value={createForm.externalLink}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, externalLink: e.target.value }))}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
+                    placeholder="Optional (website, brochure, announcement, etc.)"
+                  />
+                  <div className="text-[11px] text-slate-400">Optional</div>
                 </div>
 
                 <div className="sm:col-span-2 space-y-1">
@@ -1597,7 +1890,7 @@ function LegacyEvents() {
       {/* Edit modal */}
       {isEditOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+          <div className="w-full max-w-3xl max-h-[90vh] bg-white rounded-2xl shadow-xl border border-slate-200 flex flex-col overflow-hidden">
             <div className="p-4 border-b border-slate-100 flex items-center justify-between">
               <div className="font-bold">Edit Event</div>
               <button
@@ -1612,7 +1905,7 @@ function LegacyEvents() {
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
+            <div className="p-6 space-y-4 overflow-y-auto max-h-[calc(90vh-132px)]">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500">Title *</label>
@@ -1631,7 +1924,7 @@ function LegacyEvents() {
                     onChange={(e) => setEditForm((p) => ({ ...p, coordinatorUserId: e.target.value }))}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
                   >
-                    <option value="">—</option>
+                    <option value="">â€”</option>
                     {coordinatorOptions.map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.name}{u.meta ? ` (${u.meta})` : ''}
@@ -1668,6 +1961,67 @@ function LegacyEvents() {
                     onChange={(e) => setEditForm((p) => ({ ...p, endAt: e.target.value }))}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
                   />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500">Status</label>
+                  <select
+                    value={editForm.status}
+                    onChange={(e) => setEditForm((p) => ({ ...p, status: e.target.value }))}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
+                  >
+                    {EVENT_STATUSES.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500">Visibility</label>
+                  <select
+                    value={editForm.visibility}
+                    onChange={(e) => setEditForm((p) => ({ ...p, visibility: e.target.value }))}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
+                  >
+                    {EVENT_VISIBILITIES.map((visibility) => (
+                      <option key={visibility} value={visibility}>
+                        {visibility}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="sm:col-span-2 space-y-1">
+                  <label className="text-xs font-bold text-slate-500">Short Description</label>
+                  <textarea
+                    value={editForm.shortDescription}
+                    onChange={(e) => setEditForm((p) => ({ ...p, shortDescription: e.target.value }))}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 min-h-20"
+                  />
+                </div>
+                <div className="sm:col-span-2 space-y-1">
+                  <label className="text-xs font-bold text-slate-500">Registration Link</label>
+                  <input
+                    type="text"
+                    value={editForm.registrationLink}
+                    onChange={(e) => setEditForm((p) => ({ ...p, registrationLink: e.target.value }))}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
+                    placeholder="Optional (Google Forms, Unstop, registration URL)"
+                  />
+                  <div className="text-[11px] text-slate-400">Optional</div>
+                </div>
+                <div className="sm:col-span-2 space-y-1">
+                  <label className="text-xs font-bold text-slate-500">External Link</label>
+                  <input
+                    type="text"
+                    value={editForm.externalLink}
+                    onChange={(e) => setEditForm((p) => ({ ...p, externalLink: e.target.value }))}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
+                    placeholder="Optional (website, brochure, announcement, etc.)"
+                  />
+                  <div className="text-[11px] text-slate-400">Optional</div>
                 </div>
 
                 <div className="sm:col-span-2 space-y-1">

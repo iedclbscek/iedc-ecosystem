@@ -1,6 +1,16 @@
 import Event from "../models/Event.js";
 import Club from "../models/Club.js";
+import {
+  hasIedcScopePermission,
+  isSuperAdmin,
+} from "../utils/permissionHelpers.js";
 import { isAdmin } from "../middleware/requireAuth.js";
+
+const EVENT_STATUSES = new Set(["draft", "published", "completed", "cancelled"]);
+const EVENT_VISIBILITIES = new Set(["public", "private"]);
+const EVENT_SCOPES = new Set(["iedc", "club"]);
+const DEFAULT_EVENT_STATUS = "draft";
+const DEFAULT_EVENT_VISIBILITY = "public";
 
 const toDateOrUndefined = (value) => {
   if (value === null || value === undefined || value === "") return undefined;
@@ -10,6 +20,26 @@ const toDateOrUndefined = (value) => {
 };
 
 const normalize = (v) => String(v ?? "").trim();
+
+const normalizeStatus = (value) => {
+  const status = normalize(value);
+  return EVENT_STATUSES.has(status) ? status : undefined;
+};
+
+const normalizeVisibility = (value) => {
+  const visibility = normalize(value);
+  return EVENT_VISIBILITIES.has(visibility) ? visibility : undefined;
+};
+
+const normalizeScope = (value) => {
+  const scope = normalize(value);
+  return EVENT_SCOPES.has(scope) ? scope : undefined;
+};
+
+const normalizeId = (value) => {
+  const text = normalize(value);
+  return text || undefined;
+};
 
 const canAccessClub = (club, userId) => {
   const id = String(userId);
@@ -28,7 +58,7 @@ const ensureClubAccess = async ({ clubId, user }) => {
   if (!club) {
     return { status: 404, body: { message: "Club not found" } };
   }
-  if (isAdmin(user)) return { club };
+  if (isAdmin(user) || isSuperAdmin(user)) return { club };
   if (!canAccessClub(club, user.id)) {
     return { status: 403, body: { message: "Forbidden" } };
   }
@@ -39,7 +69,11 @@ const populateEvent = (query) =>
   query
     .populate("club", "name")
     .populate("coordinatorUsers", "name email membershipId role")
-    .populate("coordinatorUser", "name email membershipId role");
+    .populate("coordinatorUser", "name email membershipId role")
+    .populate("assignedTo", "name email membershipId role")
+    .populate("createdBy", "name email membershipId role")
+    .populate("updatedBy", "name email membershipId role")
+    .populate("publishedBy", "name email membershipId role");
 
 const buildSearchQuery = (search) => {
   const text = normalize(search);
@@ -52,6 +86,13 @@ const buildSearchQuery = (search) => {
   };
 };
 
+const publicEventFilter = {
+  $and: [
+    { $or: [{ status: { $exists: false } }, { status: "published" }] },
+    { $or: [{ visibility: { $exists: false } }, { visibility: "public" }] },
+  ],
+};
+
 const toCoordinatorIds = (value) => {
   if (value === undefined) return undefined;
   if (value === null) return [];
@@ -59,6 +100,37 @@ const toCoordinatorIds = (value) => {
   const text = normalize(value);
   if (!text) return [];
   return [text];
+};
+
+const parseEventWorkflow = (body) => {
+  const payload = body || {};
+  const legacyRegistrationLink = normalize(payload.registrationUrl);
+  const registrationLink = normalize(payload.registrationLink);
+  return {
+    scope: normalizeScope(payload.scope),
+    status: normalizeStatus(payload.status),
+    visibility: normalizeVisibility(payload.visibility),
+    shortDescription: normalize(payload.shortDescription),
+    location: normalize(payload.location),
+    venue: normalize(payload.venue),
+    mode: normalize(payload.mode),
+    posterUrl: normalize(payload.posterUrl),
+    posterPublicId: normalize(payload.posterPublicId),
+    registrationLink: registrationLink || legacyRegistrationLink,
+    externalLink: normalize(payload.externalLink),
+    assignedTo: normalizeId(payload.assignedTo),
+    startAt: toDateOrUndefined(payload.startAt ?? payload.startDate),
+    endAt: toDateOrUndefined(payload.endAt ?? payload.endDate),
+  };
+};
+
+const setPublishAudit = ({ event, currentStatus, nextStatus, userId }) => {
+  if (!userId) return;
+  if (nextStatus !== "published") return;
+  if (currentStatus === "published") return;
+
+  event.publishedBy = userId;
+  event.publishedAt = new Date();
 };
 
 // Legacy: list all accessible events (admin: all, member: their clubs)
@@ -69,7 +141,7 @@ export const listEvents = async (req, res) => {
 
     const searchQuery = buildSearchQuery(search);
 
-    if (isAdmin(req.user)) {
+    if (isAdmin(req.user) || isSuperAdmin(req.user)) {
       const query = {
         ...(clubId ? { club: clubId } : {}),
         ...searchQuery,
@@ -132,8 +204,78 @@ export const listClubEvents = async (req, res) => {
 
 // Legacy: create event (expects clubId in body)
 export const createEvent = async (req, res) => {
-  req.params.clubId = normalize(req.body?.clubId);
-  return createClubEvent(req, res);
+  try {
+    const workflow = parseEventWorkflow(req.body);
+    const requestedScope = workflow.scope || "iedc";
+    const clubId = normalize(req.body?.clubId);
+
+    if (requestedScope === "iedc" && !clubId) {
+      if (!hasIedcScopePermission(req.user, "events")) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const { title, description } = req.body;
+      const finalTitle = normalize(title);
+      if (!finalTitle) {
+        return res.status(400).json({ message: "title is required" });
+      }
+
+      const coordinatorUserIds = toCoordinatorIds(req.body?.coordinatorUserIds);
+      const actorId = normalizeId(req.user?.id);
+      const eventData = {
+        scope: "iedc",
+        title: finalTitle,
+        description: normalize(description) || undefined,
+        location: workflow.location || workflow.venue || undefined,
+        venue: workflow.venue || workflow.location || undefined,
+        startAt: workflow.startAt,
+        endAt: workflow.endAt,
+        status: workflow.status || DEFAULT_EVENT_STATUS,
+        visibility: workflow.visibility || DEFAULT_EVENT_VISIBILITY,
+        shortDescription: workflow.shortDescription,
+        mode: workflow.mode,
+        posterUrl: workflow.posterUrl,
+        posterPublicId: workflow.posterPublicId,
+        registrationUrl: workflow.registrationLink,
+        registrationLink: workflow.registrationLink,
+        externalLink: workflow.externalLink,
+        assignedTo: workflow.assignedTo,
+        coordinatorUsers: coordinatorUserIds || [],
+        coordinatorUser: normalizeId(req.body?.coordinatorUserId),
+        createdBy: actorId || undefined,
+        updatedBy: actorId || undefined,
+      };
+
+      if (eventData.status === "published") {
+        setPublishAudit({
+          event: eventData,
+          currentStatus: undefined,
+          nextStatus: eventData.status,
+          userId: actorId,
+        });
+      }
+
+      const event = await Event.create(eventData);
+      const populated = await populateEvent(Event.findById(event._id));
+      return res.status(201).json({ event: populated });
+    }
+
+    if (requestedScope === "iedc" && clubId) {
+      return res
+        .status(400)
+        .json({ message: "clubId is not allowed for iedc events" });
+    }
+
+    req.params.clubId = clubId;
+    if (!req.params.clubId) {
+      return res.status(400).json({ message: "clubId is required" });
+    }
+    return createClubEvent(req, res);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "Failed to create event", error: error.message });
+  }
 };
 
 export const createClubEvent = async (req, res) => {
@@ -144,23 +286,52 @@ export const createClubEvent = async (req, res) => {
     const access = await ensureClubAccess({ clubId, user: req.user });
     if (access.status) return res.status(access.status).json(access.body);
 
-    const { title, description, location, startAt, endAt } = req.body;
+    const workflow = parseEventWorkflow(req.body);
+    const { title, description, coordinatorUserIds = req.body?.coordinatorUserIds } =
+      req.body;
 
     const finalTitle = normalize(title);
     if (!finalTitle)
       return res.status(400).json({ message: "title is required" });
 
-    const coordinatorUserIds = toCoordinatorIds(req.body?.coordinatorUserIds);
+    const finalCoordinatorUserIds = toCoordinatorIds(coordinatorUserIds);
+    const actorId = normalizeId(req.user?.id);
+      const eventData = {
+        club: clubId,
+        scope: "club",
+        title: finalTitle,
+        description: normalize(description) || undefined,
+        shortDescription: workflow.shortDescription,
+        venue: workflow.venue || workflow.location || undefined,
+        location: workflow.location || workflow.venue || undefined,
+        mode: workflow.mode || undefined,
+        startAt: workflow.startAt,
+        endAt: workflow.endAt,
+        status: workflow.status || DEFAULT_EVENT_STATUS,
+        visibility: workflow.visibility || DEFAULT_EVENT_VISIBILITY,
+        posterUrl: workflow.posterUrl,
+        posterPublicId: workflow.posterPublicId,
+        registrationUrl: workflow.registrationLink,
+        registrationLink: workflow.registrationLink,
+        externalLink: workflow.externalLink,
+        assignedTo: workflow.assignedTo,
+        coordinatorUsers: finalCoordinatorUserIds || [],
+      coordinatorUser: normalize(req.body?.coordinatorUserId) || undefined,
+      createdBy: actorId || undefined,
+      updatedBy: actorId || undefined,
+    };
+
+    if (workflow.status === "published") {
+      setPublishAudit({
+        event: eventData,
+        currentStatus: undefined,
+        nextStatus: workflow.status,
+        userId: actorId,
+      });
+    }
 
     const event = await Event.create({
-      club: clubId,
-      title: finalTitle,
-      description: normalize(description) || undefined,
-      location: normalize(location) || undefined,
-      startAt: toDateOrUndefined(startAt),
-      endAt: toDateOrUndefined(endAt),
-      coordinatorUsers: coordinatorUserIds || [],
-      coordinatorUser: normalize(req.body?.coordinatorUserId) || undefined,
+      ...eventData,
     });
 
     const populated = await populateEvent(Event.findById(event._id));
@@ -181,7 +352,7 @@ export const updateEvent = async (req, res) => {
     if (clubId) {
       const access = await ensureClubAccess({ clubId, user: req.user });
       if (access.status) return res.status(access.status).json(access.body);
-    } else if (!isAdmin(req.user)) {
+    } else if (!hasIedcScopePermission(req.user, "events")) {
       return res.status(403).json({ message: "Forbidden" });
     }
 
@@ -214,6 +385,10 @@ export const updateClubEvent = async (req, res) => {
 
 const updateEventCommon = async (req, res, event) => {
   const { title, description, location, startAt, endAt } = req.body;
+  const workflow = parseEventWorkflow(req.body);
+  const actorId = normalizeId(req.user?.id);
+  const previousStatus = event.status;
+  const isClubEvent = Boolean(event?.club);
 
   if (title !== undefined) {
     const finalTitle = normalize(title);
@@ -224,10 +399,57 @@ const updateEventCommon = async (req, res, event) => {
 
   if (description !== undefined)
     event.description = normalize(description) || undefined;
-  if (location !== undefined) event.location = normalize(location) || undefined;
+  if (location !== undefined || workflow.location !== undefined) {
+    const effectiveLocation =
+      workflow.location !== undefined ? workflow.location : normalize(location);
+    event.location = effectiveLocation || undefined;
+  }
 
+  if (workflow.scope !== undefined) {
+    if (isClubEvent && workflow.scope !== "club") {
+      return res
+        .status(400)
+        .json({ message: "Cannot change scope for club-scoped events." });
+    }
+    if (!isClubEvent && workflow.scope !== "iedc") {
+      return res
+        .status(400)
+        .json({ message: "Cannot change scope for IEDC events." });
+    }
+    event.scope = workflow.scope;
+  }
+
+  if (workflow.status !== undefined) {
+    event.status = workflow.status;
+    setPublishAudit({
+      event,
+      currentStatus: previousStatus,
+      nextStatus: workflow.status,
+      userId: actorId,
+    });
+  }
+
+  if (workflow.visibility !== undefined) event.visibility = workflow.visibility;
+  if (workflow.shortDescription !== undefined)
+    event.shortDescription = workflow.shortDescription || undefined;
+  if (workflow.venue !== undefined) event.venue = workflow.venue || undefined;
+  if (workflow.mode !== undefined) event.mode = workflow.mode || undefined;
+  if (workflow.posterUrl !== undefined) event.posterUrl = workflow.posterUrl || undefined;
+  if (workflow.posterPublicId !== undefined)
+    event.posterPublicId = workflow.posterPublicId || undefined;
+  if (workflow.registrationLink !== undefined) {
+    event.registrationLink = workflow.registrationLink || undefined;
+    event.registrationUrl = workflow.registrationLink || undefined;
+  }
+  if (workflow.externalLink !== undefined)
+    event.externalLink = workflow.externalLink || undefined;
+  if (workflow.assignedTo !== undefined) event.assignedTo = workflow.assignedTo;
+
+  if (workflow.startAt !== undefined) event.startAt = workflow.startAt;
+  if (workflow.endAt !== undefined) event.endAt = workflow.endAt;
   if (startAt !== undefined) event.startAt = toDateOrUndefined(startAt);
   if (endAt !== undefined) event.endAt = toDateOrUndefined(endAt);
+  if (actorId) event.updatedBy = actorId;
 
   const coordinatorUserIds = toCoordinatorIds(req.body?.coordinatorUserIds);
   if (coordinatorUserIds !== undefined) {
@@ -254,7 +476,7 @@ export const deleteEvent = async (req, res) => {
         user: req.user,
       });
       if (access.status) return res.status(access.status).json(access.body);
-    } else if (!isAdmin(req.user)) {
+    } else if (!hasIedcScopePermission(req.user, "events")) {
       return res.status(403).json({ message: "Forbidden" });
     }
 
@@ -290,7 +512,7 @@ export const deleteClubEvent = async (req, res) => {
 // Public: list all events for main website
 export const listPublicEvents = async (req, res) => {
   try {
-    const events = await Event.find({})
+    const events = await Event.find(publicEventFilter)
       .populate("club", "name")
       .sort({ startAt: -1, createdAt: -1 })
       .lean();
@@ -307,6 +529,7 @@ export const listPublicEvents = async (req, res) => {
 export const getPublicEventById = async (req, res) => {
   try {
     const event = await Event.findById(req.params.id)
+      .where(publicEventFilter)
       .populate("club", "name")
       .lean();
 
