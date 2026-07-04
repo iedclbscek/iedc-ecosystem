@@ -6,11 +6,113 @@ import Club from "../models/Club.js";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { v2 as cloudinary } from "cloudinary";
 import { sendMail } from "../utils/mailer.js";
 import { renderTemplate } from "../utils/templateRenderer.js";
 import { hasPermission } from "../middleware/requireAuth.js";
 import { upsertSystemTemplate } from "./emailTemplateController.js";
 import WebsiteTeamEntry from "../models/WebsiteTeamEntry.js";
+import { extractCloudinaryPublicIdFromUrl } from "../utils/cloudinaryHelpers.js";
+
+// Configure Cloudinary (reads from env)
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+const getMissingCloudinaryVars = () => {
+  const missing = [];
+  if (!process.env.CLOUDINARY_CLOUD_NAME) missing.push("CLOUDINARY_CLOUD_NAME");
+  if (!process.env.CLOUDINARY_API_KEY) missing.push("CLOUDINARY_API_KEY");
+  if (!process.env.CLOUDINARY_API_SECRET) missing.push("CLOUDINARY_API_SECRET");
+  return missing;
+};
+
+const assertCloudinaryConfigured = () => {
+  const missingCloudinaryVars = getMissingCloudinaryVars();
+  if (missingCloudinaryVars.length > 0) {
+    throw new Error(
+      `Cloudinary not configured. Missing: ${missingCloudinaryVars.join(", ")}`,
+    );
+  }
+
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+  });
+};
+
+const parseCloudinaryPublicIdFromUrl = (rawUrl) =>
+  extractCloudinaryPublicIdFromUrl(
+    rawUrl,
+    String(process.env.CLOUDINARY_CLOUD_NAME || "").trim(),
+  );
+
+const isCloudinaryPublicId = (value) => {
+  const trimmed = String(value || "").trim();
+  return Boolean(trimmed) && !/^https?:\/\//i.test(trimmed);
+};
+
+const cleanupCloudinaryImage = async (oldImagePublicId, newImagePublicId, entryId) => {
+  const normalizedOldImagePublicId = String(oldImagePublicId || "").trim();
+  const normalizedNewImagePublicId = String(newImagePublicId || "").trim();
+  const skipReasons = [];
+
+  if (!isCloudinaryPublicId(normalizedOldImagePublicId)) {
+    skipReasons.push("oldImagePublicId missing or not a Cloudinary public id");
+  }
+
+  if (!isCloudinaryPublicId(normalizedNewImagePublicId)) {
+    skipReasons.push("newImagePublicId missing or not a Cloudinary public id");
+  }
+
+  if (
+    !skipReasons.length &&
+    normalizedOldImagePublicId === normalizedNewImagePublicId
+  ) {
+    skipReasons.push("newImagePublicId matches oldImagePublicId");
+  }
+
+  if (skipReasons.length > 0) {
+    console.log(
+      "Team image cleanup skipped:",
+      JSON.stringify({
+        entryId: String(entryId || ""),
+        oldImagePublicId: normalizedOldImagePublicId || null,
+        newImagePublicId: normalizedNewImagePublicId || null,
+        reasons: skipReasons,
+      }),
+    );
+    return;
+  }
+
+  try {
+    const destroyResult = await cloudinary.uploader.destroy(
+      normalizedOldImagePublicId,
+    );
+    console.log(
+      "Team image cleanup result:",
+      JSON.stringify({
+        entryId: String(entryId || ""),
+        oldImagePublicId: normalizedOldImagePublicId,
+        newImagePublicId: normalizedNewImagePublicId,
+        destroyResult: destroyResult?.result || "unknown",
+      }),
+    );
+  } catch (error) {
+    console.warn(
+      "Team image cleanup failed:",
+      JSON.stringify({
+        entryId: String(entryId || ""),
+        oldImagePublicId: normalizedOldImagePublicId,
+        newImagePublicId: normalizedNewImagePublicId,
+        error: error?.message,
+      }),
+    );
+  }
+};
 
 const normalize = (v) =>
   String(v ?? "")
@@ -310,6 +412,7 @@ export const createWebsiteTeamEntry = async (req, res) => {
       req.body?.customMembershipId ?? "",
     ).trim();
     const imageUrl = String(req.body?.imageUrl ?? "").trim();
+    const imagePublicId = String(req.body?.imagePublicId ?? "").trim();
     const linkedin = String(req.body?.linkedin ?? "").trim();
     const github = String(req.body?.github ?? "").trim();
     const twitter = String(req.body?.twitter ?? "").trim();
@@ -360,6 +463,7 @@ export const createWebsiteTeamEntry = async (req, res) => {
       customMembershipId:
         entryType === "custom" ? customMembershipId || undefined : undefined,
       imageUrl: imageUrl || undefined,
+      imagePublicId: imagePublicId || undefined,
       linkedin: linkedin || undefined,
       github: github || undefined,
       twitter: twitter || undefined,
@@ -400,6 +504,8 @@ export const updateWebsiteTeamEntry = async (req, res) => {
     const entry = await WebsiteTeamEntry.findById(id);
     if (!entry) return res.status(404).json({ message: "Entry not found" });
 
+    const oldImagePublicId = entry.imagePublicId;
+
     if (req.body?.year !== undefined)
       entry.year = String(req.body.year ?? "").trim();
     if (req.body?.visible !== undefined)
@@ -423,6 +529,12 @@ export const updateWebsiteTeamEntry = async (req, res) => {
     if (req.body?.imageUrl !== undefined) {
       const v = String(req.body.imageUrl ?? "").trim();
       entry.imageUrl = v || undefined;
+
+      const incomingImagePublicId = String(req.body?.imagePublicId ?? "").trim();
+      entry.imagePublicId =
+        incomingImagePublicId ||
+        parseCloudinaryPublicIdFromUrl(v) ||
+        (v ? entry.imagePublicId : undefined);
     }
     if (req.body?.linkedin !== undefined) {
       const v = String(req.body.linkedin ?? "").trim();
@@ -438,6 +550,12 @@ export const updateWebsiteTeamEntry = async (req, res) => {
     }
 
     await entry.save();
+    await cleanupCloudinaryImage(
+      oldImagePublicId,
+      entry.imagePublicId,
+      entry._id,
+    );
+
     await entry.populate(
       "userRef",
       "name email membershipId role portalAccessEnabled",
@@ -676,19 +794,18 @@ export const reorderWebsiteTeamEntries = async (req, res) => {
   }
 };
 
-export const uploadFreeImage = async (req, res) => {
+export const uploadCloudinaryImage = async (req, res) => {
   try {
     if (!hasPermission(req.user, "users")) {
       return res.status(403).json({ message: "Forbidden" });
     }
 
-    const apiKey = String(
-      process.env.FREEIMAGE_API_KEY || process.env.VITE_FREEIMAGE_API_KEY || "",
-    ).trim();
-    if (!apiKey) {
+    try {
+      assertCloudinaryConfigured();
+    } catch (error) {
       return res
         .status(500)
-        .json({ message: "Image upload key not configured" });
+        .json({ message: error.message || "Cloudinary not configured" });
     }
 
     const source = String(req.body?.source ?? "").trim();
@@ -698,25 +815,24 @@ export const uploadFreeImage = async (req, res) => {
         .json({ message: "source is required (base64 string)" });
     }
 
-    const form = new URLSearchParams();
-    form.append("key", apiKey);
-    form.append("action", "upload");
-    form.append("source", source);
-    form.append("format", "json");
+    // Prepend data URI header if missing so Cloudinary accepts the base64
+    const dataUri = source.startsWith("data:")
+      ? source
+      : `data:image/jpeg;base64,${source}`;
 
-    const response = await fetch("https://freeimage.host/api/1/upload", {
-      method: "POST",
-      body: form,
+    const result = await cloudinary.uploader.upload(dataUri, {
+      folder: "execom",
+      transformation: [
+        { width: 800, height: 800, crop: "fill", gravity: "face" },
+        { fetch_format: "auto", quality: "auto" },
+      ],
     });
 
-    const result = await response.json();
-    if (!response.ok || !result?.image?.url) {
-      const status =
-        result?.status_txt || result?.error?.message || "Upload failed";
-      return res.status(502).json({ message: status });
-    }
-
-    return res.json({ url: result.image.url, response: result });
+    return res.json({
+      url: result.secure_url,
+      publicId: result.public_id,
+      response: result,
+    });
   } catch (error) {
     return res
       .status(500)
@@ -725,34 +841,26 @@ export const uploadFreeImage = async (req, res) => {
 };
 
 const uploadImageFromBase64 = async (source) => {
-  const apiKey = String(
-    process.env.FREEIMAGE_API_KEY || process.env.VITE_FREEIMAGE_API_KEY || "",
-  ).trim();
-  if (!apiKey) {
-    throw new Error("Image upload key not configured");
-  }
+  assertCloudinaryConfigured();
 
-  const form = new URLSearchParams();
-  form.append("key", apiKey);
-  form.append("action", "upload");
-  form.append("source", source);
-  form.append("format", "json");
+  // Prepend data URI header if missing so Cloudinary accepts the base64
+  const dataUri = source.startsWith("data:")
+    ? source
+    : `data:image/jpeg;base64,${source}`;
 
-  const response = await fetch("https://freeimage.host/api/1/upload", {
-    method: "POST",
-    body: form,
+  const result = await cloudinary.uploader.upload(dataUri, {
+    folder: "execom",
+    transformation: [
+      { width: 800, height: 800, crop: "fill", gravity: "face" },
+      { fetch_format: "auto", quality: "auto" },
+    ],
   });
 
-  const result = await response.json();
-  if (!response.ok || !result?.image?.url) {
-    const status =
-      result?.status_txt || result?.error?.message || "Upload failed";
-    const err = new Error(status);
-    err.statusCode = 502;
-    throw err;
-  }
-
-  return { url: result.image.url, response: result };
+  return {
+    url: result.secure_url,
+    publicId: result.public_id,
+    response: result,
+  };
 };
 
 export const getWebsiteTeamEntrySelf = async (req, res) => {
@@ -800,6 +908,7 @@ export const updateWebsiteTeamEntrySelf = async (req, res) => {
       "name email membershipId",
     );
     if (!entry) return res.status(404).json({ message: "Entry not found" });
+    const oldImagePublicId = entry.imagePublicId;
 
     const next = {
       linkedin: req.body?.linkedin,
@@ -820,11 +929,17 @@ export const updateWebsiteTeamEntrySelf = async (req, res) => {
     if (imageBase64) {
       const uploaded = await uploadImageFromBase64(imageBase64);
       entry.imageUrl = uploaded.url;
+      entry.imagePublicId = uploaded.publicId;
     } else if (next.imageUrl !== undefined) {
       entry.imageUrl = String(next.imageUrl || "").trim() || undefined;
     }
 
     await entry.save();
+    await cleanupCloudinaryImage(
+      oldImagePublicId,
+      entry.imagePublicId,
+      entry._id,
+    );
 
     return res.json({
       entry: {

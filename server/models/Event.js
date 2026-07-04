@@ -3,6 +3,24 @@ import mongoose from "mongoose";
 const eventSchema = new mongoose.Schema(
   {
     club: { type: mongoose.Schema.Types.ObjectId, ref: "Club" },
+    scope: {
+      type: String,
+      trim: true,
+      enum: ["iedc", "club"],
+      default: "club",
+    },
+    status: {
+      type: String,
+      trim: true,
+      enum: ["draft", "published", "completed", "cancelled"],
+      default: "published",
+    },
+    visibility: {
+      type: String,
+      trim: true,
+      enum: ["public", "private"],
+      default: "public",
+    },
     title: { type: String, required: true, trim: true },
     description: { type: String, trim: true },
     location: { type: String, trim: true },

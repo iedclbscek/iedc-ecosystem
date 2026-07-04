@@ -1,0 +1,23 @@
+export const PORTAL_ROLES = Object.freeze({
+  SUPER_ADMIN: "super_admin",
+  IEDC_EXECOM: "iedc_execom",
+  CLUB_LEAD: "club_lead",
+  CLUB_MEMBER: "club_member",
+});
+
+export const LEGACY_ADMIN_ROLE = "admin";
+
+export const ROLE_SETS = {
+  SUPER_SCOPE: [PORTAL_ROLES.SUPER_ADMIN, LEGACY_ADMIN_ROLE],
+  IEDC_SCOPE: [
+    PORTAL_ROLES.SUPER_ADMIN,
+    PORTAL_ROLES.IEDC_EXECOM,
+    LEGACY_ADMIN_ROLE,
+  ],
+  CLUB_SCOPE: [
+    PORTAL_ROLES.SUPER_ADMIN,
+    PORTAL_ROLES.CLUB_LEAD,
+    PORTAL_ROLES.CLUB_MEMBER,
+    LEGACY_ADMIN_ROLE,
+  ],
+};

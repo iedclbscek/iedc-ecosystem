@@ -228,8 +228,8 @@ export const updateWebsiteTeamEntry = async ({
   return data; // { entry }
 };
 
-export const uploadFreeImage = async ({ source }) => {
-  const { data } = await api.post("/admin/uploads/freeimage", { source });
+export const uploadCloudinaryImage = async ({ source }) => {
+  const { data } = await api.post("/admin/uploads/cloudinary", { source });
   return data; // { url, response }
 };
 

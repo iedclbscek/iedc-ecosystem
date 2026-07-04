@@ -24,6 +24,7 @@ const websiteTeamEntrySchema = new mongoose.Schema(
     customEmail: { type: String, trim: true },
     customMembershipId: { type: String, trim: true },
     imageUrl: { type: String, trim: true },
+    imagePublicId: { type: String, trim: true },
     linkedin: { type: String, trim: true },
     github: { type: String, trim: true },
     twitter: { type: String, trim: true },

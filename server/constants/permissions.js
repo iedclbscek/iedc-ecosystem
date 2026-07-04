@@ -1,0 +1,24 @@
+export const PERMISSIONS = Object.freeze({
+  DASHBOARD: "dashboard",
+  REGISTRATIONS: "registrations",
+  EVENTS: "events",
+  USERS: "users",
+  MAILER: "mailer",
+  SETTINGS: "settings",
+  MAKERSPACE: "makerspace",
+});
+
+export const SCOPED_PERMISSIONS = Object.freeze({
+  IEDC: {
+    DASHBOARD: PERMISSIONS.DASHBOARD,
+    EVENTS: PERMISSIONS.EVENTS,
+    USERS: PERMISSIONS.USERS,
+    REGISTRATIONS: PERMISSIONS.REGISTRATIONS,
+    SETTINGS: PERMISSIONS.SETTINGS,
+    MAILER: PERMISSIONS.MAILER,
+  },
+  CLUB: {
+    EVENTS: PERMISSIONS.EVENTS,
+    USERS: PERMISSIONS.USERS,
+  },
+});

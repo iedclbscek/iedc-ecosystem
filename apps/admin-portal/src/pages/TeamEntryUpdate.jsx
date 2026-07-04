@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -29,6 +29,7 @@ export default function TeamEntryUpdate() {
   const [cropper, setCropper] = useState(null);
   const [cropSrc, setCropSrc] = useState(null);
   const [cropState, setCropState] = useState(undefined);
+  const cropImageRef = useRef(null);
 
   const entryQuery = useQuery({
     queryKey: ['teamEntrySelf', token],
@@ -69,7 +70,11 @@ export default function TeamEntryUpdate() {
       }
     },
     onError: (e) => {
-      toast.error(e?.response?.data?.message || 'Failed to update');
+      const msg =
+        e?.response?.data?.message ||
+        e?.response?.data?.error ||
+        'Failed to update';
+      toast.error(msg);
     },
   });
 
@@ -113,19 +118,29 @@ export default function TeamEntryUpdate() {
     if (!cropper || !cropSrc || !cropState) return;
     try {
       setIsUploading(true);
+      const displayedImg = cropImageRef.current;
+      if (!displayedImg) {
+        toast.error('Crop image is not ready. Please reopen and try again.');
+        setIsUploading(false);
+        return;
+      }
 
       // Create a fresh image element and load from data URL
       const freshImage = new Image();
       freshImage.onload = async () => {
         try {
           const { x, y, width, height } = cropState;
-          
+
+          const displayedWidth = displayedImg.width;
+          const displayedHeight = displayedImg.height;
+
+          if (!displayedWidth || !displayedHeight) {
+            throw new Error('Could not measure displayed crop image');
+          }
+
           // Get the scale between the displayed image and natural image
-          const displayedImg = document.querySelector('.ReactCrop img');
-          if (!displayedImg) throw new Error('Could not find image element');
-          
-          const scaleX = freshImage.naturalWidth / displayedImg.width;
-          const scaleY = freshImage.naturalHeight / displayedImg.height;
+          const scaleX = freshImage.naturalWidth / displayedWidth;
+          const scaleY = freshImage.naturalHeight / displayedHeight;
           
           // Scale crop coordinates to natural image size
           const pixelX = x * scaleX;
@@ -145,6 +160,10 @@ export default function TeamEntryUpdate() {
           canvas.height = targetSize;
           const ctx = canvas.getContext('2d');
           if (!ctx) throw new Error('Failed to get canvas context');
+
+          if (!Number.isFinite(pixelX) || !Number.isFinite(pixelY) || !Number.isFinite(pixelWidth) || !Number.isFinite(pixelHeight)) {
+            throw new Error('Failed to compute crop pixels');
+          }
 
           ctx.drawImage(
             freshImage,
@@ -169,11 +188,15 @@ export default function TeamEntryUpdate() {
             );
           });
 
+          if (!blob) {
+            throw new Error('Failed to generate image blob');
+          }
+
           const reader = new FileReader();
           reader.onload = async () => {
             const base64 = typeof reader.result === 'string' ? reader.result.split(',')[1] : '';
             if (!base64) {
-              toast.error('Failed to process image');
+              toast.error('Failed to read cropped image');
               setIsUploading(false);
               return;
             }
@@ -185,6 +208,7 @@ export default function TeamEntryUpdate() {
               toast.success('Photo cropped and ready');
               setCropper(null);
               setCropSrc(null);
+              cropImageRef.current = null;
             } catch (err) {
               toast.error(err?.message || 'Failed to process image');
             } finally {
@@ -192,7 +216,7 @@ export default function TeamEntryUpdate() {
             }
           };
           reader.onerror = () => {
-            toast.error('Failed to read image');
+            toast.error('Failed to read image blob');
             setIsUploading(false);
           };
           reader.readAsDataURL(blob);
@@ -390,24 +414,28 @@ export default function TeamEntryUpdate() {
                 onClick={() => {
                   setCropper(null);
                   setCropSrc(null);
+                  cropImageRef.current = null;
                 }}
               >
                 ✕
               </button>
             </div>
             <div className="p-5">
-              <ReactCrop
-                crop={cropState}
-                onChange={setCropState}
-                aspect={1}
-                circularCrop={false}
-              >
-                <img
-                  src={cropSrc}
-                  onLoad={onCropImageLoaded}
-                  style={{ maxWidth: '100%', maxHeight: '400px' }}
-                />
-              </ReactCrop>
+                <ReactCrop
+                  crop={cropState}
+                  onChange={setCropState}
+                  aspect={1}
+                  circularCrop={false}
+                >
+                  <img
+                    src={cropSrc}
+                    onLoad={(e) => {
+                      cropImageRef.current = e.currentTarget;
+                      onCropImageLoaded(e);
+                    }}
+                    style={{ maxWidth: '100%', maxHeight: '400px' }}
+                  />
+                </ReactCrop>
             </div>
             <div className="p-5 border-t border-slate-100 flex items-center justify-end gap-2">
               <button
@@ -416,6 +444,7 @@ export default function TeamEntryUpdate() {
                 onClick={() => {
                   setCropper(null);
                   setCropSrc(null);
+                  cropImageRef.current = null;
                 }}
               >
                 Cancel

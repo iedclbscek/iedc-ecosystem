@@ -24,7 +24,7 @@ import {
   updateWebsiteTeamEntry,
   deleteWebsiteTeamEntry,
   reorderWebsiteTeamEntries,
-  uploadFreeImage,
+  uploadCloudinaryImage,
   requestWebsiteTeamUpdateEmail,
 } from "../controllers/teamController.js";
 import { requireAuth } from "../middleware/requireAuth.js";
@@ -572,8 +572,8 @@ router.delete("/team/entries/:id", deleteWebsiteTeamEntry);
  */
 router.post("/team/entries/reorder", reorderWebsiteTeamEntries);
 
-// Media uploads (proxy to freeimage.host)
-router.post("/uploads/freeimage", uploadFreeImage);
+// Media uploads (Cloudinary for execom photos)
+router.post("/uploads/cloudinary", uploadCloudinaryImage);
 
 // Club-scoped portal members (club leads)
 /**

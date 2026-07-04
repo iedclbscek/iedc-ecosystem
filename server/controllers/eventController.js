@@ -286,3 +286,40 @@ export const deleteClubEvent = async (req, res) => {
       .json({ message: "Failed to delete event", error: error.message });
   }
 };
+
+// Public: list all events for main website
+export const listPublicEvents = async (req, res) => {
+  try {
+    const events = await Event.find({})
+      .populate("club", "name")
+      .sort({ startAt: -1, createdAt: -1 })
+      .lean();
+
+    return res.json({ success: true, events });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch events" });
+  }
+};
+
+// Public: get one event by id for main website
+export const getPublicEventById = async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.id)
+      .populate("club", "name")
+      .lean();
+
+    if (!event) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Event not found" });
+    }
+
+    return res.json({ success: true, event });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch event" });
+  }
+};

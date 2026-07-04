@@ -19,7 +19,7 @@ import {
   fetchWebsiteTeamYears,
   reorderWebsiteTeamEntries,
   updateWebsiteTeamEntry,
-  uploadFreeImage,
+  uploadCloudinaryImage,
   sendWebsiteTeamUpdateEmail,
 } from '../api/adminService';
 
@@ -425,7 +425,7 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
       const base64 = await blobToBase64(blob);
       console.log('Base64 created, length:', base64.length);
       
-      const { url } = await uploadFreeImage({ source: base64 });
+      const { url } = await uploadCloudinaryImage({ source: base64 });
       console.log('Upload successful, URL:', url);
       
       setEditForm((prev) => ({ ...prev, imageUrl: url }));
@@ -694,7 +694,7 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
                   </label>
                 </div>
                 <div className="text-xs text-slate-500">
-                  Upload is proxied through the server (freeimage.host). No browser CORS issues.
+                  Upload is proxied through the server (Cloudinary). No browser CORS issues.
                 </div>
               </div>
 

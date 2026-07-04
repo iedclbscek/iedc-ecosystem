@@ -19,6 +19,21 @@ const EventsPage = () => {
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState(['All']);
 
+  const normalizeEvent = (event) => {
+    const start = event?.startAt || event?.startDate || event?.date || event?.createdAt;
+    const end = event?.endAt || event?.endDate || start;
+
+    return {
+      ...event,
+      date: start,
+      endDate: end,
+      category: event?.category || event?.club?.name || 'IEDC',
+      location: event?.location || 'TBA',
+      image: event?.image || null,
+      fullDescription: event?.fullDescription || event?.description || '',
+    };
+  };
+
   // --- 1. Data Fetching (Kept logic same, just structure) ---
   useEffect(() => {
     const fetchEvents = async () => {
@@ -32,11 +47,11 @@ const EventsPage = () => {
 
         let fetchedEvents = [];
         if (response.data && response.data.success) {
-          fetchedEvents = response.data.events;
+          fetchedEvents = Array.isArray(response.data.events)
+            ? response.data.events.map(normalizeEvent)
+            : [];
         } else {
-            // Fallback to manual data if API fails (Optional: Remove in prod)
-            // You can import your local data here if needed
-            fetchedEvents = []; 
+            fetchedEvents = [];
         }
 
         setEvents(fetchedEvents);
@@ -217,7 +232,7 @@ const EventsPage = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 opacity-75 hover:opacity-100 transition-opacity duration-500">
               {pastEvents.map((event) => (
                 <div 
-                  key={event.title}
+                  key={event._id || event.title}
                   onClick={() => openEventDetail(event)}
                   className="group flex items-center bg-white border border-gray-200 p-4 hover:border-text-dark cursor-pointer transition-all"
                 >
