@@ -540,7 +540,7 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
         ) : null}
         {years.length === 0 ? (
           <div className="text-sm text-slate-500">
-            No years yet. Use “Add to year” to create the first year.
+            No years yet. Use "Add to year" to create the first year.
           </div>
         ) : null}
       </div>
@@ -1039,3 +1039,4 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
     </div>
   );
 }
+

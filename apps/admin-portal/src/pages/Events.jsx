@@ -39,20 +39,27 @@ const toIsoOrEmpty = (value) => {
 };
 
 const displayDate = (value) => {
-  if (!value) return 'â€”';
+  if (!value) return '—';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'â€”';
+  if (Number.isNaN(date.getTime())) return '—';
   return date.toLocaleString();
 };
 
 const normalize = (v) => String(v ?? '').trim();
+const pluralizeCount = (count, singular, plural) => {
+  const n = Number(count || 0);
+  const suffix = n === 1 ? singular : (plural || `${singular}s`);
+  return `${n} ${suffix}`;
+};
+
+const separator = ' · ';
 
 const EVENT_STATUSES = ["draft", "published", "completed", "cancelled"];
 const EVENT_VISIBILITIES = ["public", "private"];
 
 const userLabel = (user) => {
   const name = user?.name || user?.membershipId || 'Member';
-  const meta = [user?.membershipId, user?.email].filter(Boolean).join(' â€¢ ');
+  const meta = [user?.membershipId, user?.email].filter(Boolean).join(separator);
   return { name, meta };
 };
 
@@ -62,7 +69,26 @@ const toggleFromArray = (arr, value) => {
   return list.includes(id) ? list.filter((v) => v !== id) : [...list, id];
 };
 
-function MultiSelectUsers({ users, selectedIds, onToggle, disabled }) {
+const matchesUserSearch = (user, query) => {
+  const search = normalize(query).toLowerCase();
+  if (!search) return true;
+
+  return [user?.name, user?.email, user?.membershipId]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(search));
+};
+
+function MultiSelectUsers({
+  users,
+  selectedIds,
+  onToggle,
+  disabled,
+  searchEnabled = false,
+  searchPlaceholder = 'Search users...',
+  emptyMessage = 'No users found',
+}) {
+  const [searchQuery, setSearchQuery] = useState('');
+
   const options = (Array.isArray(users) ? users : [])
     .map((u) => ({
       id: u?._id,
@@ -70,30 +96,51 @@ function MultiSelectUsers({ users, selectedIds, onToggle, disabled }) {
     }))
     .filter((u) => Boolean(u.id));
 
+  const filteredOptions = options.filter((u) => matchesUserSearch(u, searchQuery));
+
   if (options.length === 0) {
     return <div className="text-sm text-slate-500">No users found.</div>;
   }
 
   return (
     <div className={`max-h-56 overflow-auto rounded-xl border border-slate-200 bg-white ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>
-      {options.map((u) => (
-        <label
-          key={u.id}
-          className="flex items-start gap-3 px-4 py-2 hover:bg-slate-50 cursor-pointer"
-        >
-          <input
-            type="checkbox"
-            className="mt-1"
-            checked={Array.isArray(selectedIds) && selectedIds.includes(u.id)}
-            disabled={Boolean(disabled)}
-            onChange={() => onToggle(u.id)}
-          />
-          <div>
-            <div className="text-sm font-semibold text-slate-900">{u.name}</div>
-            {u.meta ? <div className="text-xs text-slate-500">{u.meta}</div> : null}
+      {searchEnabled ? (
+        <div className="border-b border-slate-200 p-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-3 text-slate-400" size={16} />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={searchPlaceholder}
+              className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg bg-white text-sm outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
+            />
           </div>
-        </label>
-      ))}
+        </div>
+      ) : null}
+
+      {filteredOptions.length === 0 ? (
+        <div className="p-3 text-sm text-slate-500">{emptyMessage}</div>
+      ) : (
+        filteredOptions.map((u) => (
+          <label
+            key={u.id}
+            className="flex items-start gap-3 px-4 py-2 hover:bg-slate-50 cursor-pointer"
+          >
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={Array.isArray(selectedIds) && selectedIds.includes(u.id)}
+              disabled={Boolean(disabled)}
+              onChange={() => onToggle(u.id)}
+            />
+            <div>
+              <div className="text-sm font-semibold text-slate-900">{u.name}</div>
+              {u.meta ? <div className="text-xs text-slate-500">{u.meta}</div> : null}
+            </div>
+          </label>
+        ))
+      )}
     </div>
   );
 }
@@ -140,8 +187,8 @@ function RegistrationSearch({ query, onQueryChange, selectedIds, onToggleId, dis
                 const id = String(s?._id || '');
                 if (!id) return null;
                 const checked = Array.isArray(selectedIds) && selectedIds.includes(id);
-                const name = `${s?.firstName ?? ''} ${s?.lastName ?? ''}`.trim() || 'â€”';
-                const meta = [s?.membershipId, s?.email].filter(Boolean).join(' â€¢ ');
+                const name = `${s?.firstName ?? ''} ${s?.lastName ?? ''}`.trim() || '—';
+                const meta = [s?.membershipId, s?.email].filter(Boolean).join(separator);
                 return (
                   <button
                     key={id}
@@ -640,9 +687,10 @@ function ClubsEvents() {
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <div className="font-bold text-slate-900">{club?.name || 'â€”'}</div>
+                          <div className="font-bold text-slate-900">{club?.name || '—'}</div>
                           <div className="text-xs text-slate-500 mt-1">
-                            {managerCount} leads â€¢ {editorCount} editors â€¢ {memberCount} members
+                            {pluralizeCount(managerCount, 'lead', 'leads')} · {pluralizeCount(editorCount, 'editor')}
+                            · {pluralizeCount(memberCount, 'member')}
                           </div>
                         </div>
 
@@ -716,7 +764,7 @@ function ClubsEvents() {
 
             {!selectedClubId ? (
               <div className="p-8 text-slate-500">
-                {mode === 'club' ? 'Loading clubâ€¦' : 'Select a club to view its events.'}
+                {mode === 'club' ? 'Loading club...' : 'Select a club to view its events.'}
               </div>
             ) : eventsLoading ? (
               <div className="p-8 flex items-center gap-3 text-slate-500">
@@ -749,17 +797,17 @@ function ClubsEvents() {
                         .map((u) => u?.name || u?.membershipId)
                         .filter(Boolean);
                       const fallback = e?.coordinatorUser?.name || e?.coordinatorUser?.membershipId;
-                      const displayCoordinators =
+                          const displayCoordinators =
                         coordinatorNames.length > 0
                           ? coordinatorNames.join(', ')
-                          : fallback || 'â€”';
+                          : fallback || '—';
 
                       return (
                         <tr key={e?._id} className="hover:bg-slate-50/50 transition-colors">
                           <td className="px-6 py-4 font-semibold text-slate-900 whitespace-nowrap">
-                            {e?.title || 'â€”'}
+                            {e?.title || '—'}
                           </td>
-                          <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{e?.location || 'â€”'}</td>
+                          <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{e?.location || '—'}</td>
                           <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{e?.status || 'draft'}</td>
                           <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{e?.visibility || 'public'}</td>
                           <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{displayDate(e?.startAt)}</td>
@@ -842,6 +890,9 @@ function ClubsEvents() {
                   <MultiSelectUsers
                     users={users}
                     selectedIds={createClubForm.managerUserIds}
+                    searchEnabled
+                    searchPlaceholder="Search leads..."
+                    emptyMessage="No users found"
                     onToggle={(id) =>
                       setCreateClubForm((p) => ({
                         ...p,
@@ -926,12 +977,15 @@ function ClubsEvents() {
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500">Club Leads</label>
                   {isAdmin ? (
-                    <MultiSelectUsers
-                      users={users}
-                      selectedIds={editClubForm.managerUserIds}
-                      onToggle={(id) =>
-                        setEditClubForm((p) => ({
-                          ...p,
+                  <MultiSelectUsers
+                    users={users}
+                    selectedIds={editClubForm.managerUserIds}
+                    searchEnabled
+                    searchPlaceholder="Search leads..."
+                    emptyMessage="No users found"
+                    onToggle={(id) =>
+                      setEditClubForm((p) => ({
+                        ...p,
                           managerUserIds: toggleFromArray(p.managerUserIds, id),
                         }))
                       }
@@ -941,7 +995,7 @@ function ClubsEvents() {
                       {(Array.isArray(clubEditing?.managerUsers) ? clubEditing.managerUsers : [])
                         .map((u) => u?.name || u?.membershipId)
                         .filter(Boolean)
-                        .join(', ') || 'â€”'}
+                        .join(', ') || '—'}
                     </div>
                   )}
                 </div>
@@ -1156,6 +1210,9 @@ function ClubsEvents() {
                   <MultiSelectUsers
                     users={users}
                     selectedIds={createEventForm.coordinatorUserIds}
+                    searchEnabled
+                    searchPlaceholder="Search coordinators..."
+                    emptyMessage="No users found"
                     onToggle={(id) =>
                       setCreateEventForm((p) => ({
                         ...p,
@@ -1335,6 +1392,9 @@ function ClubsEvents() {
                   <MultiSelectUsers
                     users={users}
                     selectedIds={editEventForm.coordinatorUserIds}
+                    searchEnabled
+                    searchPlaceholder="Search coordinators..."
+                    emptyMessage="No users found"
                     onToggle={(id) =>
                       setEditEventForm((p) => ({
                         ...p,
@@ -1471,11 +1531,11 @@ function LegacyEvents() {
   const events = Array.isArray(eventsData?.events) ? eventsData.events : [];
 
   const coordinatorOptions = (Array.isArray(usersData?.users) ? usersData.users : [])
-    .map((u) => ({
-      id: u?._id,
-      name: u?.name || u?.membershipId || 'Member',
-      meta: [u?.membershipId, u?.email].filter(Boolean).join(' â€¢ '),
-    }))
+      .map((u) => ({
+        id: u?._id,
+        name: u?.name || u?.membershipId || 'Member',
+        meta: [u?.membershipId, u?.email].filter(Boolean).join(separator),
+      }))
     .filter((u) => Boolean(u.id));
 
   const createMutation = useMutation({
@@ -1677,15 +1737,15 @@ function LegacyEvents() {
                 {events.map((e) => (
                   <tr key={e?._id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-6 py-4 font-semibold text-slate-900 whitespace-nowrap">
-                      {e?.title || 'â€”'}
+                      {e?.title || '—'}
                     </td>
-                    <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{e?.location || 'â€”'}</td>
+                    <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{e?.location || '—'}</td>
                     <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{e?.status || 'draft'}</td>
                     <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{e?.visibility || 'public'}</td>
                     <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{displayDate(e?.startAt)}</td>
                     <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{displayDate(e?.endAt)}</td>
                     <td className="px-6 py-4 text-slate-600 whitespace-nowrap">
-                      {e?.coordinatorUser?.name || e?.coordinatorUser?.membershipId || 'â€”'}
+                      {e?.coordinatorUser?.name || e?.coordinatorUser?.membershipId || '—'}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex justify-end gap-1">
@@ -1751,7 +1811,7 @@ function LegacyEvents() {
                     }
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
                   >
-                    <option value="">â€”</option>
+                    <option value="">—</option>
                     {coordinatorOptions.map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.name}{u.meta ? ` (${u.meta})` : ''}
@@ -1924,7 +1984,7 @@ function LegacyEvents() {
                     onChange={(e) => setEditForm((p) => ({ ...p, coordinatorUserId: e.target.value }))}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
                   >
-                    <option value="">â€”</option>
+                    <option value="">—</option>
                     {coordinatorOptions.map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.name}{u.meta ? ` (${u.meta})` : ''}

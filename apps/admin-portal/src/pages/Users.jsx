@@ -26,28 +26,6 @@ import ExecomEntriesManager from '../components/ExecomEntriesManager';
 
 const normalize = (v) => String(v ?? '').trim().toLowerCase();
 
-const getYearLabel = (u) => String(u?.websiteProfile?.group ?? '').trim();
-
-function YearSelect({ value, onChange, options, label }) {
-  return (
-    <label className="flex items-center gap-2 text-sm text-slate-600">
-      <span className="font-semibold text-slate-700">{label}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-700"
-      >
-        <option value="">All</option>
-        {options.map((opt) => (
-          <option key={opt} value={opt}>
-            {opt}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
 function ClubMemberManager({ meData, forcedClubId }) {
   const queryClient = useQueryClient();
   const [clubId, setClubId] = useState('');
@@ -779,9 +757,6 @@ export default function Users() {
 
   const [activeCategory, setActiveCategory] = useState('execom');
   const [showWebsiteExecomOrder, setShowWebsiteExecomOrder] = useState(false);
-  const [execomYear, setExecomYear] = useState('');
-  const [staffYear, setStaffYear] = useState('');
-
   const [clubLeadsQuery, setClubLeadsQuery] = useState('');
 
   const [isAddClubLeadOpen, setIsAddClubLeadOpen] = useState(false);
@@ -1221,19 +1196,8 @@ export default function Users() {
     return r === 'admin' || r === 'editor' || r.includes('staff');
   });
 
-  const execomYears = Array.from(
-    new Set(execomUsers.map(getYearLabel).map((y) => y.trim()).filter(Boolean))
-  ).sort((a, b) => b.localeCompare(a));
-  const staffYears = Array.from(
-    new Set(staffUsers.map(getYearLabel).map((y) => y.trim()).filter(Boolean))
-  ).sort((a, b) => b.localeCompare(a));
-
-  const filteredExecom = execomYear
-    ? execomUsers.filter((u) => normalize(getYearLabel(u)) === normalize(execomYear))
-    : execomUsers;
-  const filteredStaff = staffYear
-    ? staffUsers.filter((u) => normalize(getYearLabel(u)) === normalize(staffYear))
-    : staffUsers;
+  const filteredExecom = execomUsers;
+  const filteredStaff = staffUsers;
 
   const tableUsers = activeCategory === 'staff' ? filteredStaff : filteredExecom;
 
@@ -1313,21 +1277,6 @@ export default function Users() {
           </button>
         </div>
 
-        {activeCategory === 'execom' ? (
-          <YearSelect
-            label="Year"
-            value={execomYear}
-            onChange={setExecomYear}
-            options={execomYears}
-          />
-        ) : activeCategory === 'staff' ? (
-          <YearSelect
-            label="Year"
-            value={staffYear}
-            onChange={setStaffYear}
-            options={staffYears}
-          />
-        ) : null}
       </div>
 
       {/* Users list */}
