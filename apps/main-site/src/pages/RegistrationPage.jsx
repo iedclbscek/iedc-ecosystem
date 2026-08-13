@@ -33,7 +33,7 @@ const RegistrationPage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submitLockRef = useRef(false);
   const [errors, setErrors] = useState({});
-  
+
   // Verification States
   const [isEmailVerified, setIsEmailVerified] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -45,13 +45,14 @@ const RegistrationPage = () => {
   const [resendCountdown, setResendCountdown] = useState(0);
 
   // Constants
-  const departments = [ 'CSE', 'CSBS', 'CSE (AI & DS)', 'EEE', 'ECE', 'IT', 'ME', 'CE' ];
-  const joiningYears = ['2021', '2022', '2023', '2024', '2025'];
+  const departments = ['CSE', 'CSBS', 'CSE (AI & DS)', 'EEE', 'ECE', 'IT', 'ME', 'CE'];
+  const currentYear = new Date().getFullYear();
+  const joiningYears = Array.from({ length: 8 }, (_, i) => String(currentYear - 5 + i));
   const semesters = [
-    '1st Semester','2nd Semester','3rd Semester','4th Semester',
-    '5th Semester','6th Semester','7th Semester','8th Semester'
+    '1st Semester', '2nd Semester', '3rd Semester', '4th Semester',
+    '5th Semester', '6th Semester', '7th Semester', '8th Semester'
   ];
-  const interestAreas = [ 'Web Dev', 'App Dev', 'AI/ML', 'Data Science', 'Cybersecurity', 'IoT', 'Blockchain', 'Cloud', 'UI/UX', 'Product Mgmt', 'Robotics', 'Game Dev', 'DevOps' ];
+  const interestAreas = ['Web Dev', 'App Dev', 'AI/ML', 'Data Science', 'Cybersecurity', 'IoT', 'Blockchain', 'Cloud', 'UI/UX', 'Product Mgmt', 'Robotics', 'Game Dev', 'DevOps'];
 
   useEffect(() => {
     if (canResend) return;
@@ -167,7 +168,7 @@ const RegistrationPage = () => {
       setShowVerificationField(true);
       return;
     }
-    
+
     submitLockRef.current = true;
     setIsSubmitting(true);
     try {
@@ -208,33 +209,33 @@ const RegistrationPage = () => {
   // --- 4. Render Components ---
   return (
     <div className="min-h-screen bg-bg-main flex items-center justify-center py-20 px-4">
-      
+
       <div className="w-full max-w-5xl grid lg:grid-cols-12 shadow-2xl rounded-2xl overflow-hidden border border-gray-200 bg-white">
-        
+
         {/* LEFT PANEL */}
         <div className="lg:col-span-4 bg-text-dark text-white p-10 flex flex-col justify-between relative overflow-hidden">
           <div className="absolute inset-0 bg-[url('/grid-pattern.svg')] opacity-10"></div>
-          
+
           <div>
             <Link to="/" className="inline-flex items-center text-gray-400 hover:text-white mb-8 transition-colors font-mono text-xs uppercase tracking-widest">
               <FaArrowLeft className="mr-2" /> Cancel_Process
             </Link>
             <h1 className="text-3xl font-black uppercase tracking-tighter mb-2">
-              Access <br/><span className="text-accent">Request.</span>
+              Access <br /><span className="text-accent">Request.</span>
             </h1>
             <p className="text-gray-400 text-sm mb-12">
               Initialize your profile to join the IEDC LBSCEK innovation ecosystem.
             </p>
 
             <div className="space-y-8">
-              <StepIndicator step={1} current={currentStep} label="Identity Verification" icon={<FaUserSecret/>} />
-              <StepIndicator step={2} current={currentStep} label="Academic Credentials" icon={<FaIdCard/>} />
-              <StepIndicator step={3} current={currentStep} label="Skill Assessment" icon={<FaCode/>} />
+              <StepIndicator step={1} current={currentStep} label="Identity Verification" icon={<FaUserSecret />} />
+              <StepIndicator step={2} current={currentStep} label="Academic Credentials" icon={<FaIdCard />} />
+              <StepIndicator step={3} current={currentStep} label="Skill Assessment" icon={<FaCode />} />
             </div>
           </div>
 
           <div className="mt-12 pt-8 border-t border-white/10 text-xs text-gray-500 font-mono">
-            SECURE_CONNECTION // TLS 1.3 <br/>
+            SECURE_CONNECTION // TLS 1.3 <br />
             ID: GUEST_USER
           </div>
         </div>
@@ -243,7 +244,7 @@ const RegistrationPage = () => {
         <div className="lg:col-span-8 p-10 bg-white">
           <form onSubmit={handleSubmit}>
             <AnimatePresence mode='wait'>
-              
+
               {/* STEP 1: PERSONAL */}
               {currentStep === 1 && (
                 <motion.div
@@ -256,7 +257,7 @@ const RegistrationPage = () => {
                   <h3 className="text-xl font-bold text-text-dark border-b border-gray-100 pb-2">
                     01 // Personal_Data
                   </h3>
-                  
+
                   <div className="grid md:grid-cols-2 gap-6">
                     <InputGroup label="First Name" name="firstName" value={formData.firstName} onChange={handleInputChange} error={errors.firstName} />
                     <InputGroup label="Last Name" name="lastName" value={formData.lastName} onChange={handleInputChange} error={errors.lastName} />
@@ -282,9 +283,9 @@ const RegistrationPage = () => {
                             </button>
                           ) : (
                             <div className="flex gap-2 mt-2 animate-in fade-in slide-in-from-top-2">
-                              <input 
-                                type="text" 
-                                placeholder="123456" 
+                              <input
+                                type="text"
+                                placeholder="123456"
                                 className="w-24 p-2 bg-gray-50 border border-gray-300 text-center font-mono text-sm rounded focus:border-accent outline-none"
                                 value={verificationCode}
                                 onChange={(e) => setVerificationCode(e.target.value)}
@@ -296,9 +297,9 @@ const RegistrationPage = () => {
                           )}
                         </div>
                       )}
-                      {isEmailVerified && <p className="text-xs text-green-600 font-bold mt-1 flex items-center gap-1"><FaCheckCircle/> Verified</p>}
+                      {isEmailVerified && <p className="text-xs text-green-600 font-bold mt-1 flex items-center gap-1"><FaCheckCircle /> Verified</p>}
                     </div>
-                    
+
                     <InputGroup label="Phone Number" name="phone" value={formData.phone} onChange={handleInputChange} error={errors.phone} />
                   </div>
                 </motion.div>
@@ -334,7 +335,7 @@ const RegistrationPage = () => {
                   </div>
 
                   <div className="flex items-center gap-2 pt-2">
-                    <input type="checkbox" id="lat" checked={formData.isLateralEntry} onChange={(e) => setFormData({...formData, isLateralEntry: e.target.checked})} className="w-4 h-4 accent-accent" />
+                    <input type="checkbox" id="lat" checked={formData.isLateralEntry} onChange={(e) => setFormData({ ...formData, isLateralEntry: e.target.checked })} className="w-4 h-4 accent-accent" />
                     <label htmlFor="lat" className="text-sm text-text-light">Lateral Entry Candidate</label>
                   </div>
                 </motion.div>
@@ -361,11 +362,10 @@ const RegistrationPage = () => {
                           key={area}
                           type="button"
                           onClick={() => handleInterestChange(area)}
-                          className={`px-3 py-1 text-xs font-mono border transition-all ${
-                            formData.interests.includes(area) 
-                            ? 'bg-text-dark text-white border-text-dark' 
-                            : 'bg-white text-gray-500 border-gray-200 hover:border-accent'
-                          }`}
+                          className={`px-3 py-1 text-xs font-mono border transition-all ${formData.interests.includes(area)
+                              ? 'bg-text-dark text-white border-text-dark'
+                              : 'bg-white text-gray-500 border-gray-200 hover:border-accent'
+                            }`}
                         >
                           {formData.interests.includes(area) ? '[x] ' : '[ ] '} {area}
                         </button>
@@ -374,15 +374,15 @@ const RegistrationPage = () => {
                   </div>
 
                   <InputGroup label="LinkedIn Protocol (URL)" name="linkedin" value={formData.linkedin} onChange={handleInputChange} placeholder="https://..." />
-                  
+
                   <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Motivation Statement</label>
-                    <textarea 
+                    <textarea
                       rows="3"
                       className="w-full bg-gray-50 border border-gray-200 p-3 text-sm focus:border-accent focus:bg-white transition-all outline-none resize-none font-mono"
                       placeholder="Why do you want to join the network?"
                       value={formData.motivation}
-                      onChange={(e) => setFormData({...formData, motivation: e.target.value})}
+                      onChange={(e) => setFormData({ ...formData, motivation: e.target.value })}
                     ></textarea>
                   </div>
                 </motion.div>
@@ -404,7 +404,7 @@ const RegistrationPage = () => {
                 </button>
               ) : (
                 <button type="submit" disabled={isSubmitting} className="px-8 py-3 bg-accent text-white font-mono text-xs font-bold uppercase tracking-widest hover:bg-accent-dark transition-colors flex items-center gap-2">
-                  {isSubmitting ? 'Transmitting...' : 'Initialize_Protocol'} <FaPaperPlane/>
+                  {isSubmitting ? 'Transmitting...' : 'Initialize_Protocol'} <FaPaperPlane />
                 </button>
               )}
             </div>
@@ -422,11 +422,10 @@ const StepIndicator = ({ step, current, label, icon }) => {
   const status = current === step ? 'active' : current > step ? 'completed' : 'pending';
   return (
     <div className={`flex items-center gap-4 transition-all duration-300 ${status === 'pending' ? 'opacity-40' : 'opacity-100'}`}>
-      <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all ${
-        status === 'active' ? 'border-accent bg-accent text-white' : 
-        status === 'completed' ? 'border-green-500 bg-green-500 text-white' : 
-        'border-gray-600 text-gray-400'
-      }`}>
+      <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all ${status === 'active' ? 'border-accent bg-accent text-white' :
+          status === 'completed' ? 'border-green-500 bg-green-500 text-white' :
+            'border-gray-600 text-gray-400'
+        }`}>
         {status === 'completed' ? <FaCheckCircle /> : icon}
       </div>
       <div>
@@ -440,7 +439,7 @@ const StepIndicator = ({ step, current, label, icon }) => {
 const InputGroup = ({ label, error, ...props }) => (
   <div>
     <label className="block text-xs font-bold text-gray-500 uppercase mb-2">{label}</label>
-    <input 
+    <input
       {...props}
       className={`w-full bg-gray-50 border p-3 text-sm focus:border-accent focus:bg-white transition-all outline-none font-mono ${error ? 'border-red-500' : 'border-gray-200'}`}
     />
@@ -451,7 +450,7 @@ const InputGroup = ({ label, error, ...props }) => (
 const SelectGroup = ({ label, options, error, ...props }) => (
   <div>
     <label className="block text-xs font-bold text-gray-500 uppercase mb-2">{label}</label>
-    <select 
+    <select
       {...props}
       className={`w-full bg-gray-50 border p-3 text-sm focus:border-accent focus:bg-white transition-all outline-none font-mono appearance-none ${error ? 'border-red-500' : 'border-gray-200'}`}
     >
