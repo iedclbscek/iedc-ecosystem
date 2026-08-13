@@ -7,7 +7,7 @@
 **Innovation & Entrepreneurship Development Cell**
 *LBS College of Engineering, Kasaragod, Kerala*
 
-[![Node.js](https://img.shields.io/badge/Node.js-23.x-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org)
 [![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev)
 [![MongoDB](https://img.shields.io/badge/MongoDB-Mongoose-47A248?style=flat-square&logo=mongodb&logoColor=white)](https://www.mongodb.com)
 [![TailwindCSS](https://img.shields.io/badge/TailwindCSS-v4-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
@@ -77,7 +77,7 @@ iedc-ecosystem/                     ← pnpm Workspace Root
 
 | Technology | Version | Purpose |
 |---|---|---|
-| **Node.js** | v23.x | JavaScript runtime |
+| **Node.js** | >=18.0.0 | JavaScript runtime |
 | **Express.js** | ^4.18 | HTTP server & routing framework |
 | **MongoDB** | Atlas (Cloud) | Primary database (NoSQL) |
 | **Mongoose** | ^7.0 | MongoDB ODM — schemas & models |

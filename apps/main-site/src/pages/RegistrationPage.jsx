@@ -46,7 +46,8 @@ const RegistrationPage = () => {
 
   // Constants
   const departments = ['CSE', 'CSBS', 'CSE (AI & DS)', 'EEE', 'ECE', 'IT', 'ME', 'CE'];
-  const joiningYears = ['2021', '2022', '2023', '2024', '2025', '2026', '2027', '2028'];
+  const currentYear = new Date().getFullYear();
+  const joiningYears = Array.from({ length: 8 }, (_, i) => String(currentYear - 5 + i));
   const semesters = [
     '1st Semester', '2nd Semester', '3rd Semester', '4th Semester',
     '5th Semester', '6th Semester', '7th Semester', '8th Semester'
