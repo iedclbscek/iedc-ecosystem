@@ -25,13 +25,17 @@
 
 ## 📌 Overview
 
-The **IEDC LBSCEK Ecosystem** is a full-stack, production-grade monorepo powering the digital infrastructure of the Innovation & Entrepreneurship Development Cell at LBS College of Engineering, Kasaragod. It consists of three tightly integrated packages:
+The **IEDC LBSCEK Ecosystem** is a full-stack monorepo powering the digital infrastructure of the Innovation & Entrepreneurship Development Cell at LBS College of Engineering, Kasaragod. It consists of three tightly integrated packages:
 
 | Package | Description | Production URL |
 |---|---|---|
 | `apps/main-site` | Public-facing React website | [iedclbscek.in](https://iedclbscek.in) |
 | `apps/admin-portal` | Internal admin dashboard | [admin.iedclbscek.in](https://admin.iedclbscek.in) |
 | `server` | REST API + Database backend | [api.iedclbscek.in](https://api.iedclbscek.in) |
+
+---
+
+> **Note on version numbers:** Package versions, team details, and community counts listed in this README reflect the state at time of writing and may drift as the project evolves. Architecture diagrams and API route groups change infrequently and are the most reliable reference.
 
 ---
 
@@ -230,7 +234,11 @@ iedc-ecosystem/                     ← pnpm Workspace Root
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-org/iedc-ecosystem.git
+# Upstream (IEDC official)
+git clone https://github.com/iedclbscek/iedc-ecosystem.git
+
+# Or your fork
+git clone https://github.com/sanjay-sanju-03/iedc-ecosystem.git
 cd iedc-ecosystem
 ```
 
@@ -358,25 +366,37 @@ The `/nexus` section showcases 13 student communities under IEDC LBSCEK:
 
 ---
 
-## 🔒 Security Notes
+## 🔒 Security
 
 > ⚠️ Never commit your `.env` file — it is gitignored by default.
 
-- JWT tokens are stored in **HTTP-only cookies** (not localStorage) to prevent XSS
-- Admin routes require both **authentication** and **granular permission checks**
-- OTP-based email verification is required for all member registrations
-- CORS is configured to allow only known production and local origins
-- Passwords are hashed with **bcryptjs** (not stored in plaintext)
+### Implemented
+- JWT tokens stored in **HTTP-only cookies** (not localStorage) — XSS safe
+- Admin routes require both **authentication** and **per-route permission checks**
+- OTP-based email verification required for all member registrations
+- CORS restricted to known production and local origins
+- Passwords hashed with **bcryptjs** — never stored in plaintext
+- `portalAccessEnabled` flag allows instant account lockout
+
+### Operational Controls Required Before Production
+- `NODE_ENV=production` must be set — disables debug logging of cookies/headers
+- Rate limiting on `/login`, `/send-otp`, and `/register` endpoints (not yet implemented)
+- Cloudinary unsigned uploads must be disabled in the Cloudinary dashboard
+- Secrets (MongoDB URI, JWT secret, email password) should be rotated periodically and stored in a secrets manager, not shared over unencrypted channels
+- Personal student email addresses in `communitiesData.jsx` should be replaced with club-owned addresses to prevent harvesting
 
 ---
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/your-feature-name`
-3. Commit your changes: `git commit -m "feat: add your feature"`
-4. Push to the branch: `git push origin feature/your-feature-name`
-5. Open a Pull Request
+This project uses a **fork-based contribution workflow**. The canonical repository is [`iedclbscek/iedc-ecosystem`](https://github.com/iedclbscek/iedc-ecosystem). Contributors work on forks and submit PRs targeting `upstream/main`.
+
+1. Fork [`iedclbscek/iedc-ecosystem`](https://github.com/iedclbscek/iedc-ecosystem)
+2. Add upstream remote: `git remote add upstream https://github.com/iedclbscek/iedc-ecosystem.git`
+3. Create a feature branch off `upstream/main`: `git checkout -b feature/your-feature-name`
+4. Commit your changes: `git commit -m "feat: add your feature"`
+5. Push to your fork: `git push origin feature/your-feature-name`
+6. Open a Pull Request from your fork's branch → `iedclbscek/iedc-ecosystem:main`
 
 ### Commit Convention
 
