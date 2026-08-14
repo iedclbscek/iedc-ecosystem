@@ -8,6 +8,7 @@ import EventDetailModal from '../components/ui/EventDetailModal'; // Assuming yo
 import ProposeEventModal from '../components/ui/ProposeEventModal'; // Assuming you have this
 
 const EventsPage = () => {
+  const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
   const navigate = useNavigate();
   const [activeFilter, setActiveFilter] = useState('All');
   const [events, setEvents] = useState([]);
@@ -41,7 +42,7 @@ const EventsPage = () => {
         setLoading(true);
         // Using sample data fallback if API fails (for preview purposes)
         // Replace with your actual API call in production
-        const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/events`, {
+        const response = await axios.get(`${API_BASE_URL}/api/events`, {
           params: { status: 'published', limit: 100 }
         }).catch(() => ({ data: { success: false } }));
 

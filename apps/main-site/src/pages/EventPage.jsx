@@ -22,6 +22,7 @@ import Loader from '../components/ui/Loader';
 import EventRegistrationModal from '../components/ui/EventRegistrationModal';
 
 const EventPage = () => {
+  const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
   const { id } = useParams();
   const navigate = useNavigate();
   const [event, setEvent] = useState(null);
@@ -37,7 +38,7 @@ const EventPage = () => {
   const fetchEvent = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/events/${id}`);
+      const response = await axios.get(`${API_BASE_URL}/api/events/${id}`);
       
       if (response.data.success) {
         setEvent(response.data.event);

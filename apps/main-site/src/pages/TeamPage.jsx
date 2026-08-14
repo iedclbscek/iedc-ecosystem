@@ -5,6 +5,7 @@ import { FaArrowLeft, FaSearch, FaLinkedinIn, FaGithub, FaTwitter } from "react-
 import axios from "axios";
 
 const TeamPage = () => {
+  const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
   // State Management
   const [availableYears, setAvailableYears] = useState([]);
   const [selectedYear, setSelectedYear] = useState(null); // Initially null until years are fetched
@@ -21,7 +22,7 @@ const TeamPage = () => {
     const fetchYears = async () => {
       try {
         setIsYearsLoading(true);
-        const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/public/execom/years`);
+        const response = await axios.get(`${API_BASE_URL}/api/public/execom/years`);
         
         // Handle response formats: ["2024", "2023"] or { years: [...] } or { data: [...] }
         let years = [];
@@ -71,7 +72,7 @@ const TeamPage = () => {
       try {
         setLoading(true);
         
-        const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/public/execom`, {
+        const response = await axios.get(`${API_BASE_URL}/api/public/execom`, {
           params: { year: selectedYear }
         });
         
