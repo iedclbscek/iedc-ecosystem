@@ -22,6 +22,8 @@ import Loader from '../components/ui/Loader';
 import EventRegistrationModal from '../components/ui/EventRegistrationModal';
 
 const EventPage = () => {
+  const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:5000" : "");
+  if (import.meta.env.PROD && !import.meta.env.VITE_API_URL) throw new Error("VITE_API_URL is required in production");
   const { id } = useParams();
   const navigate = useNavigate();
   const [event, setEvent] = useState(null);
@@ -37,7 +39,7 @@ const EventPage = () => {
   const fetchEvent = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/events/${id}`);
+      const response = await axios.get(`${API_BASE_URL}/api/events/${id}`);
       
       if (response.data.success) {
         setEvent(response.data.event);
@@ -170,12 +172,20 @@ const EventPage = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Hero Section */}
-      <div className="relative h-96 bg-gradient-to-br from-blue-600 to-purple-700 overflow-hidden">
-        {event.images && event.images.length > 0 && (
+      <div className="relative h-96 bg-gradient-to-br from-blue-600 to-purple-700 overflow-hidden flex justify-center items-center">
+        {(event.posterUrl || event.image) && (
           <img
-            src={`${import.meta.env.VITE_API_URL}${event.images[0]}`}
+            src={event.posterUrl || event.image}
             alt={event.title}
-            className="absolute inset-0 w-full h-full object-cover opacity-30"
+            className="absolute inset-0 w-full h-full object-contain opacity-40 mix-blend-luminosity blur-sm"
+          />
+        )}
+        
+        {(event.posterUrl || event.image) && (
+          <img
+            src={event.posterUrl || event.image}
+            alt={event.title}
+            className="relative z-0 max-h-full object-contain drop-shadow-2xl"
           />
         )}
         

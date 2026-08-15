@@ -5,6 +5,7 @@ import {
   isSuperAdmin,
 } from "../utils/permissionHelpers.js";
 import { isAdmin } from "../middleware/requireAuth.js";
+import { v2 as cloudinary } from "cloudinary";
 
 const EVENT_STATUSES = new Set(["draft", "published", "completed", "cancelled"]);
 const EVENT_VISIBILITIES = new Set(["public", "private"]);
@@ -435,8 +436,15 @@ const updateEventCommon = async (req, res, event) => {
   if (workflow.venue !== undefined) event.venue = workflow.venue || undefined;
   if (workflow.mode !== undefined) event.mode = workflow.mode || undefined;
   if (workflow.posterUrl !== undefined) event.posterUrl = workflow.posterUrl || undefined;
-  if (workflow.posterPublicId !== undefined)
+  
+  let oldPosterPublicId = null;
+  if (workflow.posterPublicId !== undefined && workflow.posterPublicId !== event.posterPublicId) {
+    oldPosterPublicId = event.posterPublicId;
+  }
+
+  if (workflow.posterPublicId !== undefined) {
     event.posterPublicId = workflow.posterPublicId || undefined;
+  }
   if (workflow.registrationLink !== undefined) {
     event.registrationLink = workflow.registrationLink || undefined;
     event.registrationUrl = workflow.registrationLink || undefined;
@@ -461,6 +469,23 @@ const updateEventCommon = async (req, res, event) => {
   }
 
   await event.save();
+
+    // Clean up old cloudinary image if we replaced it
+    if (oldPosterPublicId && event.posterPublicId !== oldPosterPublicId) {
+      try {
+        if (!cloudinary.config().cloud_name && process.env.CLOUDINARY_CLOUD_NAME) {
+          cloudinary.config({
+            cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+            api_key: process.env.CLOUDINARY_API_KEY,
+            api_secret: process.env.CLOUDINARY_API_SECRET,
+          });
+        }
+        console.log(`Cleaning up old event banner from Cloudinary: ${oldPosterPublicId}`);
+        await cloudinary.uploader.destroy(oldPosterPublicId);
+      } catch (err) {
+        console.error("Failed to delete old poster from Cloudinary:", err);
+      }
+    }
   const populated = await populateEvent(Event.findById(event._id));
   res.json({ event: populated });
 };

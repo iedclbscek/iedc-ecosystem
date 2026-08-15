@@ -8,6 +8,8 @@ import EventDetailModal from '../components/ui/EventDetailModal'; // Assuming yo
 import ProposeEventModal from '../components/ui/ProposeEventModal'; // Assuming you have this
 
 const EventsPage = () => {
+  const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:5000" : "");
+  if (import.meta.env.PROD && !import.meta.env.VITE_API_URL) throw new Error("VITE_API_URL is required in production");
   const navigate = useNavigate();
   const [activeFilter, setActiveFilter] = useState('All');
   const [events, setEvents] = useState([]);
@@ -41,7 +43,7 @@ const EventsPage = () => {
         setLoading(true);
         // Using sample data fallback if API fails (for preview purposes)
         // Replace with your actual API call in production
-        const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/events`, {
+        const response = await axios.get(`${API_BASE_URL}/api/events`, {
           params: { status: 'published', limit: 100 }
         }).catch(() => ({ data: { success: false } }));
 
@@ -307,12 +309,12 @@ const EventCard = ({ event, index, onClick }) => {
       </div>
 
       {/* 2. Image Area */}
-      <div className="relative h-48 overflow-hidden bg-gray-200">
-        {event.image ? (
+      <div className="relative h-64 overflow-hidden bg-gray-100 flex items-center justify-center">
+        {(event.posterUrl || event.image) ? (
           <img 
-            src={event.image} 
+            src={event.posterUrl || event.image} 
             alt={event.title} 
-            className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500 scale-100 group-hover:scale-105"
+            className="w-full h-full object-contain grayscale group-hover:grayscale-0 transition-all duration-500 scale-100 group-hover:scale-105"
             onError={(e) => { e.target.style.display = 'none'; }}
           />
         ) : (

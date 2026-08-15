@@ -1,483 +1,635 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
-import { FaArrowLeft, FaSearch, FaLinkedinIn, FaGithub, FaTwitter } from "react-icons/fa";
+import { motion, AnimatePresence, useMotionValue, useTransform } from "framer-motion";
+import {
+  FaArrowLeft, FaSearch, FaLinkedinIn, FaGithub, FaTwitter,
+  FaTimes, FaChevronLeft, FaChevronRight,
+} from "react-icons/fa";
 import axios from "axios";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TEAM PAGE
+// ─────────────────────────────────────────────────────────────────────────────
 const TeamPage = () => {
-  // State Management
-  const [availableYears, setAvailableYears] = useState([]);
-  const [selectedYear, setSelectedYear] = useState(null); // Initially null until years are fetched
-  
-  const [displayData, setDisplayData] = useState({ nodalOfficers: [], facultyMembers: [], coreTeam: [], teamMembers: [] });
-  const [rawData, setRawData] = useState([]); // Store raw members list for local search
-  
-  const [searchQuery, setSearchQuery] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [isYearsLoading, setIsYearsLoading] = useState(true);
+  const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:5000" : "");
+  if (import.meta.env.PROD && !import.meta.env.VITE_API_URL) throw new Error("VITE_API_URL is required in production");
 
-  // 1. Fetch Available Years (First Step)
+  const [availableYears, setAvailableYears]   = useState([]);
+  const [selectedYear,   setSelectedYear]     = useState(null);
+  const [displayData,    setDisplayData]      = useState({ nodalOfficers: [], facultyMembers: [], coreTeam: [], teamMembers: [] });
+  const [rawData,        setRawData]          = useState([]);
+  const [searchQuery,    setSearchQuery]      = useState("");
+  const [loading,        setLoading]          = useState(true);
+  const [isYearsLoading, setIsYearsLoading]   = useState(true);
+  const [selectedMember, setSelectedMember]   = useState(null); // profile modal
+
+  // 1. Fetch available years
   useEffect(() => {
     const fetchYears = async () => {
       try {
         setIsYearsLoading(true);
-        const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/public/execom/years`);
-        
-        // Handle response formats: ["2024", "2023"] or { years: [...] } or { data: [...] }
-        let years = [];
-        if (Array.isArray(response.data)) {
-          years = response.data;
-        } else if (response.data.years && Array.isArray(response.data.years)) {
-          years = response.data.years;
-        } else if (response.data.data && Array.isArray(response.data.data)) {
-          years = response.data.data;
-        }
-
-        // Sort descending (newest first)
-        // Convert to string to ensure consistency in comparison
-        const sortedYears = years.map(String).sort((a, b) => b.localeCompare(a));
-        
-        setAvailableYears(sortedYears);
-
-        // Set default selected year to the most recent one
-        if (sortedYears.length > 0) {
-          setSelectedYear(sortedYears[0]);
-        } else {
-          // Fallback if no years found (e.g., current year)
-          const current = new Date().getFullYear().toString();
-          setAvailableYears([current]);
-          setSelectedYear(current);
-        }
-
-      } catch (error) {
-        console.error("Error fetching available years:", error);
-        // Fallback to current year on error to prevent crash
-        const current = new Date().getFullYear().toString();
-        setAvailableYears([current]);
-        setSelectedYear(current);
-      } finally {
-        setIsYearsLoading(false);
-      }
+        const { data } = await axios.get(`${API_BASE_URL}/api/public/execom/years`);
+        let years = Array.isArray(data) ? data : data.years ?? data.data ?? [];
+        const sorted = years.map(String).sort((a, b) => b.localeCompare(a));
+        setAvailableYears(sorted);
+        if (sorted.length > 0) setSelectedYear(sorted[0]);
+        else { const y = String(new Date().getFullYear()); setAvailableYears([y]); setSelectedYear(y); }
+      } catch {
+        const y = String(new Date().getFullYear()); setAvailableYears([y]); setSelectedYear(y);
+      } finally { setIsYearsLoading(false); }
     };
-
     fetchYears();
   }, []);
 
-  // 2. Fetch Team Data Year-Wise (Runs when selectedYear changes)
+  // 2. Fetch roster (AbortController prevents race conditions)
   useEffect(() => {
     if (!selectedYear) return;
+    const controller = new AbortController();
 
     const fetchYearData = async () => {
       try {
         setLoading(true);
-        
-        const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/public/execom`, {
-          params: { year: selectedYear }
+        const { data } = await axios.get(`${API_BASE_URL}/api/public/execom`, {
+          params: { year: selectedYear },
+          signal: controller.signal,
         });
-        
-        // Handle API structure: { years: [{ year: "2024", members: [...] }] }
-        // The API might return an array of years, or a specific year object depending on implementation.
-        // We look for the matching year object.
-        const yearData = (response.data.years || []).find(y => y.year === selectedYear.toString()) || 
-                         (response.data.years?.[0]) || // Fallback to first item if structure differs
-                         { members: [] };
+        const yearData =
+          (data.years || []).find((y) => y.year === selectedYear) ||
+          data.years?.[0] || { members: [] };
 
-        const membersList = yearData.members || [];
-        
-        // Transform API data to UI format
-        const formattedMembers = membersList.map(m => {
+        const formatted = (yearData.members || []).map((m) => {
           const rawName = m.user?.name || m.name || "Unknown";
-          const imageUrl = m.imageUrl || m.user?.image;
-          const linkedin = m.linkedin || m.user?.linkedin;
-          const github = m.github || m.user?.github;
-          const twitter = m.twitter || m.user?.twitter;
           return {
             id: m.id || m._id,
-            name: typeof rawName === "string" ? rawName.toUpperCase() : String(rawName).toUpperCase(),
+            name: String(rawName).toUpperCase(),
             role: m.roleTitle || m.role || "Member",
-            image: imageUrl, 
-            linkedin,
-            github,
-            twitter
+            image: m.imageUrl || m.user?.image || null,
+            // membershipId embedded — no index-based raw lookup needed
+            membershipId: (m.user?.membershipId || "").toUpperCase(),
+            linkedin: m.linkedin || m.user?.linkedin || "",
+            github:   m.github   || m.user?.github   || "",
+            twitter:  m.twitter  || m.user?.twitter  || "",
           };
         });
 
-        setRawData(formattedMembers);
-        processMembers(formattedMembers, searchQuery, membersList); // Pass raw members for membership ID check
-
-      } catch (error) {
-        console.error(`Error fetching data for year ${selectedYear}:`, error);
+        setRawData(formatted);
+        processMembers(formatted, searchQuery);
+      } catch (err) {
+        if (axios.isCancel(err)) return;
         setRawData([]);
-        setDisplayData({ facultyMembers: [], coreTeam: [], teamMembers: [] });
+        setDisplayData({ nodalOfficers: [], facultyMembers: [], coreTeam: [], teamMembers: [] });
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     };
 
     fetchYearData();
+    return () => controller.abort();
   }, [selectedYear]);
 
-  // 3. Handle Search (Client-side filtering)
+  // 3. Client-side search
   useEffect(() => {
-    if (rawData.length > 0) {
-      processMembers(rawData, searchQuery, rawData);
-    }
+    if (rawData.length > 0) processMembers(rawData, searchQuery);
   }, [searchQuery, rawData]);
 
-  // Helper: Categorize members
-  const processMembers = (members, query, rawMembers = []) => {
-    const lowerQuery = query.toLowerCase().trim();
-    
-    // Create a map of formatted members to raw members for membership ID lookup
-    const memberMap = {};
-    members.forEach((formatted, idx) => {
-      memberMap[formatted.id] = rawMembers[idx] || {};
-    });
-    
-    const filtered = members.filter(m => 
-      m.name.toLowerCase().includes(lowerQuery) || 
-      m.role.toLowerCase().includes(lowerQuery)
+  // Helper: categorise members
+  const processMembers = (members, query) => {
+    const q = query.toLowerCase().trim();
+    const filtered = members.filter(
+      (m) => m.name.toLowerCase().includes(q) || m.role.toLowerCase().includes(q)
     );
-
-    const categorized = {
-      nodalOfficers: [],
-      facultyMembers: [],
-      coreTeam: [],
-      teamMembers: []
-    };
-
-    filtered.forEach(member => {
-      const role = member.role.toLowerCase();
-      const rawMember = memberMap[member.id] || {};
-      const membershipId = rawMember.user?.membershipId || "";
-      const isStaff = membershipId.includes("st"); // Staff membership IDs contain "ST"
-      
-      // Nodal Officers category: explicitly "Nodel Officer" role (note typo in data) or staff members
-      if (role.includes("nodal officer") || role.includes("president") || isStaff) {
-        categorized.nodalOfficers.push(member);
-      } else if (role.includes("faculty") || role.includes("advisor") || role.includes("mentor") || role.includes("principal")) {
-        categorized.facultyMembers.push(member);
-      } else if (
-        role.includes("ceo") || 
-        role.includes("cto") || 
-        role.includes("coo") || 
-        role.includes("cfo") || 
-        role.includes("cmo") || 
-        role.includes("lead") || 
-        role.includes("head") || 
-        role.includes("chief") || 
-        role.includes("chair") ||
-        role.includes("coordinator")
-      ) {
-        categorized.coreTeam.push(member);
-      } else {
-        categorized.teamMembers.push(member);
-      }
+    const cat = { nodalOfficers: [], facultyMembers: [], coreTeam: [], teamMembers: [] };
+    filtered.forEach((m) => {
+      const r = m.role.toLowerCase();
+      const isStaff = m.membershipId.includes("ST");
+      if (r.includes("nodal officer") || r.includes("president") || isStaff)
+        cat.nodalOfficers.push(m);
+      else if (r.includes("faculty") || r.includes("advisor") || r.includes("mentor") || r.includes("principal"))
+        cat.facultyMembers.push(m);
+      else if (
+        r.includes("ceo") || r.includes("cto") || r.includes("coo") || r.includes("cfo") ||
+        r.includes("cmo") || r.includes("lead") || r.includes("head") || r.includes("chief") ||
+        r.includes("chair") || r.includes("coordinator")
+      ) cat.coreTeam.push(m);
+      else cat.teamMembers.push(m);
     });
-    setDisplayData(categorized);
+    setDisplayData(cat);
   };
 
-  // Animation Variants
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: { opacity: 1, transition: { staggerChildren: 0.05 } }
-  };
+  const hasData =
+    displayData.nodalOfficers.length > 0 || displayData.facultyMembers.length > 0 ||
+    displayData.coreTeam.length > 0 || displayData.teamMembers.length > 0;
 
   return (
-    <div className="min-h-screen bg-bg-main">
-      
-      {/* --- HERO --- */}
-      <section className="pt-32 pb-12 bg-white border-b border-gray-200">
+    <div className="min-h-screen bg-[#F5F5F0]">
+
+      {/* ── HERO ─────────────────────────────────────────────────────────── */}
+      <section className="pt-32 pb-16 bg-white border-b border-gray-200">
         <div className="container mx-auto px-6">
           <Link
             to="/"
-            className="inline-flex items-center text-gray-400 hover:text-text-dark mb-8 transition-colors font-mono text-xs uppercase tracking-widest"
+            className="inline-flex items-center text-gray-400 hover:text-text-dark mb-10 transition-colors font-mono text-xs uppercase tracking-widest group"
           >
-            <FaArrowLeft className="mr-2" />
+            <FaArrowLeft className="mr-2 group-hover:-translate-x-1 transition-transform" />
             Return_Home
           </Link>
-          
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
             <div>
-              <motion.span 
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
+              <motion.span
+                initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                 className="text-accent font-mono font-bold tracking-widest text-sm uppercase mb-4 block"
               >
                 06 // PERSONNEL_DATABASE
               </motion.span>
-              <motion.h1 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
+              <motion.h1
+                initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
                 className="text-5xl md:text-7xl font-black text-text-dark tracking-tighter leading-[0.9]"
               >
-                LEADERSHIP <br />
-                <span className="text-gray-300">ROSTER.</span>
+                THE PEOPLE<br />
+                <span className="text-gray-300">BEHIND IT.</span>
               </motion.h1>
             </div>
+            <motion.p
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}
+              className="text-text-light max-w-sm text-base border-l-4 border-accent pl-5 leading-relaxed"
+            >
+              Meet the builders, leaders, and dreamers driving innovation at LBSCEK.
+            </motion.p>
           </div>
         </div>
       </section>
 
-      {/* --- CONTROLS --- */}
-      <section className="sticky top-20 z-30 bg-bg-main/95 backdrop-blur-md border-b border-gray-200 py-4 shadow-sm">
-        <div className="container mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4">
-          
-          {/* Year Selector */}
-          <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0 no-scrollbar">
-            <span className="font-mono text-xs font-bold text-gray-400 mr-2 whitespace-nowrap">FISCAL_YEAR:</span>
-            
+      {/* ── STICKY CONTROLS ──────────────────────────────────────────────── */}
+      <section className="sticky top-20 z-30 bg-[#F5F5F0]/95 backdrop-blur-md border-b border-gray-200 py-3 shadow-sm">
+        <div className="container mx-auto px-6 flex flex-col sm:flex-row justify-between items-center gap-3">
+          {/* Year pills */}
+          <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
+            <span className="font-mono text-[10px] font-bold text-gray-400 mr-2 whitespace-nowrap uppercase tracking-widest">
+              TEAM_YEAR:
+            </span>
             {isYearsLoading ? (
-              <div className="h-8 w-24 bg-gray-100 animate-pulse rounded"></div>
+              <div className="h-8 w-32 bg-gray-200 animate-pulse rounded" />
             ) : (
               availableYears.map((year) => (
                 <button
                   key={year}
-                  onClick={() => setSelectedYear(year)}
-                  className={`
-                    px-4 py-2 font-mono text-xs font-bold transition-all border whitespace-nowrap
-                    ${selectedYear === year
+                  onClick={() => { setSelectedYear(year); setSearchQuery(""); }}
+                  aria-pressed={selectedYear === year}
+                  className={`px-4 py-2 font-mono text-xs font-bold transition-all border whitespace-nowrap ${
+                    selectedYear === year
                       ? "bg-text-dark text-white border-text-dark"
-                      : "bg-white text-gray-500 border-gray-200 hover:border-text-dark hover:text-text-dark"}
-                  `}
+                      : "bg-white text-gray-500 border-gray-200 hover:border-text-dark hover:text-text-dark"
+                  }`}
                 >
                   {year}
                 </button>
               ))
             )}
           </div>
-
-          {/* Search Input */}
-          <div className="relative w-full md:w-80 group">
-            <FaSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-accent transition-colors" />
-            <input 
-              type="text" 
-              placeholder="Search loaded records..."
+          {/* Search */}
+          <div className="relative w-full sm:w-64 group">
+            <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs group-focus-within:text-accent transition-colors" />
+            <input
+              type="text"
+              placeholder="Search name or role..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-white border border-gray-200 pl-10 pr-4 py-2 text-sm font-medium focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all placeholder:text-gray-300"
+              className="w-full bg-white border border-gray-200 pl-9 pr-4 py-2 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all placeholder:text-gray-300 font-mono"
             />
           </div>
         </div>
       </section>
 
-      {/* --- CONTENT AREA --- */}
-      <section className="py-20 min-h-[50vh]">
-        <div className="container mx-auto px-6">
-          
-          {loading ? (
-             <div className="flex items-center justify-center h-64">
-               <div className="animate-spin w-8 h-8 border-2 border-accent border-t-transparent rounded-full"></div>
-             </div>
-          ) : (
-            <>
-              {/* 1. Nodal Officers Section - Shown at Top */}
-              {displayData.nodalOfficers?.length > 0 && (
-                <div className="mb-24">
-                  <div className="flex items-center gap-4 mb-8">
-                    <div className="w-2 h-8 bg-accent"></div>
-                    <h2 className="text-3xl font-black text-text-dark uppercase tracking-tight">Nodal Officers</h2>
-                  </div>
-                  <motion.div 
-                    variants={containerVariants}
-                    initial="hidden"
-                    animate="visible"
-                    className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4"
-                  >
-                    {displayData.nodalOfficers.map((member) => (
-                      <DirectoryCard key={member.id} member={member} />
-                    ))}
-                  </motion.div>
-                </div>
-              )}
+      {/* ── CONTENT ──────────────────────────────────────────────────────── */}
+      <main className="py-20">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center h-64 gap-4">
+            <div className="animate-spin w-10 h-10 border-[3px] border-accent border-t-transparent rounded-full" />
+            <p className="font-mono text-xs text-gray-400 uppercase tracking-widest">Loading Roster...</p>
+          </div>
+        ) : hasData ? (
+          <>
+            {/* LEVEL 1 — Nodal Officers: editorial large portraits */}
+            {displayData.nodalOfficers.length > 0 && (
+              <EditorialSection
+                title="Nodal Officers"
+                accent="#FF6B6B"
+                members={displayData.nodalOfficers}
+                onSelect={setSelectedMember}
+              />
+            )}
 
-              {/* 2. Faculty Section */}
-              {displayData.facultyMembers?.length > 0 && (
-                <div className="mb-24">
-                  <div className="flex items-center gap-4 mb-8">
-                    <div className="w-2 h-8 bg-accent"></div>
-                    <h2 className="text-3xl font-black text-text-dark uppercase tracking-tight">Faculty Board</h2>
-                  </div>
-                  <motion.div 
-                    variants={containerVariants}
-                    initial="hidden"
-                    animate="visible"
-                    className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4"
-                  >
-                    {displayData.facultyMembers.map((member) => (
-                      <DirectoryCard key={member.id} member={member} />
-                    ))}
-                  </motion.div>
-                </div>
-              )}
+            {/* LEVEL 1 — Faculty Board: editorial */}
+            {displayData.facultyMembers.length > 0 && (
+              <EditorialSection
+                title="Faculty Board"
+                accent="#A8D5BA"
+                members={displayData.facultyMembers}
+                onSelect={setSelectedMember}
+              />
+            )}
 
-              {/* 3. Core Team Section */}
-              {displayData.coreTeam?.length > 0 && (
-                <div className="mb-24">
-                  <div className="flex items-center gap-4 mb-8">
-                    <div className="w-2 h-8 bg-text-dark"></div>
-                    <h2 className="text-3xl font-black text-text-dark uppercase tracking-tight">Executive Committee</h2>
-                  </div>
-                  <motion.div 
-                    variants={containerVariants}
-                    initial="hidden"
-                    animate="visible"
-                    className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4"
-                  >
-                    {displayData.coreTeam.map((member) => (
-                      <DirectoryCard key={member.id} member={member} />
-                    ))}
-                  </motion.div>
-                </div>
-              )}
+            {/* LEVEL 2 — Executive Committee: editorial large portraits */}
+            {displayData.coreTeam.length > 0 && (
+              <EditorialSection
+                title="Executive Committee"
+                accent="#2E2E2E"
+                members={displayData.coreTeam}
+                onSelect={setSelectedMember}
+              />
+            )}
 
-              {/* 4. General Members Section */}
-              {displayData.teamMembers?.length > 0 && (
-                <div className="mb-24">
-                  <div className="flex items-center gap-4 mb-8">
-                    <div className="w-2 h-8 bg-gray-300"></div>
-                    <h2 className="text-3xl font-black text-text-dark uppercase tracking-tight">Member Network</h2>
-                  </div>
-                  <motion.div 
-                    variants={containerVariants}
-                    initial="hidden"
-                    animate="visible"
-                    className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3"
-                  >
-                    {displayData.teamMembers.map((member) => (
-                      <CompactMemberCard key={member.id} member={member} />
-                    ))}
-                  </motion.div>
-                </div>
+            {/* LEVEL 3 — Member Network: compact grid */}
+            {displayData.teamMembers.length > 0 && (
+              <MemberGridSection
+                title="Member Network"
+                members={displayData.teamMembers}
+                onSelect={setSelectedMember}
+              />
+            )}
+          </>
+        ) : (
+          /* Empty state */
+          <div className="container mx-auto px-6 max-w-md">
+            <div className="flex flex-col items-center justify-center py-24 border-2 border-dashed border-gray-200 text-center">
+              <div className="w-14 h-14 bg-gray-100 flex items-center justify-center mb-5 text-xl text-gray-300">
+                <FaSearch />
+              </div>
+              <p className="text-gray-400 font-mono text-sm">
+                {rawData.length === 0
+                  ? `NO_ROSTER_FOR_${selectedYear}`
+                  : `NO_MATCH — "${searchQuery}"`}
+              </p>
+              {rawData.length > 0 && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="mt-4 text-accent font-bold text-sm hover:underline"
+                >
+                  Clear Search
+                </button>
               )}
+            </div>
+          </div>
+        )}
+      </main>
 
-              {/* Empty State */}
-              {!displayData.nodalOfficers?.length && 
-               !displayData.facultyMembers?.length && 
-               !displayData.coreTeam?.length && 
-               !displayData.teamMembers?.length && (
-                <div className="text-center py-20 border-2 border-dashed border-gray-200">
-                  <p className="text-gray-400 font-mono mb-2">
-                    {rawData.length === 0 
-                      ? `NO_DATA_AVAILABLE_FOR_YEAR_${selectedYear}` 
-                      : "NO_MATCHING_RECORDS_FOUND"
-                    }
-                  </p>
-                  {rawData.length > 0 && (
-                    <button 
-                      onClick={() => setSearchQuery("")}
-                      className="text-accent hover:underline font-bold text-sm"
-                    >
-                      Reset Search
-                    </button>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </section>
+      {/* ── PROFILE MODAL ─────────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {selectedMember && (
+          <ProfileModal
+            member={selectedMember}
+            year={selectedYear}
+            onClose={() => setSelectedMember(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };
 
-// --- SUB-COMPONENTS ---
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION HEADER
+// ─────────────────────────────────────────────────────────────────────────────
+const SectionHeader = ({ title, count, accent }) => (
+  <div className="container mx-auto px-6 mb-10 flex items-center gap-4">
+    <div className="w-1 h-12 rounded-full flex-shrink-0" style={{ background: accent }} />
+    <div>
+      <h2 className="text-2xl md:text-3xl font-black text-text-dark uppercase tracking-tight leading-none">
+        {title}
+      </h2>
+      <p className="font-mono text-[10px] text-gray-400 mt-1 uppercase tracking-widest">
+        {count} {count === 1 ? "Member" : "Members"}
+      </p>
+    </div>
+  </div>
+);
 
-const DirectoryCard = ({ member }) => {
+// ─────────────────────────────────────────────────────────────────────────────
+// EDITORIAL SECTION (Nodal Officers / Faculty)
+// Large portrait cards with 3D tilt + magnetic hover
+// ─────────────────────────────────────────────────────────────────────────────
+const EditorialSection = ({ title, accent, members, onSelect }) => (
+  <section className="mb-24">
+    <SectionHeader title={title} count={members.length} accent={accent} />
+    <div className="container mx-auto px-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        {members.map((m, i) => (
+          <motion.div
+            key={m.id}
+            initial={{ opacity: 0, y: 32 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.07, duration: 0.4, ease: "easeOut" }}
+          >
+            <EditorialCard member={m} onSelect={onSelect} />
+          </motion.div>
+        ))}
+      </div>
+    </div>
+  </section>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EDITORIAL CARD
+// ─────────────────────────────────────────────────────────────────────────────
+const EditorialCard = ({ member, onSelect }) => {
+  const [imgError, setImgError] = useState(false);
+  const [hovered, setHovered]   = useState(false);
+  const cardRef = useRef(null);
+  const mouseX  = useMotionValue(0);
+  const mouseY  = useMotionValue(0);
+  const rotateX = useTransform(mouseY, [-60, 60], [5, -5]);
+  const rotateY = useTransform(mouseX, [-60, 60], [-5, 5]);
+
+  const initials = (member.name || "?").split(" ").map((w) => w[0]).slice(0, 2).join("");
+
+  const onMouseMove = (e) => {
+    const r = cardRef.current?.getBoundingClientRect();
+    if (!r) return;
+    mouseX.set(e.clientX - r.left - r.width / 2);
+    mouseY.set(e.clientY - r.top - r.height / 2);
+  };
+  const onMouseLeave = () => { mouseX.set(0); mouseY.set(0); setHovered(false); };
+
   return (
     <motion.div
-      variants={{
-        hidden: { opacity: 0, y: 20 },
-        visible: { opacity: 1, y: 0 }
-      }}
-      className="group relative h-[320px] bg-white border border-gray-200 hover:border-text-dark transition-all duration-300 overflow-hidden flex flex-col"
+      ref={cardRef}
+      style={{ rotateX, rotateY, perspective: 900, transformStyle: "preserve-3d" }}
+      whileHover={{ y: -10, boxShadow: "0 24px 60px rgba(0,0,0,0.15)" }}
+      onMouseMove={onMouseMove}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={onMouseLeave}
+      onClick={() => onSelect(member)}
+      transition={{ type: "spring", damping: 22, stiffness: 280 }}
+      className="cursor-pointer overflow-hidden bg-white border border-gray-100 group"
     >
-      <div className="relative h-[65%] overflow-hidden bg-gray-100">
-        <img 
-          src={member.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}&background=1a1a1a&color=fff`}
-          alt={member.name}
-          className="w-full h-full object-cover transition-all duration-500 group-hover:scale-105"
-          onError={(e) => {
-             e.target.onerror = null;
-             e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}&background=1a1a1a&color=fff`;
-          }}
-        />
-        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center gap-4 backdrop-blur-sm">
-           {member.linkedin && <SocialIcon href={member.linkedin} icon={<FaLinkedinIn />} />}
-           {member.github && <SocialIcon href={member.github} icon={<FaGithub />} />}
-           {member.twitter && <SocialIcon href={member.twitter} icon={<FaTwitter />} />}
-        </div>
-      </div>
-      <div className="flex-grow p-5 bg-white relative z-10 flex flex-col justify-center border-t border-gray-100">
-        <h3 className="text-lg font-bold text-text-dark leading-tight group-hover:text-accent transition-colors">
-          {member.name}
-        </h3>
-        <p className="font-mono text-xs text-gray-500 uppercase mt-1 truncate">
-          {member.role}
-        </p>
-      </div>
-    </motion.div>
-  );
-};
-
-const CompactMemberCard = ({ member }) => {
-  return (
-    <motion.div
-       variants={{
-        hidden: { opacity: 0, scale: 0.9 },
-        visible: { opacity: 1, scale: 1 }
-      }}
-      className="group bg-white p-4 border border-gray-200 rounded-xl hover:border-accent/50 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 text-center"
-    >
-      <div className="w-16 h-16 mx-auto rounded-full overflow-hidden mb-3 bg-gray-100 ring-2 ring-gray-100 group-hover:ring-accent transition-all">
-         <img 
-            src={member.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}&background=random`}
+      {/* Portrait */}
+      <div className="aspect-[3/4] relative overflow-hidden bg-gray-900">
+        {!imgError && member.image ? (
+          <motion.img
+            src={member.image}
             alt={member.name}
-            className="w-full h-full object-cover"
-            onError={(e) => {
-              e.target.onerror = null;
-              e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}&background=random`;
-            }}
-         />
-      </div>
-      <h4 className="font-bold text-sm text-text-dark truncate group-hover:text-accent">{member.name}</h4>
-      <p className="text-[10px] text-gray-500 font-mono uppercase truncate tracking-wide">{member.role}</p>
-      {(member.linkedin || member.github || member.twitter) && (
-        <div className="flex items-center justify-center gap-2 mt-3 opacity-80 group-hover:opacity-100 transition-opacity">
-          {member.linkedin && <MiniSocialIcon href={member.linkedin} icon={<FaLinkedinIn />} />}
-          {member.github && <MiniSocialIcon href={member.github} icon={<FaGithub />} />}
-          {member.twitter && <MiniSocialIcon href={member.twitter} icon={<FaTwitter />} />}
+            className="w-full h-full object-cover object-top"
+            animate={{ scale: hovered ? 1.07 : 1 }}
+            transition={{ duration: 0.55, ease: "easeOut" }}
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-900 to-gray-700">
+            <span className="text-7xl font-black text-white/10 select-none">{initials}</span>
+          </div>
+        )}
+
+        {/* Always-on gradient */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
+
+        {/* Info block — always visible, socials slide in on hover */}
+        <div className="absolute bottom-0 left-0 right-0 p-5">
+          {/* Animated accent bar */}
+          <motion.div
+            className="h-[2px] bg-accent rounded-full mb-3"
+            animate={{ width: hovered ? 52 : 20 }}
+            transition={{ duration: 0.3 }}
+          />
+          <h3 className="font-black text-white text-base leading-tight">{member.name}</h3>
+          <p className="font-mono text-white/55 text-[10px] uppercase tracking-widest mt-1 line-clamp-1">
+            {member.role}
+          </p>
+
+          {/* Social links */}
+          <motion.div
+            className="flex gap-2 mt-3"
+            animate={{ opacity: hovered ? 1 : 0, y: hovered ? 0 : 8 }}
+            transition={{ duration: 0.2, delay: hovered ? 0.06 : 0 }}
+          >
+            {[
+              { href: member.linkedin, Icon: FaLinkedinIn, label: "LinkedIn" },
+              { href: member.github,   Icon: FaGithub,    label: "GitHub"   },
+              { href: member.twitter,  Icon: FaTwitter,   label: "Twitter"  },
+            ]
+              .filter(({ href }) => href)
+              .map(({ href, Icon, label }) => (
+                <a
+                  key={label}
+                  href={href.startsWith("http") ? href : `https://${href}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`${label} profile of ${member.name}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-7 h-7 bg-white/15 hover:bg-accent flex items-center justify-center rounded-full transition-colors text-white text-xs"
+                >
+                  <Icon aria-hidden="true" />
+                </a>
+              ))}
+          </motion.div>
         </div>
-      )}
+
+        {/* "View Profile" chip */}
+        <motion.div
+          className="absolute top-4 right-4 bg-black/40 backdrop-blur-sm px-2 py-1 font-mono text-[9px] text-white/70 uppercase tracking-widest"
+          animate={{ opacity: hovered ? 1 : 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          View Profile ↗
+        </motion.div>
+      </div>
     </motion.div>
   );
 };
 
-const MiniSocialIcon = ({ href, icon }) => {
-  if (!href) return null;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MEMBER GRID SECTION
+// ─────────────────────────────────────────────────────────────────────────────
+const MemberGridSection = ({ title, members, onSelect }) => (
+  <section className="mb-20">
+    <SectionHeader title={title} count={members.length} accent="#8A8A8A" />
+    <div className="container mx-auto px-6">
+      <motion.div
+        initial="hidden"
+        animate="visible"
+        variants={{
+          hidden:  { opacity: 0 },
+          visible: { opacity: 1, transition: { staggerChildren: 0.035 } },
+        }}
+        className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3"
+      >
+        {members.map((m) => (
+          <MemberCard key={m.id} member={m} onSelect={onSelect} />
+        ))}
+      </motion.div>
+    </div>
+  </section>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MEMBER CARD (compact circular)
+// ─────────────────────────────────────────────────────────────────────────────
+const MemberCard = ({ member, onSelect }) => {
+  const [imgError, setImgError] = useState(false);
+  const initials = (member.name || "?").split(" ").map((w) => w[0]).slice(0, 2).join("");
+
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="w-7 h-7 flex items-center justify-center rounded-full bg-gray-100 text-text-dark hover:bg-accent hover:text-white transition-colors"
+    <motion.div
+      variants={{ hidden: { opacity: 0, scale: 0.9 }, visible: { opacity: 1, scale: 1 } }}
+      whileHover={{ y: -4, boxShadow: "0 10px 24px rgba(0,0,0,0.08)" }}
+      onClick={() => onSelect(member)}
+      className="group flex flex-col items-center text-center p-4 bg-white border border-gray-200 hover:border-accent/40 transition-all duration-200 cursor-pointer"
     >
-      <span className="text-xs">{icon}</span>
-    </a>
+      <div className="relative w-16 h-16 mb-3 overflow-hidden rounded-full ring-2 ring-gray-100 group-hover:ring-accent/40 transition-all flex-shrink-0">
+        {!imgError && member.image ? (
+          <img
+            src={member.image}
+            alt={member.name}
+            className="w-full h-full object-cover object-top"
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-600">
+            <span className="text-lg font-black text-white/30 select-none">{initials}</span>
+          </div>
+        )}
+      </div>
+      <h4 className="font-bold text-xs text-text-dark leading-tight line-clamp-2 group-hover:text-accent transition-colors">
+        {member.name}
+      </h4>
+      <p className="text-[9px] font-mono text-gray-400 uppercase tracking-widest mt-1 line-clamp-1">
+        {member.role}
+      </p>
+    </motion.div>
   );
 };
 
-const SocialIcon = ({ href, icon }) => {
-  if (!href) return null;
+// ─────────────────────────────────────────────────────────────────────────────
+// PROFILE MODAL — click-to-expand with spring animation
+// ─────────────────────────────────────────────────────────────────────────────
+const ProfileModal = ({ member, year, onClose }) => {
+  const [imgError, setImgError] = useState(false);
+  const initials = (member.name || "?").split(" ").map((w) => w[0]).slice(0, 2).join("");
+
+  // Lock scroll + Escape key to close
+  useEffect(() => {
+    const esc = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", esc);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", esc);
+      document.body.style.overflow = "";
+    };
+  }, [onClose]);
+
+  const safeHref = (href) =>
+    href ? (href.startsWith("http") ? href : `https://${href}`) : null;
+
+  const socials = [
+    { href: safeHref(member.linkedin), Icon: FaLinkedinIn, label: "LinkedIn",  color: "#0A66C2", bg: "#0A66C2/10" },
+    { href: safeHref(member.github),   Icon: FaGithub,    label: "GitHub",    color: "#1a1a1a", bg: "gray-900/10" },
+    { href: safeHref(member.twitter),  Icon: FaTwitter,   label: "Twitter",   color: "#1DA1F2", bg: "#1DA1F2/10" },
+  ].filter(({ href }) => href);
+
   return (
-    <a 
-      href={href} 
-      target="_blank" 
-      rel="noopener noreferrer"
-      className="w-8 h-8 bg-white text-text-dark rounded-full flex items-center justify-center hover:bg-accent hover:text-white transition-all hover:-translate-y-1"
+    <motion.div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.18 }}
     >
-      {icon}
-    </a>
+      {/* Backdrop */}
+      <motion.div
+        className="absolute inset-0 bg-black/82 backdrop-blur-md"
+        onClick={onClose}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+      />
+
+      {/* Profile card */}
+      <motion.div
+        className="relative z-10 bg-white w-full max-w-2xl max-h-[92vh] flex flex-col md:flex-row overflow-hidden shadow-2xl"
+        initial={{ scale: 0.87, opacity: 0, y: 28 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.93, opacity: 0, y: 16 }}
+        transition={{ type: "spring", damping: 26, stiffness: 320 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* ── Photo column ── */}
+        <div className="w-full md:w-[44%] flex-shrink-0 relative overflow-hidden min-h-[280px]">
+          {!imgError && member.image ? (
+            <img
+              src={member.image}
+              alt={member.name}
+              className="w-full h-full object-cover object-top absolute inset-0"
+              onError={() => setImgError(true)}
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-900 to-gray-700">
+              <span className="text-[9rem] font-black text-white/8 select-none leading-none">{initials}</span>
+            </div>
+          )}
+          {/* Photo gradient overlay */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+          {/* Year badge */}
+          <div className="absolute top-4 left-4 bg-black/50 backdrop-blur-sm px-3 py-1 font-mono text-[10px] text-white uppercase tracking-widest">
+            IEDC // {year}
+          </div>
+        </div>
+
+        {/* ── Info column ── */}
+        <div className="flex-1 flex flex-col p-7 md:p-8 overflow-y-auto">
+          {/* Close button */}
+          <button
+            onClick={onClose}
+            aria-label="Close profile"
+            className="absolute top-4 right-4 z-20 w-9 h-9 bg-gray-100 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-colors"
+          >
+            <FaTimes className="text-sm" />
+          </button>
+
+          {/* Name + role */}
+          <div className="mb-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-[2px] bg-accent" />
+              <span className="font-mono text-[10px] text-gray-400 uppercase tracking-widest">
+                {year} Executive
+              </span>
+            </div>
+            <h2 className="text-3xl md:text-4xl font-black text-text-dark leading-tight tracking-tighter">
+              {member.name}
+            </h2>
+            <p className="font-mono text-sm text-gray-500 uppercase tracking-widest mt-3">
+              {member.role}
+            </p>
+          </div>
+
+          <div className="border-t border-gray-100 mb-6" />
+
+          {/* Social profiles */}
+          <div className="space-y-3 flex-1">
+            <p className="font-mono text-[10px] text-gray-400 uppercase tracking-widest mb-3">
+              Connect
+            </p>
+            {socials.length > 0 ? socials.map(({ href, Icon, label }) => (
+              <a
+                key={label}
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`${label} profile of ${member.name}`}
+                className="flex items-center gap-4 p-4 border border-gray-100 hover:border-accent hover:bg-accent/5 group transition-all"
+              >
+                <div className="w-8 h-8 bg-gray-100 text-text-dark flex items-center justify-center rounded-full group-hover:bg-accent group-hover:text-white transition-all text-sm">
+                  <Icon aria-hidden="true" />
+                </div>
+                <span className="text-sm font-semibold text-text-dark">{label}</span>
+                <span className="ml-auto text-accent font-bold opacity-0 group-hover:opacity-100 transition-opacity">→</span>
+              </a>
+            )) : (
+              <p className="text-gray-300 font-mono text-xs">No social profiles linked yet.</p>
+            )}
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
   );
 };
 
