@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence, useMotionValue, useTransform } from "framer-motion";
 import {
@@ -7,16 +7,12 @@ import {
 } from "react-icons/fa";
 import axios from "axios";
 
-// ── Carousel constants ────────────────────────────────────────────────────────
-const CARD_W = 200; // px — works on mobile and desktop
-const CARD_GAP = 24;
-const STEP = CARD_W + CARD_GAP;
-
 // ─────────────────────────────────────────────────────────────────────────────
 // TEAM PAGE
 // ─────────────────────────────────────────────────────────────────────────────
 const TeamPage = () => {
-  const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+  const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:5000" : "");
+  if (import.meta.env.PROD && !import.meta.env.VITE_API_URL) throw new Error("VITE_API_URL is required in production");
 
   const [availableYears, setAvailableYears]   = useState([]);
   const [selectedYear,   setSelectedYear]     = useState(null);
@@ -440,212 +436,6 @@ const EditorialCard = ({ member, onSelect }) => {
   );
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CAROUSEL SECTION (Executive Committee)
-// ─────────────────────────────────────────────────────────────────────────────
-const CarouselSection = ({ title, members, onSelect }) => {
-  const [activeIdx, setActiveIdx] = useState(0);
-  const dragStartX = useRef(0);
-
-  const goTo = useCallback(
-    (i) => setActiveIdx(Math.max(0, Math.min(i, members.length - 1))),
-    [members.length]
-  );
-
-  // Keyboard navigation
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === "ArrowLeft")  setActiveIdx((i) => Math.max(0, i - 1));
-      if (e.key === "ArrowRight") setActiveIdx((i) => Math.min(members.length - 1, i + 1));
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [members.length]);
-
-  const active = members[activeIdx];
-
-  return (
-    <section className="mb-24">
-      <SectionHeader title={title} count={members.length} accent="#2E2E2E" />
-
-      {/* ── Carousel track ── */}
-      <div
-        className="relative select-none overflow-hidden"
-        style={{ height: 360 }}
-        onTouchStart={(e) => { dragStartX.current = e.touches[0].clientX; }}
-        onTouchEnd={(e) => {
-          const diff = dragStartX.current - e.changedTouches[0].clientX;
-          if (diff > 50) goTo(activeIdx + 1);
-          else if (diff < -50) goTo(activeIdx - 1);
-        }}
-      >
-        <div className="relative flex items-center justify-center h-full">
-          {members.map((m, i) => {
-            const dist    = i - activeIdx;
-            const absDist = Math.abs(dist);
-            return (
-              <CarouselCard
-                key={m.id}
-                member={m}
-                dist={absDist}
-                xOffset={dist * STEP}
-                isActive={absDist === 0}
-                onClick={() => absDist === 0 ? onSelect(m) : goTo(i)}
-              />
-            );
-          })}
-        </div>
-
-        {/* Prev / Next buttons */}
-        {members.length > 1 && (
-          <>
-            <button
-              onClick={() => goTo(activeIdx - 1)}
-              disabled={activeIdx === 0}
-              aria-label="Previous member"
-              className="absolute left-4 md:left-10 top-1/2 -translate-y-1/2 z-20 w-10 h-10 bg-white border border-gray-200 flex items-center justify-center hover:border-text-dark transition-all disabled:opacity-25 disabled:cursor-not-allowed"
-            >
-              <FaChevronLeft className="text-sm" />
-            </button>
-            <button
-              onClick={() => goTo(activeIdx + 1)}
-              disabled={activeIdx === members.length - 1}
-              aria-label="Next member"
-              className="absolute right-4 md:right-10 top-1/2 -translate-y-1/2 z-20 w-10 h-10 bg-white border border-gray-200 flex items-center justify-center hover:border-text-dark transition-all disabled:opacity-25 disabled:cursor-not-allowed"
-            >
-              <FaChevronRight className="text-sm" />
-            </button>
-          </>
-        )}
-      </div>
-
-      {/* ── Active person info ── */}
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={activeIdx}
-          initial={{ opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -14 }}
-          transition={{ duration: 0.22 }}
-          className="text-center px-6 pt-6 pb-2"
-        >
-          <h3 className="font-black text-2xl md:text-3xl text-text-dark tracking-tight leading-none">
-            {active?.name}
-          </h3>
-          <p className="font-mono text-[11px] text-gray-400 uppercase tracking-widest mt-2">
-            {active?.role}
-          </p>
-          {/* Social links for active card */}
-          <div className="flex items-center justify-center gap-3 mt-4">
-            {[
-              { href: active?.linkedin, Icon: FaLinkedinIn, label: "LinkedIn" },
-              { href: active?.github,   Icon: FaGithub,    label: "GitHub"   },
-              { href: active?.twitter,  Icon: FaTwitter,   label: "Twitter"  },
-            ]
-              .filter(({ href }) => href)
-              .map(({ href, Icon, label }) => (
-                <a
-                  key={label}
-                  href={href.startsWith("http") ? href : `https://${href}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={`${label} of ${active?.name}`}
-                  className="w-8 h-8 bg-gray-100 hover:bg-accent hover:text-white flex items-center justify-center rounded-full transition-all text-sm text-text-dark"
-                >
-                  <Icon aria-hidden="true" />
-                </a>
-              ))}
-          </div>
-        </motion.div>
-      </AnimatePresence>
-
-      {/* ── Dot indicators ── */}
-      {members.length > 1 && (
-        <div className="flex justify-center items-center gap-2 mt-5">
-          {members.map((m, i) => (
-            <button
-              key={i}
-              onClick={() => goTo(i)}
-              aria-label={`Go to ${m.name}`}
-              className={`transition-all rounded-full ${
-                i === activeIdx
-                  ? "w-6 h-1.5 bg-text-dark"
-                  : "w-1.5 h-1.5 bg-gray-300 hover:bg-gray-400"
-              }`}
-            />
-          ))}
-        </div>
-      )}
-    </section>
-  );
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CAROUSEL CARD (separate component — hooks inside map not allowed)
-// ─────────────────────────────────────────────────────────────────────────────
-const CarouselCard = ({ member, dist, xOffset, isActive, onClick }) => {
-  const [imgErr, setImgErr] = useState(false);
-  const initials = (member.name || "?").split(" ").map((w) => w[0]).slice(0, 2).join("");
-
-  const scale   = dist === 0 ? 1 : dist === 1 ? 0.78 : dist === 2 ? 0.62 : 0.5;
-  const opacity = dist === 0 ? 1 : dist === 1 ? 0.52 : dist === 2 ? 0.25 : 0;
-
-  return (
-    <motion.div
-      className="absolute cursor-pointer overflow-hidden"
-      style={{ width: CARD_W }}
-      animate={{
-        x:      xOffset,
-        scale,
-        opacity,
-        zIndex: 10 - dist,
-        filter: dist > 0 ? "grayscale(35%) brightness(0.85)" : "none",
-      }}
-      transition={{ type: "spring", damping: 30, stiffness: 220 }}
-      onClick={onClick}
-    >
-      <div className="relative overflow-hidden bg-gray-900" style={{ aspectRatio: "3/4" }}>
-        {!imgErr && member.image ? (
-          <img
-            src={member.image}
-            alt={member.name}
-            className="w-full h-full object-cover object-top"
-            onError={() => setImgErr(true)}
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-900 to-gray-700">
-            <span className="text-5xl font-black text-white/15 select-none">{initials}</span>
-          </div>
-        )}
-        {/* Gradient */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-
-        {/* Active outline */}
-        {isActive && (
-          <motion.div
-            layoutId="carousel-active-border"
-            className="absolute inset-0 border-2 border-accent pointer-events-none"
-            transition={{ type: "spring", damping: 30, stiffness: 220 }}
-          />
-        )}
-        {/* "Tap to view" on active */}
-        {isActive && (
-          <div className="absolute bottom-3 right-3 bg-accent font-mono text-[8px] text-white px-2 py-1 uppercase tracking-wider">
-            View ↗
-          </div>
-        )}
-        {/* "Tap to focus" on non-active */}
-        {!isActive && dist === 1 && (
-          <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-            <div className="bg-white/10 backdrop-blur-sm font-mono text-[9px] text-white px-2 py-1 uppercase">
-              Focus
-            </div>
-          </div>
-        )}
-      </div>
-    </motion.div>
-  );
-};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MEMBER GRID SECTION

@@ -437,15 +437,14 @@ const updateEventCommon = async (req, res, event) => {
   if (workflow.mode !== undefined) event.mode = workflow.mode || undefined;
   if (workflow.posterUrl !== undefined) event.posterUrl = workflow.posterUrl || undefined;
   
-    let oldPosterPublicId = null;
-    let oldPosterUrl = null;
-    if (workflow.posterPublicId !== undefined && workflow.posterPublicId !== event.posterPublicId) {
-      oldPosterPublicId = event.posterPublicId;
-      oldPosterUrl = event.posterUrl;
-    }
+  let oldPosterPublicId = null;
+  if (workflow.posterPublicId !== undefined && workflow.posterPublicId !== event.posterPublicId) {
+    oldPosterPublicId = event.posterPublicId;
+  }
 
-    if (workflow.posterPublicId !== undefined)
+  if (workflow.posterPublicId !== undefined) {
     event.posterPublicId = workflow.posterPublicId || undefined;
+  }
   if (workflow.registrationLink !== undefined) {
     event.registrationLink = workflow.registrationLink || undefined;
     event.registrationUrl = workflow.registrationLink || undefined;

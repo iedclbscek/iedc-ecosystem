@@ -7,7 +7,7 @@ const separator = ' · ';
 
 export const userLabel = (user) => {
   const name = user?.name || user?.membershipId || 'Member';
-  const meta = [user?.membershipId, user?.email].filter(Boolean).join(separator);
+  const meta = user?.meta || [user?.membershipId, user?.email].filter(Boolean).join(separator);
   return { name, meta };
 };
 
@@ -15,7 +15,7 @@ export const matchesUserSearch = (user, query) => {
   const search = normalize(query).toLowerCase();
   if (!search) return true;
 
-  return [user?.name, user?.email, user?.membershipId]
+  return [user?.name, user?.email, user?.membershipId, user?.meta]
     .filter(Boolean)
     .some((value) => String(value).toLowerCase().includes(search));
 };
@@ -32,10 +32,10 @@ export function MultiSelectUsers({
   const [searchQuery, setSearchQuery] = useState('');
 
   const options = (Array.isArray(users) ? users : [])
-    .map((u) => ({
-      id: u?._id,
-      ...userLabel(u),
-    }))
+    .map((u) => {
+      const id = u?._id ?? u?.id;
+      return { id, ...userLabel(u) };
+    })
     .filter((u) => Boolean(u.id));
 
   const filteredOptions = options.filter((u) => matchesUserSearch(u, searchQuery));

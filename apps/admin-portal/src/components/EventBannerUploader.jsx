@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import ReactCrop from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
-import { Loader2, UploadCloud, X, Image as ImageIcon, Trash2 } from 'lucide-react';
+import { Loader2, UploadCloud, X, Image as ImageIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { uploadCloudinaryImage } from '../api/adminService';
 
@@ -71,15 +71,21 @@ export default function EventBannerUploader({
     setIsUploading(true);
     
     try {
-      const { x = 0, y = 0, width = 0, height = 0 } = cropState;
+      const { unit = '%', x = 0, y = 0, width = 0, height = 0 } = cropState;
       const canvas = document.createElement('canvas');
       const scaleX = cropImageEl.naturalWidth / cropImageEl.width;
       const scaleY = cropImageEl.naturalHeight / cropImageEl.height;
       const pixelRatio = window.devicePixelRatio || 1;
 
+      // Handle % unit by scaling to element pixels first
+      const cropX = unit === '%' ? (x / 100) * cropImageEl.width : x;
+      const cropY = unit === '%' ? (y / 100) * cropImageEl.height : y;
+      const cropWidth = unit === '%' ? (width / 100) * cropImageEl.width : width;
+      const cropHeight = unit === '%' ? (height / 100) * cropImageEl.height : height;
+
       // Desired output dimensions (e.g. max 1600 width)
-      const croppedWidth = width * scaleX;
-      const croppedHeight = height * scaleY;
+      const croppedWidth = cropWidth * scaleX;
+      const croppedHeight = cropHeight * scaleY;
       const targetWidth = Math.min(croppedWidth, 1600);
       const scaleFactor = targetWidth / croppedWidth;
       const targetHeight = croppedHeight * scaleFactor;
@@ -93,10 +99,10 @@ export default function EventBannerUploader({
 
       ctx.drawImage(
         cropImageEl,
-        x * scaleX,
-        y * scaleY,
-        width * scaleX,
-        height * scaleY,
+        cropX * scaleX,
+        cropY * scaleY,
+        cropWidth * scaleX,
+        cropHeight * scaleY,
         0,
         0,
         targetWidth,
@@ -231,6 +237,7 @@ export default function EventBannerUploader({
               <ReactCrop
                 crop={cropState}
                 onChange={(c) => setCropState(c)}
+                aspect={16 / 9}
                 className="max-h-[60vh]"
               >
                 <img

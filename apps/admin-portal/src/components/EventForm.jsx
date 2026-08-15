@@ -111,7 +111,7 @@ export default function EventForm({
     return (
       <div className="flex flex-wrap gap-2 mt-3">
         {selectedIds.map(id => {
-          const user = coordinators.find(c => String(c.id) === String(id));
+          const user = coordinators.find(c => String(c._id ?? c.id) === String(id));
           return (
             <div key={id} className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-100 border border-slate-200 rounded-full text-xs font-semibold text-slate-700">
               {user ? user.name : 'Unknown'}
