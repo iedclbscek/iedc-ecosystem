@@ -1,7 +1,9 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { CalendarDays, Loader2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import EventForm from '../components/EventForm';
+import PreviewEventModal from '../components/PreviewEventModal';
 import {
   createClub,
   createClubEvent,
@@ -227,6 +229,7 @@ function ClubsEvents() {
   const [isCreateEventOpen, setIsCreateEventOpen] = useState(false);
   const [isEditEventOpen, setIsEditEventOpen] = useState(false);
   const [eventEditing, setEventEditing] = useState(null);
+  const [previewData, setPreviewData] = useState(null);
 
   const [createClubForm, setCreateClubForm] = useState({
     name: '',
@@ -1115,183 +1118,38 @@ function ClubsEvents() {
       {/* Create Event modal */}
       {isCreateEventOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="w-full max-w-3xl max-h-[90vh] bg-white rounded-2xl shadow-xl border border-slate-200 flex flex-col overflow-hidden">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-              <div className="font-bold">Create Event</div>
-              <button
-                type="button"
-                onClick={() => setIsCreateEventOpen(false)}
-                className="p-2 rounded-xl hover:bg-slate-50 text-slate-500"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-4 overflow-y-auto max-h-[calc(90vh-132px)]">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Title *</label>
-                  <input
-                    type="text"
-                    value={createEventForm.title}
-                    onChange={(e) => setCreateEventForm((p) => ({ ...p, title: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                    placeholder="Event title"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Location</label>
-                  <input
-                    type="text"
-                    value={createEventForm.location}
-                    onChange={(e) => setCreateEventForm((p) => ({ ...p, location: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                    placeholder="Venue"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Status</label>
-                  <select
-                    value={createEventForm.status}
-                    onChange={(e) => setCreateEventForm((p) => ({ ...p, status: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                  >
-                    {EVENT_STATUSES.map((status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Visibility</label>
-                  <select
-                    value={createEventForm.visibility}
-                    onChange={(e) =>
-                      setCreateEventForm((p) => ({
-                        ...p,
-                        visibility: e.target.value,
-                      }))
-                    }
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                  >
-                    {EVENT_VISIBILITIES.map((visibility) => (
-                      <option key={visibility} value={visibility}>
-                        {visibility}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Start</label>
-                  <input
-                    type="datetime-local"
-                    value={createEventForm.startAt}
-                    onChange={(e) => setCreateEventForm((p) => ({ ...p, startAt: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">End</label>
-                  <input
-                    type="datetime-local"
-                    value={createEventForm.endAt}
-                    onChange={(e) => setCreateEventForm((p) => ({ ...p, endAt: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                  />
-                </div>
-
-                <div className="sm:col-span-2 space-y-2">
-                  <label className="text-xs font-bold text-slate-500">Coordinators</label>
-                  <MultiSelectUsers
-                    users={users}
-                    selectedIds={createEventForm.coordinatorUserIds}
-                    searchEnabled
-                    searchPlaceholder="Search coordinators..."
-                    emptyMessage="No users found"
-                    onToggle={(id) =>
-                      setCreateEventForm((p) => ({
-                        ...p,
-                        coordinatorUserIds: toggleFromArray(p.coordinatorUserIds, id),
-                      }))
-                    }
-                  />
-                </div>
-
-                <div className="sm:col-span-2 space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Short Description</label>
-                  <textarea
-                    value={createEventForm.shortDescription}
-                    onChange={(e) =>
-                      setCreateEventForm((p) => ({ ...p, shortDescription: e.target.value }))
-                    }
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 min-h-20"
-                    placeholder="Optional"
-                  />
-                </div>
-                <div className="sm:col-span-2 space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Registration Link</label>
-                  <input
-                    type="text"
-                    value={createEventForm.registrationLink}
-                    onChange={(e) =>
-                      setCreateEventForm((p) => ({ ...p, registrationLink: e.target.value }))
-                    }
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                    placeholder="Optional (Google Forms, Unstop, registration URL)"
-                  />
-                  <div className="text-[11px] text-slate-400">Optional</div>
-                </div>
-                <div className="sm:col-span-2 space-y-1">
-                  <label className="text-xs font-bold text-slate-500">External Link</label>
-                  <input
-                    type="text"
-                    value={createEventForm.externalLink}
-                    onChange={(e) =>
-                      setCreateEventForm((p) => ({ ...p, externalLink: e.target.value }))
-                    }
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                    placeholder="Optional (website, brochure, announcement, etc.)"
-                  />
-                  <div className="text-[11px] text-slate-400">Optional</div>
-                </div>
-
-                <div className="sm:col-span-2 space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Description</label>
-                  <textarea
-                    value={createEventForm.description}
-                    onChange={(e) =>
-                      setCreateEventForm((p) => ({ ...p, description: e.target.value }))
-                    }
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 min-h-28"
-                    placeholder="Optional"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsCreateEventOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={submitCreateEvent}
-                  disabled={!canCreateEvent || createEventMutation.isPending}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold disabled:opacity-50"
-                >
-                  {createEventMutation.isPending && <Loader2 className="animate-spin" size={16} />}
-                  Create
-                </button>
-              </div>
-            </div>
+          <div className="w-full max-w-3xl">
+            <EventForm 
+              mode="create"
+              eventType="club"
+              initialData={createEventForm}
+              coordinators={users}
+              isSubmitting={createEventMutation.isPending}
+              onSubmit={(data) => {
+                setCreateEventForm(data);
+                createEventMutation.mutate({
+                  clubId: selectedClubId,
+                  title: data.title.trim(),
+                  description: data.description,
+                  shortDescription: data.shortDescription,
+                  registrationLink: data.registrationLink,
+                  externalLink: data.externalLink,
+                  scope: data.scope || 'club',
+                  status: data.status || 'draft',
+                  visibility: data.visibility || 'public',
+                  location: data.location,
+                  venue: data.venue,
+                  mode: data.mode,
+                  startAt: data.startAt ? new Date(data.startAt).toISOString() : '',
+                  endAt: data.endAt ? new Date(data.endAt).toISOString() : '',
+                  coordinatorUserIds: data.coordinatorUserIds,
+                  posterUrl: data.posterUrl,
+                  posterPublicId: data.posterPublicId,
+                });
+              }}
+              onCancel={() => setIsCreateEventOpen(false)}
+              onPreview={(data) => setPreviewData(data)}
+            />
           </div>
         </div>
       )}
@@ -1299,183 +1157,46 @@ function ClubsEvents() {
       {/* Edit Event modal */}
       {isEditEventOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="w-full max-w-3xl max-h-[90vh] bg-white rounded-2xl shadow-xl border border-slate-200 flex flex-col overflow-hidden">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-              <div className="font-bold">Edit Event</div>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsEditEventOpen(false);
-                  setEventEditing(null);
-                }}
-                className="p-2 rounded-xl hover:bg-slate-50 text-slate-500"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-4 overflow-y-auto max-h-[calc(90vh-132px)]">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Title *</label>
-                  <input
-                    type="text"
-                    value={editEventForm.title}
-                    onChange={(e) => setEditEventForm((p) => ({ ...p, title: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Location</label>
-                  <input
-                    type="text"
-                    value={editEventForm.location}
-                    onChange={(e) => setEditEventForm((p) => ({ ...p, location: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Status</label>
-                  <select
-                    value={editEventForm.status}
-                    onChange={(e) => setEditEventForm((p) => ({ ...p, status: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                  >
-                    {EVENT_STATUSES.map((status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Visibility</label>
-                  <select
-                    value={editEventForm.visibility}
-                    onChange={(e) =>
-                      setEditEventForm((p) => ({ ...p, visibility: e.target.value }))
-                    }
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                  >
-                    {EVENT_VISIBILITIES.map((visibility) => (
-                      <option key={visibility} value={visibility}>
-                        {visibility}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Start</label>
-                  <input
-                    type="datetime-local"
-                    value={editEventForm.startAt}
-                    onChange={(e) => setEditEventForm((p) => ({ ...p, startAt: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">End</label>
-                  <input
-                    type="datetime-local"
-                    value={editEventForm.endAt}
-                    onChange={(e) => setEditEventForm((p) => ({ ...p, endAt: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                  />
-                </div>
-
-                <div className="sm:col-span-2 space-y-2">
-                  <label className="text-xs font-bold text-slate-500">Coordinators</label>
-                  <MultiSelectUsers
-                    users={users}
-                    selectedIds={editEventForm.coordinatorUserIds}
-                    searchEnabled
-                    searchPlaceholder="Search coordinators..."
-                    emptyMessage="No users found"
-                    onToggle={(id) =>
-                      setEditEventForm((p) => ({
-                        ...p,
-                        coordinatorUserIds: toggleFromArray(p.coordinatorUserIds, id),
-                      }))
-                    }
-                  />
-                </div>
-
-                <div className="sm:col-span-2 space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Short Description</label>
-                  <textarea
-                    value={editEventForm.shortDescription}
-                    onChange={(e) =>
-                      setEditEventForm((p) => ({ ...p, shortDescription: e.target.value }))
-                    }
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 min-h-20"
-                  />
-                </div>
-                <div className="sm:col-span-2 space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Registration Link</label>
-                  <input
-                    type="text"
-                    value={editEventForm.registrationLink}
-                    onChange={(e) =>
-                      setEditEventForm((p) => ({ ...p, registrationLink: e.target.value }))
-                    }
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                    placeholder="Optional (Google Forms, Unstop, registration URL)"
-                  />
-                  <div className="text-[11px] text-slate-400">Optional</div>
-                </div>
-                <div className="sm:col-span-2 space-y-1">
-                  <label className="text-xs font-bold text-slate-500">External Link</label>
-                  <input
-                    type="text"
-                    value={editEventForm.externalLink}
-                    onChange={(e) =>
-                      setEditEventForm((p) => ({ ...p, externalLink: e.target.value }))
-                    }
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                    placeholder="Optional (website, brochure, announcement, etc.)"
-                  />
-                  <div className="text-[11px] text-slate-400">Optional</div>
-                </div>
-
-                <div className="sm:col-span-2 space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Description</label>
-                  <textarea
-                    value={editEventForm.description}
-                    onChange={(e) => setEditEventForm((p) => ({ ...p, description: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 min-h-28"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsEditEventOpen(false);
-                    setEventEditing(null);
-                  }}
-                  className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={submitUpdateEvent}
-                  disabled={!canUpdateEvent || updateEventMutation.isPending}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold disabled:opacity-50"
-                >
-                  {updateEventMutation.isPending && <Loader2 className="animate-spin" size={16} />}
-                  Save
-                </button>
-              </div>
-            </div>
+          <div className="w-full max-w-3xl">
+            <EventForm 
+              mode="edit"
+              eventType="club"
+              initialData={editEventForm}
+              coordinators={users}
+              isSubmitting={updateEventMutation.isPending}
+              onSubmit={(data) => {
+                setEditEventForm(data);
+                updateEventMutation.mutate({
+                  clubId: selectedClubId,
+                  eventId: eventEditing._id,
+                  title: data.title.trim(),
+                  description: data.description,
+                  shortDescription: data.shortDescription,
+                  registrationLink: data.registrationLink,
+                  externalLink: data.externalLink,
+                  scope: data.scope || 'club',
+                  status: data.status || 'draft',
+                  visibility: data.visibility || 'public',
+                  location: data.location,
+                  venue: data.venue,
+                  mode: data.mode,
+                  startAt: data.startAt ? new Date(data.startAt).toISOString() : '',
+                  endAt: data.endAt ? new Date(data.endAt).toISOString() : '',
+                  coordinatorUserIds: data.coordinatorUserIds,
+                  posterUrl: data.posterUrl,
+                  posterPublicId: data.posterPublicId,
+                });
+              }}
+              onCancel={() => {
+                setIsEditEventOpen(false);
+                setEventEditing(null);
+              }}
+              onPreview={(data) => setPreviewData(data)}
+            />
           </div>
         </div>
       )}
+      {previewData && <PreviewEventModal event={previewData} onClose={() => setPreviewData(null)} />}
     </div>
   );
 }
@@ -1487,6 +1208,7 @@ function LegacyEvents() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [selected, setSelected] = useState(null);
+  const [previewData, setPreviewData] = useState(null);
 
   const [createForm, setCreateForm] = useState({
     title: '',
@@ -1777,172 +1499,34 @@ function LegacyEvents() {
       {/* Create modal */}
       {isCreateOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="w-full max-w-3xl max-h-[90vh] bg-white rounded-2xl shadow-xl border border-slate-200 flex flex-col overflow-hidden">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-              <div className="font-bold">Create Event</div>
-              <button
-                type="button"
-                onClick={() => setIsCreateOpen(false)}
-                className="p-2 rounded-xl hover:bg-slate-50 text-slate-500"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-4 overflow-y-auto max-h-[calc(90vh-132px)]">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Title *</label>
-                  <input
-                    type="text"
-                    value={createForm.title}
-                    onChange={(e) => setCreateForm((p) => ({ ...p, title: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                    placeholder="Event title"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Coordinator</label>
-                  <select
-                    value={createForm.coordinatorUserId}
-                    onChange={(e) =>
-                      setCreateForm((p) => ({ ...p, coordinatorUserId: e.target.value }))
-                    }
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                  >
-                    <option value="">—</option>
-                    {coordinatorOptions.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name}{u.meta ? ` (${u.meta})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Location</label>
-                  <input
-                    type="text"
-                    value={createForm.location}
-                    onChange={(e) => setCreateForm((p) => ({ ...p, location: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                    placeholder="Venue"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Status</label>
-                  <select
-                    value={createForm.status}
-                    onChange={(e) => setCreateForm((p) => ({ ...p, status: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                  >
-                    {EVENT_STATUSES.map((status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Visibility</label>
-                  <select
-                    value={createForm.visibility}
-                    onChange={(e) => setCreateForm((p) => ({ ...p, visibility: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                  >
-                    {EVENT_VISIBILITIES.map((visibility) => (
-                      <option key={visibility} value={visibility}>
-                        {visibility}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Start</label>
-                  <input
-                    type="datetime-local"
-                    value={createForm.startAt}
-                    onChange={(e) => setCreateForm((p) => ({ ...p, startAt: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">End</label>
-                  <input
-                    type="datetime-local"
-                    value={createForm.endAt}
-                    onChange={(e) => setCreateForm((p) => ({ ...p, endAt: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                  />
-                </div>
-
-                <div className="sm:col-span-2 space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Short Description</label>
-                  <textarea
-                    value={createForm.shortDescription}
-                    onChange={(e) => setCreateForm((p) => ({ ...p, shortDescription: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 min-h-20"
-                    placeholder="Optional"
-                  />
-                </div>
-                <div className="sm:col-span-2 space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Registration Link</label>
-                  <input
-                    type="text"
-                    value={createForm.registrationLink}
-                    onChange={(e) => setCreateForm((p) => ({ ...p, registrationLink: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                    placeholder="Optional (Google Forms, Unstop, registration URL)"
-                  />
-                  <div className="text-[11px] text-slate-400">Optional</div>
-                </div>
-                <div className="sm:col-span-2 space-y-1">
-                  <label className="text-xs font-bold text-slate-500">External Link</label>
-                  <input
-                    type="text"
-                    value={createForm.externalLink}
-                    onChange={(e) => setCreateForm((p) => ({ ...p, externalLink: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                    placeholder="Optional (website, brochure, announcement, etc.)"
-                  />
-                  <div className="text-[11px] text-slate-400">Optional</div>
-                </div>
-
-                <div className="sm:col-span-2 space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Description</label>
-                  <textarea
-                    value={createForm.description}
-                    onChange={(e) => setCreateForm((p) => ({ ...p, description: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 min-h-28"
-                    placeholder="Optional"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsCreateOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={submitCreate}
-                  disabled={!canCreate}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold disabled:opacity-50"
-                >
-                  {createMutation.isPending && <Loader2 className="animate-spin" size={16} />}
-                  Create
-                </button>
-              </div>
-            </div>
+          <div className="w-full max-w-3xl">
+            <EventForm 
+              mode="create"
+              eventType="iedc"
+              initialData={createForm}
+              coordinators={coordinatorOptions}
+              isSubmitting={createMutation.isPending}
+              onSubmit={(data) => {
+                setCreateForm(data);
+                createMutation.mutate({
+                  title: data.title.trim(),
+                  description: data.description,
+                  shortDescription: data.shortDescription,
+                  registrationLink: data.registrationLink,
+                  externalLink: data.externalLink,
+                  location: data.location,
+                  status: data.status,
+                  visibility: data.visibility,
+                  startAt: data.startAt ? new Date(data.startAt).toISOString() : '',
+                  endAt: data.endAt ? new Date(data.endAt).toISOString() : '',
+                  coordinatorUserId: data.coordinatorUserId || undefined,
+                  posterUrl: data.posterUrl,
+                  posterPublicId: data.posterPublicId,
+                });
+              }}
+              onCancel={() => setIsCreateOpen(false)}
+              onPreview={(data) => setPreviewData(data)}
+            />
           </div>
         </div>
       )}
@@ -1950,175 +1534,42 @@ function LegacyEvents() {
       {/* Edit modal */}
       {isEditOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="w-full max-w-3xl max-h-[90vh] bg-white rounded-2xl shadow-xl border border-slate-200 flex flex-col overflow-hidden">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-              <div className="font-bold">Edit Event</div>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsEditOpen(false);
-                  setSelected(null);
-                }}
-                className="p-2 rounded-xl hover:bg-slate-50 text-slate-500"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-4 overflow-y-auto max-h-[calc(90vh-132px)]">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Title *</label>
-                  <input
-                    type="text"
-                    value={editForm.title}
-                    onChange={(e) => setEditForm((p) => ({ ...p, title: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Coordinator</label>
-                  <select
-                    value={editForm.coordinatorUserId}
-                    onChange={(e) => setEditForm((p) => ({ ...p, coordinatorUserId: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                  >
-                    <option value="">—</option>
-                    {coordinatorOptions.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name}{u.meta ? ` (${u.meta})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Location</label>
-                  <input
-                    type="text"
-                    value={editForm.location}
-                    onChange={(e) => setEditForm((p) => ({ ...p, location: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Start</label>
-                  <input
-                    type="datetime-local"
-                    value={editForm.startAt}
-                    onChange={(e) => setEditForm((p) => ({ ...p, startAt: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">End</label>
-                  <input
-                    type="datetime-local"
-                    value={editForm.endAt}
-                    onChange={(e) => setEditForm((p) => ({ ...p, endAt: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Status</label>
-                  <select
-                    value={editForm.status}
-                    onChange={(e) => setEditForm((p) => ({ ...p, status: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                  >
-                    {EVENT_STATUSES.map((status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Visibility</label>
-                  <select
-                    value={editForm.visibility}
-                    onChange={(e) => setEditForm((p) => ({ ...p, visibility: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                  >
-                    {EVENT_VISIBILITIES.map((visibility) => (
-                      <option key={visibility} value={visibility}>
-                        {visibility}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="sm:col-span-2 space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Short Description</label>
-                  <textarea
-                    value={editForm.shortDescription}
-                    onChange={(e) => setEditForm((p) => ({ ...p, shortDescription: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 min-h-20"
-                  />
-                </div>
-                <div className="sm:col-span-2 space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Registration Link</label>
-                  <input
-                    type="text"
-                    value={editForm.registrationLink}
-                    onChange={(e) => setEditForm((p) => ({ ...p, registrationLink: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                    placeholder="Optional (Google Forms, Unstop, registration URL)"
-                  />
-                  <div className="text-[11px] text-slate-400">Optional</div>
-                </div>
-                <div className="sm:col-span-2 space-y-1">
-                  <label className="text-xs font-bold text-slate-500">External Link</label>
-                  <input
-                    type="text"
-                    value={editForm.externalLink}
-                    onChange={(e) => setEditForm((p) => ({ ...p, externalLink: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                    placeholder="Optional (website, brochure, announcement, etc.)"
-                  />
-                  <div className="text-[11px] text-slate-400">Optional</div>
-                </div>
-
-                <div className="sm:col-span-2 space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Description</label>
-                  <textarea
-                    value={editForm.description}
-                    onChange={(e) => setEditForm((p) => ({ ...p, description: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 min-h-28"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsEditOpen(false);
-                    setSelected(null);
-                  }}
-                  className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={submitUpdate}
-                  disabled={!canUpdate}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold disabled:opacity-50"
-                >
-                  {updateMutation.isPending && <Loader2 className="animate-spin" size={16} />}
-                  Save
-                </button>
-              </div>
-            </div>
+          <div className="w-full max-w-3xl">
+            <EventForm 
+              mode="edit"
+              eventType="iedc"
+              initialData={editForm}
+              coordinators={coordinatorOptions}
+              isSubmitting={updateMutation.isPending}
+              onSubmit={(data) => {
+                setEditForm(data);
+                updateMutation.mutate({
+                  id: selected._id,
+                  title: data.title.trim(),
+                  description: data.description,
+                  shortDescription: data.shortDescription,
+                  registrationLink: data.registrationLink,
+                  externalLink: data.externalLink,
+                  location: data.location,
+                  status: data.status || 'draft',
+                  visibility: data.visibility || 'public',
+                  startAt: data.startAt ? new Date(data.startAt).toISOString() : '',
+                  endAt: data.endAt ? new Date(data.endAt).toISOString() : '',
+                  coordinatorUserId: data.coordinatorUserId || undefined,
+                  posterUrl: data.posterUrl,
+                  posterPublicId: data.posterPublicId,
+                });
+              }}
+              onCancel={() => {
+                setIsEditOpen(false);
+                setSelected(null);
+              }}
+              onPreview={(data) => setPreviewData(data)}
+            />
           </div>
         </div>
       )}
+      {previewData && <PreviewEventModal event={previewData} onClose={() => setPreviewData(null)} />}
     </div>
   );
 }

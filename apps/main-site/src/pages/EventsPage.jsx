@@ -308,12 +308,12 @@ const EventCard = ({ event, index, onClick }) => {
       </div>
 
       {/* 2. Image Area */}
-      <div className="relative h-48 overflow-hidden bg-gray-200">
-        {event.image ? (
+      <div className="relative h-64 overflow-hidden bg-gray-100 flex items-center justify-center">
+        {(event.posterUrl || event.image) ? (
           <img 
-            src={event.image} 
+            src={event.posterUrl || event.image} 
             alt={event.title} 
-            className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500 scale-100 group-hover:scale-105"
+            className="w-full h-full object-contain grayscale group-hover:grayscale-0 transition-all duration-500 scale-100 group-hover:scale-105"
             onError={(e) => { e.target.style.display = 'none'; }}
           />
         ) : (
