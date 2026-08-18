@@ -320,7 +320,18 @@ const RegistrationPage = () => {
 
                   <div className="grid md:grid-cols-2 gap-6">
                     <InputGroup label="Admission No" name="admissionNo" value={formData.admissionNo} onChange={handleInputChange} error={errors.admissionNo} />
-                    <InputGroup label="Referral Code" name="referralCode" value={formData.referralCode} onChange={handleInputChange} error={errors.referralCode} />
+                    <InputGroup 
+                      label="Referral Code" 
+                      name="referralCode" 
+                      value={formData.referralCode} 
+                      onChange={handleInputChange} 
+                      error={errors.referralCode}
+                      labelRight={
+                        <a href="https://whatsapp.com/channel/0029VaAYL1D2f3EAIot5Yl2N" target="_blank" rel="noopener noreferrer" className="text-xs text-accent hover:underline flex items-center gap-1 font-bold lowercase tracking-normal">
+                          <FaPaperPlane size={10} /> get code
+                        </a>
+                      }
+                    />
                   </div>
 
                   {/* Grouped Department and Year of Joining */}
@@ -436,9 +447,12 @@ const StepIndicator = ({ step, current, label, icon }) => {
   );
 };
 
-const InputGroup = ({ label, error, ...props }) => (
+const InputGroup = ({ label, labelRight, error, ...props }) => (
   <div>
-    <label className="block text-xs font-bold text-gray-500 uppercase mb-2">{label}</label>
+    <div className="flex justify-between items-center mb-2">
+      <label className="block text-xs font-bold text-gray-500 uppercase">{label}</label>
+      {labelRight && <div>{labelRight}</div>}
+    </div>
     <input
       {...props}
       className={`w-full bg-gray-50 border p-3 text-sm focus:border-accent focus:bg-white transition-all outline-none font-mono ${error ? 'border-red-500' : 'border-gray-200'}`}
