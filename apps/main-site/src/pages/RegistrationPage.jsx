@@ -104,6 +104,9 @@ const RegistrationPage = () => {
       if (!formData.semester) newErrors.semester = "Required";
       if (formData.referralCode.trim().toUpperCase() !== 'DREAMITDOIT') newErrors.referralCode = "Invalid Code";
     }
+    if (step === 3) {
+      if (!formData.motivation.trim()) newErrors.motivation = "Required";
+    }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -161,7 +164,10 @@ const RegistrationPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (submitLockRef.current) return;
-    if (!validateStep(1) || !validateStep(2)) return;
+    if (!validateStep(1) || !validateStep(2) || !validateStep(3)) {
+      toast.error("Please complete all required fields.");
+      return;
+    }
     if (!otpToken) {
       toast.error("Please verify your email first.");
       setCurrentStep(1);
@@ -390,11 +396,12 @@ const RegistrationPage = () => {
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Motivation Statement</label>
                     <textarea
                       rows="3"
-                      className="w-full bg-gray-50 border border-gray-200 p-3 text-sm focus:border-accent focus:bg-white transition-all outline-none resize-none font-mono"
+                      className={`w-full bg-gray-50 border ${errors.motivation ? 'border-red-500' : 'border-gray-200'} p-3 text-sm focus:border-accent focus:bg-white transition-all outline-none resize-none font-mono`}
                       placeholder="Why do you want to join the network?"
                       value={formData.motivation}
                       onChange={(e) => setFormData({ ...formData, motivation: e.target.value })}
                     ></textarea>
+                    {errors.motivation && <p className="text-red-500 text-xs mt-1 font-mono">{errors.motivation}</p>}
                   </div>
                 </motion.div>
               )}
