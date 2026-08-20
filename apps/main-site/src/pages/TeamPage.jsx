@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence, useMotionValue, useTransform } from "framer-motion";
 import {
   FaArrowLeft, FaSearch, FaLinkedinIn, FaGithub, FaTwitter,
@@ -22,6 +22,7 @@ const TeamPage = () => {
   const [loading,        setLoading]          = useState(true);
   const [isYearsLoading, setIsYearsLoading]   = useState(true);
   const [selectedMember, setSelectedMember]   = useState(null); // profile modal
+  const goToProfile = useNavigate();
 
   // 1. Fetch available years
   useEffect(() => {
@@ -215,7 +216,7 @@ const TeamPage = () => {
                 title="Nodal Officers"
                 accent="#FF6B6B"
                 members={displayData.nodalOfficers}
-                onSelect={setSelectedMember}
+                onSelect={(m) => goToProfile(`/team/${m.id}`)}
               />
             )}
 
@@ -225,7 +226,7 @@ const TeamPage = () => {
                 title="Faculty Board"
                 accent="#A8D5BA"
                 members={displayData.facultyMembers}
-                onSelect={setSelectedMember}
+                onSelect={(m) => goToProfile(`/team/${m.id}`)}
               />
             )}
 
@@ -235,7 +236,7 @@ const TeamPage = () => {
                 title="Executive Committee"
                 accent="#2E2E2E"
                 members={displayData.coreTeam}
-                onSelect={setSelectedMember}
+                onSelect={(m) => goToProfile(`/team/${m.id}`)}
               />
             )}
 
@@ -244,7 +245,7 @@ const TeamPage = () => {
               <MemberGridSection
                 title="Member Network"
                 members={displayData.teamMembers}
-                onSelect={setSelectedMember}
+                onSelect={(m) => goToProfile(`/team/${m.id}`)}
               />
             )}
           </>
