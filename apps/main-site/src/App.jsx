@@ -18,6 +18,7 @@ import TeamPage from './pages/TeamPage';
 import CommunitiesPage from './pages/CommunitiesPage';
 import CommunityPage from './pages/CommunityPage';
 import RegistrationPage from './pages/RegistrationPage';
+import ExecomProfilePage from './pages/ExecomProfilePage';
 
 // --- UPDATED PLACEHOLDER COMPONENT ---
 const PlaceholderPage = ({ title, type = "404" }) => {
@@ -92,6 +93,7 @@ const AppContent = () => {
           <Route path="/events" element={<EventsPage />} />
           <Route path="/events/:id" element={<EventPage />} />
           <Route path="/team" element={<TeamPage />} />
+          <Route path="/team/:id" element={<ExecomProfilePage />} />
           <Route path="/nexus" element={<CommunitiesPage />} />
           <Route path="/nexus/:id" element={<CommunityPage />} />
           <Route path="/register" element={<RegistrationPage />} />

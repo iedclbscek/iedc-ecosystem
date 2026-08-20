@@ -164,6 +164,84 @@ router.get("/execom/years", async (req, res) => {
   }
 });
 
+// Public: single Execom member profile
+/**
+ * @openapi
+ * /api/public/execom/{id}:
+ *   get:
+ *     tags:
+ *       - Public
+ *     summary: Fetch a single execom member profile by entry ID
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *         description: WebsiteTeamEntry _id
+ *     responses:
+ *       200:
+ *         description: Member profile
+ *       404:
+ *         description: Member not found
+ */
+router.get("/execom/:id", async (req, res) => {
+  try {
+    const id = String(req.params.id ?? "").trim();
+    if (!id) return res.status(400).json({ message: "id is required" });
+
+    const entry = await WebsiteTeamEntry.findOne({
+      _id: id,
+      category: "execom",
+      visible: true,
+    }).populate({
+      path: "userRef",
+      select: "name membershipId registrationRef",
+      populate: {
+        path: "registrationRef",
+        select: "firstName lastName department semester",
+      },
+    });
+
+    if (!entry) {
+      return res.status(404).json({ message: "Member not found" });
+    }
+
+    const u = entry.userRef;
+    const member = {
+      id: entry._id,
+      year: String(entry.year || "").trim(),
+      order: entry.order,
+      roleTitle: entry.roleTitle || "",
+      imageUrl: entry.imageUrl || "",
+      linkedin: entry.linkedin || "",
+      github: entry.github || "",
+      twitter: entry.twitter || "",
+      user: u
+        ? {
+            id: u._id,
+            name: u.name,
+            membershipId: u.membershipId,
+            registration: u.registrationRef || null,
+          }
+        : {
+            id: null,
+            name: entry.customName || "",
+            membershipId: entry.customMembershipId || "",
+            registration: null,
+          },
+    };
+
+    return res.json({ member });
+  } catch (error) {
+    if (error.name === "CastError") {
+      return res.status(404).json({ message: "Member not found" });
+    }
+    return res
+      .status(500)
+      .json({ message: "Failed to fetch member", error: error.message });
+  }
+});
+
 // Public (makerspace): lookup member profile by membershipId
 // New canonical endpoint: GET /api/public/makerspace/members/:membershipId
 // Compatibility: also accepts ?id=... or ?membershipId=...
