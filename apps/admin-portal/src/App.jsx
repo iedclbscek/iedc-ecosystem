@@ -16,6 +16,7 @@ import SetPassword from './pages/SetPassword';
 import Mailer from './pages/Mailer';
 import Makerspace from './pages/Makerspace';
 import TeamEntryUpdate from './pages/TeamEntryUpdate';
+import FirstYearReps from './pages/FirstYearReps';
 
 function App() {
   return (
@@ -94,6 +95,15 @@ function App() {
             element={
               <RequirePermission permission="makerspace">
                 <Makerspace />
+              </RequirePermission>
+            }
+          />
+
+          <Route
+            path="first-year-reps"
+            element={
+              <RequirePermission permission="firstYearReps">
+                <FirstYearReps />
               </RequirePermission>
             }
           />
