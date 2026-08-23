@@ -54,6 +54,13 @@ import {
   deleteClub,
   getClubAccess,
 } from "../controllers/clubController.js";
+import {
+  getApplications as getFirstYearRepApplications,
+  getApplicationDetail as getFirstYearRepApplicationDetail,
+  updateApplication as updateFirstYearRepApplication,
+  deleteApplication as deleteFirstYearRepApplication,
+  exportApplications as exportFirstYearRepApplications,
+} from "../controllers/adminFirstYearRepController.js";
 
 const router = express.Router();
 
@@ -1115,5 +1122,66 @@ router.patch("/clubs/:id", updateClub);
  *         description: Deleted
  */
 router.delete("/clubs/:id", deleteClub);
+
+// First-Year Representatives
+/**
+ * @openapi
+ * /api/admin/first-year-reps:
+ *   get:
+ *     tags:
+ *       - Admin First-Year Reps
+ *     summary: List first-year representative applications
+ *     security:
+ *       - cookieAuth: []
+ */
+router.get("/first-year-reps", getFirstYearRepApplications);
+
+/**
+ * @openapi
+ * /api/admin/first-year-reps/export/csv:
+ *   get:
+ *     tags:
+ *       - Admin First-Year Reps
+ *     summary: Export applications to CSV
+ *     security:
+ *       - cookieAuth: []
+ */
+router.get("/first-year-reps/export/csv", exportFirstYearRepApplications);
+
+/**
+ * @openapi
+ * /api/admin/first-year-reps/{id}:
+ *   get:
+ *     tags:
+ *       - Admin First-Year Reps
+ *     summary: Get single application detail
+ *     security:
+ *       - cookieAuth: []
+ */
+router.get("/first-year-reps/:id", getFirstYearRepApplicationDetail);
+
+/**
+ * @openapi
+ * /api/admin/first-year-reps/{id}:
+ *   patch:
+ *     tags:
+ *       - Admin First-Year Reps
+ *     summary: Update application status and remarks
+ *     security:
+ *       - cookieAuth: []
+ */
+router.patch("/first-year-reps/:id", updateFirstYearRepApplication);
+
+/**
+ * @openapi
+ * /api/admin/first-year-reps/{id}:
+ *   delete:
+ *     tags:
+ *       - Admin First Year Reps
+ *     summary: Delete an application
+ *     security:
+ *       - cookieAuth: []
+ */
+router.delete("/first-year-reps/:id", deleteFirstYearRepApplication);
 
 export default router;

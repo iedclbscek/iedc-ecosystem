@@ -323,6 +323,37 @@ export const updateEmailTemplate = async ({ id, name, subject, html }) => {
   return data; // { template }
 };
 
+export const requestWebsiteTeamUpdateEmail = async ({ registrationId, templateKey }) => {
+  const { data } = await api.post("/admin/website-team/request-update", {
+    registrationId,
+    templateKey,
+  });
+  return data;
+};
+
+// First-Year Representatives
+export const fetchFirstYearReps = async ({ page = 1, limit = 20, search = "", department = "", status = "", sort = "-submittedAt" } = {}) => {
+  const { data } = await api.get("/admin/first-year-reps", {
+    params: { page, limit, search, department, status, sort },
+  });
+  return data;
+};
+
+export const fetchFirstYearRep = async (id) => {
+  const { data } = await api.get(`/admin/first-year-reps/${id}`);
+  return data;
+};
+
+export const updateFirstYearRep = async (id, updateData) => {
+  const { data } = await api.patch(`/admin/first-year-reps/${id}`, updateData);
+  return data;
+};
+
+export const deleteFirstYearRep = async (id) => {
+  const { data } = await api.delete(`/admin/first-year-reps/${id}`);
+  return data;
+};
+
 export const sendTestEmailTemplate = async ({ id, to, data: templateData }) => {
   const { data } = await api.post(`/admin/email/templates/${id}/test`, {
     to,

@@ -11,7 +11,8 @@ import {
   ShieldCheck,
   Menu,
   X,
-  Wrench
+  Wrench,
+  UserPlus
 } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -133,6 +134,7 @@ export default function AdminLayout() {
     { name: 'Members', icon: <Users size={20} />, path: '/registrations', permission: 'registrations' },
     { name: 'Events', icon: <CalendarDays size={20} />, path: '/events', permission: 'events' },
     { name: 'Team Members', icon: <ShieldCheck size={20} />, path: '/users', permission: 'users' },
+    { name: 'First-Year Reps', icon: <UserPlus size={20} />, path: '/first-year-reps', permission: 'firstYearReps' },
     { name: 'Makerspace', icon: <Wrench size={20} />, path: '/makerspace', permission: 'makerspace' },
     { name: 'Email Center', icon: <Mail size={20} />, path: '/mailer', permission: 'mailer' },
     { name: 'API Settings', icon: <Settings size={20} />, path: '/settings', permission: 'settings' },
