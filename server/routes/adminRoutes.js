@@ -60,6 +60,8 @@ import {
   updateApplication as updateFirstYearRepApplication,
   deleteApplication as deleteFirstYearRepApplication,
   exportApplications as exportFirstYearRepApplications,
+  getSettings as getFirstYearRepSettings,
+  updateSettings as updateFirstYearRepSettings,
 } from "../controllers/adminFirstYearRepController.js";
 
 const router = express.Router();
@@ -1135,6 +1137,30 @@ router.delete("/clubs/:id", deleteClub);
  *       - cookieAuth: []
  */
 router.get("/first-year-reps", getFirstYearRepApplications);
+
+/**
+ * @openapi
+ * /api/admin/first-year-reps/settings:
+ *   get:
+ *     tags:
+ *       - Admin First-Year Reps
+ *     summary: Get first-year rep application settings
+ *     security:
+ *       - cookieAuth: []
+ */
+router.get("/first-year-reps/settings", getFirstYearRepSettings);
+
+/**
+ * @openapi
+ * /api/admin/first-year-reps/settings:
+ *   patch:
+ *     tags:
+ *       - Admin First-Year Reps
+ *     summary: Update first-year rep application settings (e.g. open/close)
+ *     security:
+ *       - cookieAuth: []
+ */
+router.patch("/first-year-reps/settings", updateFirstYearRepSettings);
 
 /**
  * @openapi

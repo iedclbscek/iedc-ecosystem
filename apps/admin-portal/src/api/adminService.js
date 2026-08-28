@@ -354,6 +354,16 @@ export const deleteFirstYearRep = async (id) => {
   return data;
 };
 
+export const fetchFirstYearRepsSettings = async () => {
+  const { data } = await api.get("/admin/first-year-reps/settings");
+  return data;
+};
+
+export const updateFirstYearRepsSettings = async ({ isOpen }) => {
+  const { data } = await api.patch("/admin/first-year-reps/settings", { isOpen });
+  return data;
+};
+
 export const sendTestEmailTemplate = async ({ id, to, data: templateData }) => {
   const { data } = await api.post(`/admin/email/templates/${id}/test`, {
     to,

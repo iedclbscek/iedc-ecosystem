@@ -5,6 +5,8 @@ import {
   fetchFirstYearRep,
   updateFirstYearRep,
   deleteFirstYearRep,
+  fetchFirstYearRepsSettings,
+  updateFirstYearRepsSettings,
 } from "../api/adminService";
 import toast from "react-hot-toast";
 import {
@@ -17,6 +19,8 @@ import {
   Check,
   X as XIcon,
   Trash2,
+  Lock,
+  Unlock,
 } from "lucide-react";
 const STATUS_OPTIONS = [
   "Applied",
@@ -261,6 +265,7 @@ function ApplicationDetail({ applicationId, onBack }) {
 }
 
 export default function FirstYearReps() {
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -278,6 +283,35 @@ export default function FirstYearReps() {
       }),
     keepPreviousData: true,
   });
+
+  const { data: settingsData, isLoading: isSettingsLoading } = useQuery({
+    queryKey: ["firstYearRepsSettings"],
+    queryFn: fetchFirstYearRepsSettings,
+  });
+
+  const isApplicationsOpen = settingsData?.isOpen ?? true;
+
+  const toggleSettingsMutation = useMutation({
+    mutationFn: (newIsOpen) => updateFirstYearRepsSettings({ isOpen: newIsOpen }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries(["firstYearRepsSettings"]);
+      toast.success(res?.message || "Settings updated");
+    },
+    onError: (err) => {
+      toast.error(err.response?.data?.message || "Failed to update application status");
+    },
+  });
+
+  const handleToggleStatus = () => {
+    const nextState = !isApplicationsOpen;
+    const confirmMsg = nextState
+      ? "Are you sure you want to RE-OPEN applications? Students will be able to apply again."
+      : "Are you sure you want to CLOSE applications? First-year students will no longer be able to submit new applications.";
+
+    if (window.confirm(confirmMsg)) {
+      toggleSettingsMutation.mutate(nextState);
+    }
+  };
 
   if (selectedAppId) {
     return (
@@ -302,13 +336,65 @@ export default function FirstYearReps() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-900 uppercase tracking-tight">
-          First-Year Representatives 2026
-        </h1>
-        <p className="text-slate-500 mt-1">
-          Review applications, shortlist candidates, and finalize selections.
-        </p>
+      <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 uppercase tracking-tight">
+            First-Year Representatives 2026
+          </h1>
+          <p className="text-slate-500 mt-1">
+            Review applications, shortlist candidates, and finalize selections.
+          </p>
+        </div>
+
+        {/* Closing / Status Control */}
+        <div className="flex items-center gap-4 bg-white p-2.5 px-4 rounded-xl border border-slate-200 shadow-sm w-fit">
+          <div className="flex items-center gap-2.5">
+            <span
+              className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                isApplicationsOpen
+                  ? "bg-green-500 animate-pulse ring-4 ring-green-100"
+                  : "bg-red-500 ring-4 ring-red-100"
+              }`}
+            />
+            <div className="flex flex-col">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">
+                Applications
+              </span>
+              <span
+                className={`text-xs font-black uppercase tracking-wider mt-0.5 ${
+                  isApplicationsOpen ? "text-green-700" : "text-red-700"
+                }`}
+              >
+                {isApplicationsOpen ? "Open" : "Closed"}
+              </span>
+            </div>
+          </div>
+
+          <div className="h-6 w-px bg-slate-200" />
+
+          <button
+            onClick={handleToggleStatus}
+            disabled={toggleSettingsMutation.isLoading || isSettingsLoading}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer ${
+              isApplicationsOpen
+                ? "bg-red-50 text-red-700 hover:bg-red-100 border border-red-200"
+                : "bg-green-50 text-green-700 hover:bg-green-100 border border-green-200"
+            }`}
+            title={isApplicationsOpen ? "Click to close applications" : "Click to open applications"}
+          >
+            {isApplicationsOpen ? (
+              <>
+                <Lock size={14} />
+                Close Applications
+              </>
+            ) : (
+              <>
+                <Unlock size={14} />
+                Open Applications
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards */}
