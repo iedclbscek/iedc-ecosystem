@@ -1,5 +1,6 @@
 import Registration from "../models/Registration.js";
 import FirstYearRepresentativeApplication from "../models/FirstYearRepresentativeApplication.js";
+import SystemSetting from "../models/SystemSetting.js";
 import OTP from "../models/OTP.js";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
@@ -18,9 +19,27 @@ const getOtpTokenSecret = () => {
   return process.env.OTP_TOKEN_SECRET || process.env.JWT_SECRET;
 };
 
+// Route 0: getApplicationStatus (public)
+export const getApplicationStatus = async (req, res) => {
+  try {
+    const setting = await SystemSetting.findOne({ key: "first_year_reps_open" }).lean();
+    const isOpen = setting ? Boolean(setting.value) : true;
+    res.json({ isOpen });
+  } catch (err) {
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
 // Route 1: requestVerification
 export const requestVerification = async (req, res) => {
   try {
+    // Check if applications are closed
+    const setting = await SystemSetting.findOne({ key: "first_year_reps_open" }).lean();
+    const isOpen = setting ? Boolean(setting.value) : true;
+    if (!isOpen) {
+      return res.status(403).json({ message: "Applications for First-Year Representatives are currently closed." });
+    }
+
     const membershipId = String(req.body?.membershipId ?? "").trim();
     const email = normalizeEmail(req.body?.email);
 
@@ -184,6 +203,13 @@ export const getProfile = async (req, res) => {
 // Route 4: apply
 export const submitApplication = async (req, res) => {
   try {
+    // Check if applications are closed
+    const setting = await SystemSetting.findOne({ key: "first_year_reps_open" }).lean();
+    const isOpen = setting ? Boolean(setting.value) : true;
+    if (!isOpen) {
+      return res.status(403).json({ message: "Applications for First-Year Representatives are currently closed." });
+    }
+
     const authHeader = req.headers.authorization || "";
     const token = authHeader.replace(/^Bearer\s+/i, "").trim();
 

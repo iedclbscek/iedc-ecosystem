@@ -1,4 +1,5 @@
 import FirstYearRepresentativeApplication from "../models/FirstYearRepresentativeApplication.js";
+import SystemSetting from "../models/SystemSetting.js";
 import { hasPermission } from "../middleware/requireAuth.js";
 
 // Utility for formatting error responses
@@ -233,3 +234,52 @@ export const exportApplications = async (req, res) => {
     handleError(res, error, "Failed to export applications");
   }
 };
+
+// @desc    Get first-year reps settings (e.g. application open/closed status)
+// @route   GET /api/admin/first-year-reps/settings
+// @access  Private (Admin + firstYearReps permission)
+export const getSettings = async (req, res) => {
+  try {
+    if (!hasPermission(req.user, "firstYearReps")) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const setting = await SystemSetting.findOne({ key: "first_year_reps_open" }).lean();
+    const isOpen = setting ? Boolean(setting.value) : true;
+
+    res.json({ isOpen });
+  } catch (error) {
+    handleError(res, error, "Failed to fetch settings");
+  }
+};
+
+// @desc    Update first-year reps settings (toggle applications open/closed)
+// @route   PATCH /api/admin/first-year-reps/settings
+// @access  Private (Admin + firstYearReps permission)
+export const updateSettings = async (req, res) => {
+  try {
+    if (!hasPermission(req.user, "firstYearReps")) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const { isOpen } = req.body;
+    if (typeof isOpen !== "boolean") {
+      return res.status(400).json({ message: "isOpen must be a boolean" });
+    }
+
+    await SystemSetting.findOneAndUpdate(
+      { key: "first_year_reps_open" },
+      { key: "first_year_reps_open", value: isOpen },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    res.json({
+      success: true,
+      isOpen,
+      message: `First-Year Representative applications are now ${isOpen ? "open" : "closed"}.`,
+    });
+  } catch (error) {
+    handleError(res, error, "Failed to update settings");
+  }
+};
+

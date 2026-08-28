@@ -3,6 +3,11 @@ import axios from "axios";
 const API_URL = import.meta.env.VITE_API_URL || "";
 const BASE = `${API_URL}/api/first-year-representatives`;
 
+export const getFirstYearRepStatus = async () => {
+  const res = await axios.get(`${BASE}/status`);
+  return res.data; // { isOpen: boolean }
+};
+
 export const requestVerification = async (membershipId, email) => {
   const res = await axios.post(`${BASE}/request-verification`, { membershipId, email });
   return res.data;

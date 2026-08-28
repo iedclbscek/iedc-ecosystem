@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion, useScroll, useTransform } from 'framer-motion';
-import { FaArrowRight, FaArrowLeft, FaCheckCircle, FaSpinner, FaPaperPlane } from 'react-icons/fa';
+import { FaArrowRight, FaArrowLeft, FaCheckCircle, FaSpinner, FaPaperPlane, FaLock } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
 import {
+  getFirstYearRepStatus,
   requestVerification,
   verifyOtp,
   getProfile,
@@ -92,6 +93,10 @@ const FirstYearRepresentativesPage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
 
+  // Status State
+  const [isOpen, setIsOpen] = useState(true);
+  const [isStatusLoading, setIsStatusLoading] = useState(true);
+
   // Animation settings
   const shouldReduceMotion = useReducedMotion();
   const transition = { duration: 0.3, ease: 'easeOut' };
@@ -115,6 +120,23 @@ const FirstYearRepresentativesPage = () => {
 
   // Scroll Timeline Setup
   const { scrollYProgress } = useScroll();
+
+  // Fetch Application Open/Closed Status
+  useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const data = await getFirstYearRepStatus();
+        if (data && typeof data.isOpen === 'boolean') {
+          setIsOpen(data.isOpen);
+        }
+      } catch (e) {
+        console.error("Failed to fetch application status:", e);
+      } finally {
+        setIsStatusLoading(false);
+      }
+    };
+    fetchStatus();
+  }, []);
 
   // Initialize from sessionStorage
   useEffect(() => {
@@ -285,9 +307,17 @@ const FirstYearRepresentativesPage = () => {
           animate="visible"
           variants={staggerContainer}
         >
-          <motion.div variants={fadeUpVariant} className="mb-4 inline-block px-3 py-1 border border-accent text-accent font-mono text-xs font-bold tracking-widest">
-            IEDC // 2026
-          </motion.div>
+          <div className="flex flex-wrap items-center gap-3 mb-4">
+            <motion.div variants={fadeUpVariant} className="inline-block px-3 py-1 border border-accent text-accent font-mono text-xs font-bold tracking-widest">
+              IEDC // 2026
+            </motion.div>
+            {!isOpen && (
+              <motion.div variants={fadeUpVariant} className="inline-flex items-center gap-2 px-3 py-1 bg-red-500/10 border border-red-500/30 text-red-400 font-mono text-xs font-bold tracking-widest uppercase">
+                <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                Applications Closed
+              </motion.div>
+            )}
+          </div>
           
           {/* Line by line reveal */}
           <div className="text-4xl md:text-6xl font-black uppercase tracking-tighter leading-[0.9] mb-6 overflow-hidden">
@@ -306,9 +336,13 @@ const FirstYearRepresentativesPage = () => {
               whileHover={shouldReduceMotion ? {} : { scale: 1.02, y: -2 }}
               whileTap={shouldReduceMotion ? {} : { scale: 0.96 }}
               onClick={() => document.getElementById('application-flow').scrollIntoView({ behavior: 'smooth' })} 
-              className="px-8 py-4 bg-accent text-white font-mono text-xs font-bold uppercase tracking-widest hover:bg-white hover:text-accent transition-colors flex items-center gap-3 shadow-[0_0_15px_rgba(34,197,94,0.15)] hover:shadow-[0_0_20px_rgba(34,197,94,0.3)]"
+              className={`px-8 py-4 ${
+                isOpen 
+                  ? "bg-accent text-white hover:bg-white hover:text-accent shadow-[0_0_15px_rgba(34,197,94,0.15)] hover:shadow-[0_0_20px_rgba(34,197,94,0.3)]" 
+                  : "bg-gray-800 text-gray-200 hover:bg-gray-700"
+              } font-mono text-xs font-bold uppercase tracking-widest transition-colors flex items-center gap-3`}
             >
-              Apply Now <FaArrowRight />
+              {isOpen ? "Apply Now" : "Application Status"} <FaArrowRight />
             </motion.button>
           </motion.div>
           <motion.div variants={fadeUpVariant} className="mt-12 font-mono text-xs font-bold tracking-widest text-gray-500 uppercase">
@@ -406,26 +440,57 @@ const FirstYearRepresentativesPage = () => {
       <section id="application-flow" className="py-16 px-6">
         <div className="max-w-2xl mx-auto">
           
-          {currentStep < 5 && renderStepIndicator()}
-
-          <div className="bg-white p-6 md:p-10 border border-gray-200 shadow-sm min-h-[400px] overflow-hidden">
-            <AnimatePresence mode="wait">
-              
-              {/* STEP 1: VERIFY */}
-              {currentStep === 1 && (
-                <motion.div 
-                  key="step1" 
-                  initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 30 }} 
-                  animate={{ opacity: 1, x: 0 }} 
-                  exit={{ opacity: 0, x: shouldReduceMotion ? 0 : -30 }}
-                  transition={{ duration: 0.3 }}
+          {!isOpen ? (
+            <div className="bg-white p-8 md:p-12 border border-gray-200 shadow-sm text-center">
+              <div className="w-16 h-16 bg-red-50 border border-red-200 rounded-full flex items-center justify-center mx-auto mb-6">
+                <FaLock className="text-red-500 text-2xl" />
+              </div>
+              <span className="inline-block px-3 py-1 bg-red-50 text-red-700 border border-red-200 font-mono text-[11px] font-bold uppercase tracking-widest mb-4">
+                RECRUITMENT CLOSED
+              </span>
+              <h3 className="text-2xl md:text-3xl font-black uppercase tracking-tighter text-text-dark mb-4">
+                Applications Are Currently Closed
+              </h3>
+              <p className="text-text-light max-w-md mx-auto mb-8 text-sm leading-relaxed">
+                The application window for First-Year Representatives 2026 has concluded. Thank you to everyone who applied! Shortlisted candidates will be contacted directly for the next round.
+              </p>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                <Link
+                  to="/"
+                  className="w-full sm:w-auto px-8 py-3.5 bg-text-dark text-white font-mono text-xs font-bold uppercase tracking-widest hover:bg-accent transition-colors"
                 >
-                  <h3 className="text-xl font-black uppercase tracking-tighter text-text-dark border-b border-gray-100 pb-4 mb-6">
-                    01 // VERIFY YOUR MEMBERSHIP
-                  </h3>
+                  Return to Home
+                </Link>
+                <Link
+                  to="/nexus"
+                  className="w-full sm:w-auto px-8 py-3.5 border border-gray-300 text-text-dark font-mono text-xs font-bold uppercase tracking-widest hover:border-accent hover:text-accent transition-colors"
+                >
+                  Explore Communities
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <>
+              {currentStep < 5 && renderStepIndicator()}
+
+              <div className="bg-white p-6 md:p-10 border border-gray-200 shadow-sm min-h-[400px] overflow-hidden">
+                <AnimatePresence mode="wait">
                   
-                  {!showOtp ? (
-                    <form onSubmit={handleRequestVerification} className="space-y-6">
+                  {/* STEP 1: VERIFY */}
+                  {currentStep === 1 && (
+                    <motion.div 
+                      key="step1" 
+                      initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 30 }} 
+                      animate={{ opacity: 1, x: 0 }} 
+                      exit={{ opacity: 0, x: shouldReduceMotion ? 0 : -30 }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      <h3 className="text-xl font-black uppercase tracking-tighter text-text-dark border-b border-gray-100 pb-4 mb-6">
+                        01 // VERIFY YOUR MEMBERSHIP
+                      </h3>
+                      
+                      {!showOtp ? (
+                        <form onSubmit={handleRequestVerification} className="space-y-6">
                       <p className="text-sm text-text-light mb-6">
                         Already an IEDC member? Enter your Membership ID and registered email to continue.
                       </p>
@@ -687,9 +752,11 @@ const FirstYearRepresentativesPage = () => {
 
             </AnimatePresence>
           </div>
-        </div>
-      </section>
+        </>
+      )}
     </div>
+  </section>
+</div>
   );
 };
 
