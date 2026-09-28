@@ -5,6 +5,12 @@ import OTP from "../models/OTP.js";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { sendMail } from "../utils/mailer.js";
+import { clientIp, consumeRateLimit } from "../utils/simpleRateLimit.js";
+
+const OTP_PURPOSE = "second_year_rep";
+const OTP_MAX_ATTEMPTS = 5;
+const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
+const MIN_ANSWER_LENGTH = 30;
 
 const normalizeEmail = (value) => String(value ?? "").trim().toLowerCase();
 
@@ -17,6 +23,39 @@ const hashOtp = (otp) => {
 
 const getOtpTokenSecret = () => {
   return process.env.OTP_TOKEN_SECRET || process.env.JWT_SECRET;
+};
+
+const buildMemberSnapshot = (registration, profile = {}) => {
+  const classValue = typeof profile.class === "string" ? profile.class.trim() : "";
+  const phoneValue = typeof profile.phone === "string" ? profile.phone.trim() : "";
+
+  return {
+    name: `${registration.firstName || ""} ${registration.lastName || ""}`.trim(),
+    admissionNumber: registration.admissionNo || "",
+    department: registration.department || "",
+    semester: registration.semester || "",
+    class: classValue || registration.class || "",
+    email: registration.email || "",
+    phone: phoneValue || registration.phone || "",
+  };
+};
+
+const answersAreValid = (answers) => {
+  const requiredAnswers = ["motivation", "teamworkInitiative", "representativeIdea"];
+  if (!answers || typeof answers !== "object") return false;
+  return requiredAnswers.every((key) => {
+    const value = answers[key];
+    return typeof value === "string" && value.trim().length >= MIN_ANSWER_LENGTH;
+  });
+};
+
+const findRegistrationByMembershipAndEmail = async (membershipId, email) => {
+  const idRegex = new RegExp(`^${escapeRegex(membershipId)}$`, "i");
+  const registration = await Registration.findOne({ membershipId: idRegex }).lean();
+  if (!registration || normalizeEmail(registration.email) !== email) {
+    return null;
+  }
+  return registration;
 };
 
 // Route 0: getApplicationStatus (public)
@@ -33,7 +72,6 @@ export const getApplicationStatus = async (req, res) => {
 // Route 1: requestVerification
 export const requestVerification = async (req, res) => {
   try {
-    // Check if applications are closed
     const setting = await SystemSetting.findOne({ key: "second_year_reps_open" }).lean();
     const isOpen = setting ? Boolean(setting.value) : true;
     if (!isOpen) {
@@ -47,43 +85,52 @@ export const requestVerification = async (req, res) => {
       return res.status(400).json({ message: "Membership ID and registered email are required." });
     }
 
-    // Lookup registration by membershipId and email
-    const idRegex = new RegExp(`^${escapeRegex(membershipId)}$`, "i");
-    const registration = await Registration.findOne({ membershipId: idRegex }).lean();
-
-    if (!registration || normalizeEmail(registration.email) !== email) {
+    const registration = await findRegistrationByMembershipAndEmail(membershipId, email);
+    if (!registration) {
       return res.status(404).json({ message: "We couldn't find a matching IEDC membership with this ID and email." });
     }
 
-    // Check Second-Year eligibility. We assume Second-Year students are those with semester "S1", "S2" or yearOfJoining == current year.
-    // We will just strictly check if they are "student". A strict semester check can be configured based on your academic calendar.
+    const ip = clientIp(req);
+    const sendLimit = consumeRateLimit(`syrep:otp-send:${ip}:${email}`, {
+      max: 5,
+      windowMs: 15 * 60 * 1000,
+    });
+    if (!sendLimit.ok) {
+      return res.status(429).json({ message: "Too many verification requests. Please try again later." });
+    }
+
     const semester = String(registration.semester ?? "").toUpperCase();
     const isSecondYear = ["S3", "S4", "3", "4"].includes(semester) || registration.yearOfJoining === (new Date().getFullYear() - 1).toString();
-    
-    // As per requirement: "The backend must enforce it"
+
     if (!isSecondYear) {
       return res.status(403).json({ message: "This application is only open to Second-Year students." });
     }
 
-    // Check duplicate application
     const existingApp = await SecondYearRepresentativeApplication.findOne({ membershipId: registration.membershipId }).lean();
     if (existingApp) {
-      return res.status(409).json({ 
+      return res.status(409).json({
         message: "APPLICATION ALREADY SUBMITTED: An application for this membership has already been received.",
         status: existingApp.status
       });
     }
 
-    // Send OTP
+    const existingOtp = await OTP.findOne({ email, purpose: OTP_PURPOSE });
+    if (existingOtp?.createdAt && Date.now() - existingOtp.createdAt.getTime() < OTP_RESEND_COOLDOWN_MS) {
+      return res.status(429).json({ message: "Please wait before requesting another verification code." });
+    }
+
     const rawOtp = crypto.randomInt(100000, 999999).toString();
     const hashed = hashOtp(rawOtp);
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-    await OTP.deleteMany({ email });
+    await OTP.deleteMany({ email, purpose: OTP_PURPOSE });
     await OTP.create({
       email,
       otp: hashed,
       expiresAt,
+      purpose: OTP_PURPOSE,
+      membershipId: registration.membershipId,
+      attempts: 0,
     });
 
     const subject = "IEDC Second-Year Representative Application - Verification Code";
@@ -120,23 +167,40 @@ export const verifyOtp = async (req, res) => {
       return res.status(400).json({ message: "Membership ID, email, and OTP are required." });
     }
 
-    const record = await OTP.findOne({ email });
+    const ip = clientIp(req);
+    const verifyLimit = consumeRateLimit(`syrep:otp-verify:${ip}:${email}`, {
+      max: 10,
+      windowMs: 10 * 60 * 1000,
+    });
+    if (!verifyLimit.ok) {
+      return res.status(429).json({ message: "Too many verification attempts. Please try again later." });
+    }
+
+    const record = await OTP.findOne({ email, purpose: OTP_PURPOSE });
     if (!record || !record.expiresAt || record.expiresAt.getTime() < Date.now()) {
-      await OTP.deleteMany({ email });
+      await OTP.deleteMany({ email, purpose: OTP_PURPOSE });
       return res.status(400).json({ message: "OTP expired or invalid" });
     }
+
+    const storedMembership = String(record.membershipId || "").trim();
+    const submittedMatchesStored =
+      storedMembership &&
+      storedMembership.toLowerCase() === membershipId.toLowerCase();
 
     const incomingHash = hashOtp(otp);
-    if (incomingHash !== record.otp) {
+    if (incomingHash !== record.otp || !submittedMatchesStored) {
+      record.attempts = (record.attempts || 0) + 1;
+      if (record.attempts >= OTP_MAX_ATTEMPTS) {
+        await OTP.deleteMany({ email, purpose: OTP_PURPOSE });
+        return res.status(429).json({ message: "Too many invalid OTP attempts. Request a new code." });
+      }
+      await record.save();
       return res.status(400).json({ message: "OTP expired or invalid" });
     }
 
-    await OTP.deleteMany({ email });
+    await OTP.deleteMany({ email, purpose: OTP_PURPOSE });
 
-    // Lookup profile
-    const idRegex = new RegExp(`^${escapeRegex(membershipId)}$`, "i");
-    const registration = await Registration.findOne({ membershipId: idRegex }).lean();
-
+    const registration = await findRegistrationByMembershipAndEmail(membershipId, email);
     if (!registration) {
       return res.status(404).json({ message: "Membership not found" });
     }
@@ -150,17 +214,7 @@ export const verifyOtp = async (req, res) => {
       { expiresIn: "1h" }
     );
 
-    const profile = {
-      name: `${registration.firstName || ""} ${registration.lastName || ""}`.trim(),
-      admissionNumber: registration.admissionNo || "",
-      department: registration.department || "",
-      semester: registration.semester || "",
-      class: registration.class || "", // class might not exist, but let's include it
-      email: registration.email || "",
-      phone: registration.phone || ""
-    };
-
-    res.json({ success: true, otpToken, profile });
+    res.json({ success: true, otpToken, profile: buildMemberSnapshot(registration) });
   } catch (err) {
     res.status(500).json({ message: "Server error", error: err.message });
   }
@@ -183,18 +237,11 @@ export const getProfile = async (req, res) => {
 
     const registration = await Registration.findOne({ membershipId: payload.membershipId }).lean();
     if (!registration) return res.status(404).json({ message: "Member not found" });
+    if (payload.email && normalizeEmail(registration.email) !== normalizeEmail(payload.email)) {
+      return res.status(401).json({ message: "Invalid token" });
+    }
 
-    const profile = {
-      name: `${registration.firstName || ""} ${registration.lastName || ""}`.trim(),
-      admissionNumber: registration.admissionNo || "",
-      department: registration.department || "",
-      semester: registration.semester || "",
-      class: registration.class || "",
-      email: registration.email || "",
-      phone: registration.phone || ""
-    };
-
-    res.json({ profile });
+    res.json({ profile: buildMemberSnapshot(registration) });
   } catch (err) {
     res.status(401).json({ message: "Invalid or expired token" });
   }
@@ -203,7 +250,6 @@ export const getProfile = async (req, res) => {
 // Route 4: apply
 export const submitApplication = async (req, res) => {
   try {
-    // Check if applications are closed
     const setting = await SystemSetting.findOne({ key: "second_year_reps_open" }).lean();
     const isOpen = setting ? Boolean(setting.value) : true;
     if (!isOpen) {
@@ -229,11 +275,18 @@ export const submitApplication = async (req, res) => {
 
     const { profile, answers } = req.body;
 
-    if (!profile || !answers || !answers.motivation || !answers.teamworkInitiative || !answers.representativeIdea) {
-      return res.status(400).json({ message: "All 3 questions must be answered." });
+    if (!answersAreValid(answers)) {
+      return res.status(400).json({ message: "All 3 questions must be answered with at least 30 characters." });
     }
 
-    // Final duplicate check
+    const registration = await Registration.findOne({ membershipId: payload.membershipId }).lean();
+    if (!registration) {
+      return res.status(404).json({ message: "Member not found" });
+    }
+    if (payload.email && normalizeEmail(registration.email) !== normalizeEmail(payload.email)) {
+      return res.status(401).json({ message: "Invalid token" });
+    }
+
     const existingApp = await SecondYearRepresentativeApplication.findOne({ membershipId: payload.membershipId }).lean();
     if (existingApp) {
       return res.status(409).json({ message: "APPLICATION ALREADY SUBMITTED: An application for this membership has already been received." });
@@ -241,28 +294,18 @@ export const submitApplication = async (req, res) => {
 
     const application = await SecondYearRepresentativeApplication.create({
       membershipId: payload.membershipId,
-      memberSnapshot: {
-        name: profile.name,
-        admissionNumber: profile.admissionNumber,
-        department: profile.department,
-        semester: profile.semester,
-        class: profile.class,
-        email: profile.email,
-        phone: profile.phone
-      },
-      motivation: answers.motivation,
-      teamworkInitiative: answers.teamworkInitiative,
-      representativeIdea: answers.representativeIdea,
+      memberSnapshot: buildMemberSnapshot(registration, profile),
+      motivation: answers.motivation.trim(),
+      teamworkInitiative: answers.teamworkInitiative.trim(),
+      representativeIdea: answers.representativeIdea.trim(),
       status: "Applied"
     });
 
     res.status(201).json({ success: true, message: "Application submitted successfully", applicationId: application._id });
   } catch (err) {
-    // Mongo duplicate key error
     if (err.code === 11000) {
       return res.status(409).json({ message: "An application has already been submitted for this membership." });
     }
     res.status(500).json({ message: "Server error", error: err.message });
   }
 };
-

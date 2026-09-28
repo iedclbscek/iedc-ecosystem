@@ -13,7 +13,7 @@ const handleError = (res, error, customMessage = "Server error") => {
 // @access  Private (Admin + SecondYearReps permission)
 export const getApplications = async (req, res) => {
   try {
-    if (!hasPermission(req.user, "SecondYearReps")) {
+    if (!hasPermission(req.user, "secondYearReps")) {
       return res.status(403).json({ message: "Forbidden" });
     }
 
@@ -108,7 +108,7 @@ export const getApplications = async (req, res) => {
 // @access  Private (Admin + SecondYearReps permission)
 export const getApplicationDetail = async (req, res) => {
   try {
-    if (!hasPermission(req.user, "SecondYearReps")) {
+    if (!hasPermission(req.user, "secondYearReps")) {
       return res.status(403).json({ message: "Forbidden" });
     }
 
@@ -131,7 +131,7 @@ export const getApplicationDetail = async (req, res) => {
 // @access  Private (Admin + SecondYearReps permission)
 export const updateApplication = async (req, res) => {
   try {
-    if (!hasPermission(req.user, "SecondYearReps")) {
+    if (!hasPermission(req.user, "secondYearReps")) {
       return res.status(403).json({ message: "Forbidden" });
     }
 
@@ -144,13 +144,12 @@ export const updateApplication = async (req, res) => {
     }
 
     if (status) application.status = status;
-    
-    // Update review object if provided
-    if (status !== "Applied") {
-        application.review = application.review || {};
-        if (remarks !== undefined) application.review.remarks = remarks;
-        application.review.reviewedBy = req.user.id;
-        application.review.reviewedAt = new Date();
+
+    if (status !== "Applied" || remarks !== undefined) {
+      application.review = application.review || {};
+      if (remarks !== undefined) application.review.remarks = remarks;
+      application.review.reviewedBy = req.user.id;
+      application.review.reviewedAt = new Date();
     }
 
     await application.save();
@@ -166,7 +165,7 @@ export const updateApplication = async (req, res) => {
 // @access  Private (Admin + SecondYearReps permission)
 export const deleteApplication = async (req, res) => {
   try {
-    if (!hasPermission(req.user, "SecondYearReps")) {
+    if (!hasPermission(req.user, "secondYearReps")) {
       return res.status(403).json({ message: "Forbidden" });
     }
 
@@ -189,7 +188,7 @@ export const deleteApplication = async (req, res) => {
 // @access  Private (Admin + SecondYearReps permission)
 export const exportApplications = async (req, res) => {
   try {
-    if (!hasPermission(req.user, "SecondYearReps")) {
+    if (!hasPermission(req.user, "secondYearReps")) {
       return res.status(403).json({ message: "Forbidden" });
     }
 
@@ -198,7 +197,8 @@ export const exportApplications = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    // Create CSV header
+    const csvCell = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+
     const headers = [
       "Name",
       "Membership ID",
@@ -213,16 +213,16 @@ export const exportApplications = async (req, res) => {
     ];
 
     const rows = applications.map((app) => [
-      `"${(app.memberSnapshot.name || "").replace(/"/g, '""')}"`,
-      `"${app.membershipId}"`,
-      `"${app.memberSnapshot.admissionNumber}"`,
-      `"${app.memberSnapshot.department}"`,
-      `"${app.memberSnapshot.semester}"`,
-      `"${app.memberSnapshot.class || ""}"`,
-      `"${app.memberSnapshot.email}"`,
-      `"${app.memberSnapshot.phone}"`,
-      `"${app.status}"`,
-      `"${app.createdAt.toISOString()}"`
+      csvCell(app.memberSnapshot?.name),
+      csvCell(app.membershipId),
+      csvCell(app.memberSnapshot?.admissionNumber),
+      csvCell(app.memberSnapshot?.department),
+      csvCell(app.memberSnapshot?.semester),
+      csvCell(app.memberSnapshot?.class),
+      csvCell(app.memberSnapshot?.email),
+      csvCell(app.memberSnapshot?.phone),
+      csvCell(app.status),
+      csvCell(app.createdAt?.toISOString?.() || app.createdAt),
     ]);
 
     const csvContent = [headers.join(","), ...rows.map(row => row.join(","))].join("\n");
@@ -240,7 +240,7 @@ export const exportApplications = async (req, res) => {
 // @access  Private (Admin + SecondYearReps permission)
 export const getSettings = async (req, res) => {
   try {
-    if (!hasPermission(req.user, "SecondYearReps")) {
+    if (!hasPermission(req.user, "secondYearReps")) {
       return res.status(403).json({ message: "Forbidden" });
     }
 
@@ -258,7 +258,7 @@ export const getSettings = async (req, res) => {
 // @access  Private (Admin + SecondYearReps permission)
 export const updateSettings = async (req, res) => {
   try {
-    if (!hasPermission(req.user, "SecondYearReps")) {
+    if (!hasPermission(req.user, "secondYearReps")) {
       return res.status(403).json({ message: "Forbidden" });
     }
 

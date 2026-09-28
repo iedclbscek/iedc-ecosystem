@@ -9,7 +9,7 @@ import {
   verifyOtp,
   getProfile,
   submitApplication,
-} from '../services/SecondYearRepService';
+} from '../services/secondYearRepService';
 
 // --- Shared Inputs (Same as Registration) ---
 const InputGroup = ({ label, name, value, onChange, placeholder, error, disabled, uppercase }) => (
@@ -210,11 +210,11 @@ const SecondYearRepresentativesPage = () => {
 
   const validateStep3 = () => {
     const newErrors = {};
-    if (!answers.motivation.trim() || answers.motivation.length < 30) {
-      newErrors.motivation = "Minimum 30 characters required";
+    for (const [key, value] of Object.entries(answers)) {
+      if (!value.trim() || value.trim().length < 30) {
+        newErrors[key] = "Minimum 30 characters required";
+      }
     }
-    
-    // Q2 & Q3 are optional.
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -224,7 +224,7 @@ const SecondYearRepresentativesPage = () => {
       return toast.error('Please fix profile errors');
     }
     if (currentStep === 3 && !validateStep3()) {
-      return toast.error('Please answer the mandatory question adequately');
+      return toast.error('Please answer all three questions (minimum 30 characters each)');
     }
     setCurrentStep(prev => prev + 1);
   };

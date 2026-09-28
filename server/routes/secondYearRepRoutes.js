@@ -5,7 +5,7 @@ import {
   verifyOtp,
   getProfile,
   submitApplication,
-} from "../controllers/SecondYearRepController.js";
+} from "../controllers/secondYearRepController.js";
 
 const router = express.Router();
 

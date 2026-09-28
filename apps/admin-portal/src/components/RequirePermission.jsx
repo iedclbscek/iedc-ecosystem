@@ -10,11 +10,24 @@ const PERMISSION_TO_PATH = {
   registrations: '/registrations',
   events: '/events',
   users: '/users',
+  firstYearReps: '/first-year-reps',
+  secondYearReps: '/second-year-reps',
+  makerspace: '/makerspace',
   mailer: '/mailer',
   settings: '/settings',
 };
 
-const PERMISSION_ORDER = ['dashboard', 'registrations', 'events', 'users', 'mailer', 'settings'];
+const PERMISSION_ORDER = [
+  'dashboard',
+  'registrations',
+  'events',
+  'users',
+  'firstYearReps',
+  'secondYearReps',
+  'makerspace',
+  'mailer',
+  'settings',
+];
 
 const normalize = (v) => String(v ?? '').trim().toLowerCase();
 
@@ -43,7 +56,7 @@ const getFallbackPath = (user) => {
     : [];
 
   for (const p of PERMISSION_ORDER) {
-    if (perms.includes(p)) return PERMISSION_TO_PATH[p] || '/';
+    if (perms.includes(normalize(p))) return PERMISSION_TO_PATH[p] || '/';
   }
   return '/login';
 };
