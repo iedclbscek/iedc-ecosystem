@@ -16,6 +16,7 @@ import registrationRoutes from "./routes/registrationRoutes.js";
 import checkinRoutes from "./routes/checkinRoutes.js";
 import eventsPublicRoutes from "./routes/eventsPublicRoutes.js";
 import firstYearRepRoutes from "./routes/firstYearRepRoutes.js";
+import secondYearRepRoutes from "./routes/secondYearRepRoutes.js";
 
 dotenv.config();
 console.log("Cloudinary env check:", {
@@ -201,6 +202,7 @@ app.use("/api/registrations", registrationRoutes);
 app.use("/api", checkinRoutes);
 app.use("/api", eventsPublicRoutes);
 app.use("/api/first-year-representatives", firstYearRepRoutes);
+app.use("/api/second-year-representatives", secondYearRepRoutes);
 
 // Health
 /**

@@ -20,6 +20,7 @@ import CommunityPage from './pages/CommunityPage';
 import RegistrationPage from './pages/RegistrationPage';
 import ExecomProfilePage from './pages/ExecomProfilePage';
 import FirstYearRepresentativesPage from './pages/FirstYearRepresentativesPage';
+import SecondYearRepresentativesPage from './pages/SecondYearRepresentativesPage';
 
 // --- UPDATED PLACEHOLDER COMPONENT ---
 const PlaceholderPage = ({ title, type = "404" }) => {
@@ -99,6 +100,7 @@ const AppContent = () => {
           <Route path="/nexus/:id" element={<CommunityPage />} />
           <Route path="/register" element={<RegistrationPage />} />
           <Route path="/first-year-representatives" element={<FirstYearRepresentativesPage />} />
+          <Route path="/second-year-representatives" element={<SecondYearRepresentativesPage />} />
           
           {/* Use the new placeholder style for 404 */}
           <Route path="*" element={<PlaceholderPage title="Signal Lost" type="404" />} />
