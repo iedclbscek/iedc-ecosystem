@@ -189,16 +189,28 @@ export const verifyOtp = async (req, res) => {
 
     const incomingHash = hashOtp(otp);
     if (incomingHash !== record.otp || !submittedMatchesStored) {
-      record.attempts = (record.attempts || 0) + 1;
-      if (record.attempts >= OTP_MAX_ATTEMPTS) {
+      const updated = await OTP.findOneAndUpdate(
+        { _id: record._id, purpose: OTP_PURPOSE },
+        { $inc: { attempts: 1 } },
+        { new: true }
+      );
+      if (!updated || updated.attempts >= OTP_MAX_ATTEMPTS) {
         await OTP.deleteMany({ email, purpose: OTP_PURPOSE });
         return res.status(429).json({ message: "Too many invalid OTP attempts. Request a new code." });
       }
-      await record.save();
       return res.status(400).json({ message: "OTP expired or invalid" });
     }
 
-    await OTP.deleteMany({ email, purpose: OTP_PURPOSE });
+    const consumed = await OTP.findOneAndDelete({
+      _id: record._id,
+      purpose: OTP_PURPOSE,
+      otp: incomingHash,
+      attempts: { $lt: OTP_MAX_ATTEMPTS },
+    });
+    if (!consumed) {
+      await OTP.deleteMany({ email, purpose: OTP_PURPOSE });
+      return res.status(429).json({ message: "Too many invalid OTP attempts. Request a new code." });
+    }
 
     const registration = await findRegistrationByMembershipAndEmail(membershipId, email);
     if (!registration) {
@@ -294,7 +306,7 @@ export const submitApplication = async (req, res) => {
 
     const application = await SecondYearRepresentativeApplication.create({
       membershipId: payload.membershipId,
-      memberSnapshot: buildMemberSnapshot(registration, profile),
+      memberSnapshot: buildMemberSnapshot(registration, { class: profile?.class, phone: profile?.phone }),
       motivation: answers.motivation.trim(),
       teamworkInitiative: answers.teamworkInitiative.trim(),
       representativeIdea: answers.representativeIdea.trim(),

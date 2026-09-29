@@ -24,7 +24,7 @@ export const getApplications = async (req, res) => {
     const query = {};
 
     if (req.query.search) {
-      const regex = new RegExp(req.query.search, "i");
+      const regex = new RegExp(String(req.query.search).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
       query.$or = [
         { "memberSnapshot.name": regex },
         { "memberSnapshot.admissionNumber": regex },
@@ -197,7 +197,11 @@ export const exportApplications = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    const csvCell = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+    const csvCell = (value) => {
+      const text = String(value ?? "");
+      const safeText = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+      return `"${safeText.replace(/"/g, '""')}"`;
+    };
 
     const headers = [
       "Name",
