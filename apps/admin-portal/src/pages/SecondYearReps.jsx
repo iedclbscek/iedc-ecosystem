@@ -175,7 +175,7 @@ function ApplicationDetail({ applicationId, onBack }) {
               <p className="text-sm text-slate-500 font-mono mb-4">
                 {app.membershipId}
               </p>
-              
+
               <div className="space-y-3">
                 <div className="flex flex-col">
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Department</span>
@@ -458,7 +458,7 @@ export default function SecondYearReps() {
                 className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-shadow"
               />
             </div>
-            <button 
+            <button
               onClick={() => exportMutation.mutate()}
               disabled={exportMutation.isPending}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors whitespace-nowrap"
@@ -622,4 +622,3 @@ export default function SecondYearReps() {
     </div>
   );
 }
-

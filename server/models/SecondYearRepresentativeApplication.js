@@ -55,4 +55,3 @@ const applicationSchema = new mongoose.Schema(
 );
 
 export default mongoose.model("SecondYearRepresentativeApplication", applicationSchema, "second_year_rep_applications");
-

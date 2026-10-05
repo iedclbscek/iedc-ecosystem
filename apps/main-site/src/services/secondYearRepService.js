@@ -33,4 +33,3 @@ export const submitApplication = async (token, profile, answers) => {
   );
   return res.data;
 };
-

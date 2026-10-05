@@ -88,7 +88,7 @@ const SecondYearRepresentativesPage = () => {
   const [email, setEmail] = useState(typeof draft?.email === 'string' ? draft.email : '');
   const [otp, setOtp] = useState('');
   const [showOtp, setShowOtp] = useState(false);
-  
+
   const [profile, setProfile] = useState(draft?.profile || {
     name: '',
     admissionNumber: '',
@@ -107,7 +107,7 @@ const SecondYearRepresentativesPage = () => {
 
   const [otpToken, setOtpToken] = useState(draft?.otpToken || '');
   const [isRestoringDraft, setIsRestoringDraft] = useState(Boolean(draft?.otpToken));
-  
+
   // UI States
   const [isVerifying, setIsVerifying] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -120,13 +120,13 @@ const SecondYearRepresentativesPage = () => {
   // Animation settings
   const shouldReduceMotion = useReducedMotion();
   const transition = { duration: 0.3, ease: 'easeOut' };
-  
+
   // Fade/slide up config based on reduced motion
   const fadeUpVariant = {
     hidden: { opacity: 0, y: shouldReduceMotion ? 0 : 20 },
     visible: { opacity: 1, y: 0, transition }
   };
-  
+
   // Stagger wrapper
   const staggerContainer = {
     hidden: { opacity: 0 },
@@ -317,7 +317,7 @@ const SecondYearRepresentativesPage = () => {
                   )}
                 </div>
                 <span className={`text-[10px] font-bold font-mono tracking-widest hidden md:block ${
-                  isActive ? 'text-accent' : 
+                  isActive ? 'text-accent' :
                   isPast ? 'text-text-dark' : 'text-gray-400'
                 }`}>
                   {label}
@@ -337,7 +337,7 @@ const SecondYearRepresentativesPage = () => {
 
   return (
     <div className="min-h-screen bg-bg-main selection:bg-accent selection:text-white pb-20">
-      
+
       {/* HERO SECTION */}
       <section className="bg-text-dark text-white pt-32 pb-16 px-6 relative overflow-hidden">
         {/* Subtle Ambient Background Motion */}
@@ -346,7 +346,7 @@ const SecondYearRepresentativesPage = () => {
           transition={{ duration: 8, ease: "easeInOut", repeat: Infinity }}
           className="absolute inset-0 opacity-10 [background-image:linear-gradient(to_right,#ffffff_1px,transparent_1px),linear-gradient(to_bottom,#ffffff_1px,transparent_1px)] [background-size:40px_40px]"
         ></Motion.div>
-        
+
         <Motion.div
           className="max-w-4xl mx-auto relative z-10"
           initial="hidden"
@@ -364,7 +364,7 @@ const SecondYearRepresentativesPage = () => {
               </Motion.div>
             )}
           </div>
-          
+
           {/* Line by line reveal */}
           <div className="text-4xl md:text-6xl font-black uppercase tracking-tighter leading-[0.9] mb-6 overflow-hidden">
             <Motion.div variants={fadeUpVariant}>CALL FOR</Motion.div>
@@ -376,15 +376,15 @@ const SecondYearRepresentativesPage = () => {
             Be the voice of your batch.<br/>
             <span className="text-gray-400 font-normal mt-2 block">Represent. Connect. Lead.</span>
           </Motion.p>
-          
+
           <Motion.div variants={fadeUpVariant} className="flex flex-col sm:flex-row gap-8 items-start sm:items-center">
             <Motion.button
               whileHover={shouldReduceMotion ? {} : { scale: 1.02, y: -2 }}
               whileTap={shouldReduceMotion ? {} : { scale: 0.96 }}
               onClick={() => document.getElementById('application-flow').scrollIntoView({ behavior: shouldReduceMotion ? 'auto' : 'smooth' })}
               className={`px-8 py-4 ${
-                isOpen 
-                  ? "bg-accent text-white hover:bg-white hover:text-accent shadow-[0_0_15px_rgba(34,197,94,0.15)] hover:shadow-[0_0_20px_rgba(34,197,94,0.3)]" 
+                isOpen
+                  ? "bg-accent text-white hover:bg-white hover:text-accent shadow-[0_0_15px_rgba(34,197,94,0.15)] hover:shadow-[0_0_20px_rgba(34,197,94,0.3)]"
                   : "bg-gray-800 text-gray-200 hover:bg-gray-700"
               } font-mono text-xs font-bold uppercase tracking-widest transition-colors flex items-center gap-3`}
             >
@@ -425,7 +425,7 @@ const SecondYearRepresentativesPage = () => {
               <Motion.div
                 variants={fadeUpVariant}
                 whileHover={shouldReduceMotion ? {} : { y: -4, borderColor: '#16a34a' }}
-                key={i} 
+                key={i}
                 className="p-6 bg-white border border-gray-100 transition-colors group"
               >
                 <span className="text-3xl font-black text-gray-100 group-hover:text-accent transition-colors">0{i+1}</span>
@@ -434,12 +434,12 @@ const SecondYearRepresentativesPage = () => {
               </Motion.div>
             ))}
           </div>
-          
+
           <Motion.div variants={fadeUpVariant} className="mt-16 pt-16 border-t border-gray-100">
             <h3 className="text-lg font-black uppercase tracking-tighter text-text-dark mb-12 text-center">
               WHAT DOES A REPRESENTATIVE DO?
             </h3>
-            
+
             <div className="max-w-xl mx-auto relative pl-8 border-l-2 border-gray-100 space-y-12 pb-6">
               {/* Animated Progress Line */}
               <Motion.div
@@ -461,7 +461,7 @@ const SecondYearRepresentativesPage = () => {
                   whileInView="visible"
                   viewport={{ once: true, margin: "-10%" }}
                   variants={fadeUpVariant}
-                  key={i} 
+                  key={i}
                   className="relative"
                 >
                    {/* Node indicator */}
@@ -470,7 +470,7 @@ const SecondYearRepresentativesPage = () => {
                      whileInView={{ scale: 1, backgroundColor: '#eab308', borderColor: '#eab308' }}
                      viewport={{ once: true, margin: "-10%" }}
                      transition={{ delay: 0.2 }}
-                     className="absolute left-[-41px] top-1.5 w-4 h-4 rounded-full border-2" 
+                     className="absolute left-[-41px] top-1.5 w-4 h-4 rounded-full border-2"
                    />
                    <span className="text-accent font-mono text-xs font-bold mb-1 block">0{i+1}</span>
                    <h4 className="font-black uppercase text-text-dark mb-2 text-xl">{role.title}</h4>
@@ -485,7 +485,7 @@ const SecondYearRepresentativesPage = () => {
       {/* APPLICATION FLOW */}
       <section id="application-flow" className="py-16 px-6">
         <div className="max-w-2xl mx-auto">
-          
+
           {isStatusLoading || isRestoringDraft ? (
             <p role="status" className="text-center text-text-light py-12">Loading application...</p>
           ) : isOpen === null ? (
@@ -528,40 +528,40 @@ const SecondYearRepresentativesPage = () => {
 
               <div className="bg-white p-6 md:p-10 border border-gray-200 shadow-sm min-h-[400px] overflow-hidden">
                 <AnimatePresence mode="wait">
-                  
+
                   {/* STEP 1: VERIFY */}
                   {currentStep === 1 && (
                     <Motion.div
-                      key="step1" 
-                      initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 30 }} 
-                      animate={{ opacity: 1, x: 0 }} 
+                      key="step1"
+                      initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 30 }}
+                      animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: shouldReduceMotion ? 0 : -30 }}
                       transition={{ duration: 0.3 }}
                     >
                       <h3 className="text-xl font-black uppercase tracking-tighter text-text-dark border-b border-gray-100 pb-4 mb-6">
                         01 // VERIFY YOUR MEMBERSHIP
                       </h3>
-                      
+
                       {!showOtp ? (
                         <form onSubmit={handleRequestVerification} className="space-y-6">
                       <p className="text-sm text-text-light mb-6">
                         Already an IEDC member? Enter your Membership ID and registered email to continue.
                       </p>
-                      <InputGroup 
-                        label="IEDC Membership ID" 
-                        name="membershipId" 
-                        value={membershipId} 
-                        onChange={e => setMembershipId(e.target.value)} 
-                        placeholder="IEDC26IT001" 
+                      <InputGroup
+                        label="IEDC Membership ID"
+                        name="membershipId"
+                        value={membershipId}
+                        onChange={e => setMembershipId(e.target.value)}
+                        placeholder="IEDC26IT001"
                         uppercase
                       />
-                      <InputGroup 
-                        label="Registered Email" 
+                      <InputGroup
+                        label="Registered Email"
                         name="email"
                         type="email"
-                        value={email} 
-                        onChange={e => setEmail(e.target.value)} 
-                        placeholder="student@email.com" 
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        placeholder="student@email.com"
                       />
                       <div className="space-y-3">
                         <button type="submit" disabled={isVerifying} className="w-full py-4 bg-text-dark text-white font-mono text-xs font-bold uppercase tracking-widest hover:bg-accent transition-colors disabled:opacity-50 flex justify-center items-center gap-2">
@@ -577,9 +577,9 @@ const SecondYearRepresentativesPage = () => {
                         <p className="text-sm text-text-light mb-3">
                           Don't have an IEDC membership yet?
                         </p>
-                        <a 
-                          href="https://www.iedclbscek.in/register" 
-                          target="_blank" 
+                        <a
+                          href="https://www.iedclbscek.in/register"
+                          target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex w-full justify-center items-center gap-2 px-6 py-3 border border-gray-200 text-text-dark font-mono text-xs font-bold uppercase tracking-widest hover:border-accent hover:text-accent transition-colors"
                         >
@@ -596,12 +596,12 @@ const SecondYearRepresentativesPage = () => {
                           <p className="text-xs text-green-700 mt-1">An OTP has been sent to {email}.</p>
                         </div>
                       </div>
-                      <InputGroup 
-                        label="6-Digit OTP" 
-                        name="otp" 
-                        value={otp} 
-                        onChange={e => setOtp(e.target.value)} 
-                        placeholder="XXXXXX" 
+                      <InputGroup
+                        label="6-Digit OTP"
+                        name="otp"
+                        value={otp}
+                        onChange={e => setOtp(e.target.value)}
+                        placeholder="XXXXXX"
                       />
                       <button type="submit" disabled={isVerifying} className="w-full py-4 bg-accent text-white font-mono text-xs font-bold uppercase tracking-widest hover:bg-text-dark transition-colors disabled:opacity-50 flex justify-center items-center gap-2">
                         {isVerifying ? <FaSpinner className="animate-spin" /> : 'Confirm OTP'} <FaArrowRight />
@@ -618,9 +618,9 @@ const SecondYearRepresentativesPage = () => {
               {/* STEP 2: PROFILE */}
               {currentStep === 2 && (
                 <Motion.div
-                  key="step2" 
-                  initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 30 }} 
-                  animate={{ opacity: 1, x: 0 }} 
+                  key="step2"
+                  initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 30 }}
+                  animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: shouldReduceMotion ? 0 : -30 }}
                   transition={{ duration: 0.3 }}
                 >
@@ -630,7 +630,7 @@ const SecondYearRepresentativesPage = () => {
                   <p className="text-sm text-text-light mb-6">
                     Please review your verified membership details. You can update your phone number and class if necessary.
                   </p>
-                  
+
                   <div className="space-y-4 mb-8">
                     <InputGroup label="Full Name" value={profile.name} error={errors.name} disabled />
                     <div className="grid grid-cols-2 gap-4">
@@ -654,9 +654,9 @@ const SecondYearRepresentativesPage = () => {
               {/* STEP 3: RESPOND */}
               {currentStep === 3 && (
                 <Motion.div
-                  key="step3" 
-                  initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 30 }} 
-                  animate={{ opacity: 1, x: 0 }} 
+                  key="step3"
+                  initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 30 }}
+                  animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: shouldReduceMotion ? 0 : -30 }}
                   transition={{ duration: 0.3 }}
                 >
@@ -666,9 +666,9 @@ const SecondYearRepresentativesPage = () => {
                   <p className="text-sm text-text-light mb-6">
                     Answer the following 3 questions. Minimum 30 characters each.
                   </p>
-                  
+
                   <div className="space-y-8 mb-8">
-                    <TextareaGroup 
+                    <TextareaGroup
                       label="Why IEDC?"
                       description="Why do you want to be part of IEDC, and what do you hope to learn or contribute through it?"
                       value={answers.motivation}
@@ -676,7 +676,7 @@ const SecondYearRepresentativesPage = () => {
                       maxLength={1500}
                       error={errors.motivation}
                     />
-                    <TextareaGroup 
+                    <TextareaGroup
                       label="Teamwork / Initiative"
                       description="Tell us about a time when you worked with a team or took initiative to get something done. What was your role, and what did you learn?"
                       value={answers.teamworkInitiative}
@@ -684,7 +684,7 @@ const SecondYearRepresentativesPage = () => {
                       maxLength={1500}
                       error={errors.teamworkInitiative}
                     />
-                    <TextareaGroup 
+                    <TextareaGroup
                       label="Representative Mindset"
                       description="Imagine you are an IEDC Second-Year Representative. What is one problem or opportunity you notice among Second-Year students, and what would you do to address it?"
                       value={answers.representativeIdea}
@@ -708,16 +708,16 @@ const SecondYearRepresentativesPage = () => {
               {/* STEP 4: REVIEW */}
               {currentStep === 4 && (
                 <Motion.div
-                  key="step4" 
-                  initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 30 }} 
-                  animate={{ opacity: 1, x: 0 }} 
+                  key="step4"
+                  initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 30 }}
+                  animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: shouldReduceMotion ? 0 : -30 }}
                   transition={{ duration: 0.3 }}
                 >
                   <h3 className="text-xl font-black uppercase tracking-tighter text-text-dark border-b border-gray-100 pb-4 mb-6">
                     04 // Review & Submit
                   </h3>
-                  
+
                   <Motion.div
                     className="mb-8 space-y-6"
                     initial="hidden"
@@ -752,9 +752,9 @@ const SecondYearRepresentativesPage = () => {
                     <button aria-label="Previous step" disabled={isSubmitting} onClick={prevStep} className="py-4 px-6 border border-gray-200 text-gray-500 font-mono text-xs font-bold uppercase tracking-widest hover:bg-gray-50 transition-colors flex justify-center items-center disabled:opacity-50">
                       <FaArrowLeft />
                     </button>
-                    <button 
-                      disabled={isSubmitting} 
-                      onClick={handleSubmit} 
+                    <button
+                      disabled={isSubmitting}
+                      onClick={handleSubmit}
                       className="relative flex-1 py-4 bg-accent text-white font-mono text-xs font-bold uppercase tracking-widest hover:bg-text-dark transition-colors flex justify-center items-center gap-2 disabled:opacity-50 overflow-hidden"
                     >
                       <AnimatePresence mode="wait">
@@ -776,21 +776,21 @@ const SecondYearRepresentativesPage = () => {
               {/* STEP 5: SUCCESS */}
               {currentStep === 5 && (
                 <Motion.div
-                  key="step5" 
-                  initial="hidden" 
-                  animate="visible" 
-                  variants={staggerContainer} 
+                  key="step5"
+                  initial="hidden"
+                  animate="visible"
+                  variants={staggerContainer}
                   className="text-center py-10"
                 >
                   <Motion.div variants={fadeUpVariant} className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-6 relative">
                     <svg className="w-10 h-10 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
                       <Motion.path
-                        initial={{ pathLength: 0 }} 
-                        animate={{ pathLength: 1 }} 
+                        initial={{ pathLength: 0 }}
+                        animate={{ pathLength: 1 }}
                         transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 }}
-                        strokeLinecap="round" 
-                        strokeLinejoin="round" 
-                        d="M5 13l4 4L19 7" 
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M5 13l4 4L19 7"
                       />
                     </svg>
                   </Motion.div>
@@ -819,4 +819,3 @@ const SecondYearRepresentativesPage = () => {
 };
 
 export default SecondYearRepresentativesPage;
-

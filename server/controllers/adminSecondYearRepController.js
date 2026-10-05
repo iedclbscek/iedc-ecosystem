@@ -78,12 +78,12 @@ export const getApplications = async (req, res) => {
       .lean();
 
     const total = await SecondYearRepresentativeApplication.countDocuments(query);
-    
+
     // Aggregation for stats (Applied, Reviewed, Shortlisted, Selected, etc.)
     const statsAggr = await SecondYearRepresentativeApplication.aggregate([
       { $group: { _id: "$status", count: { $sum: 1 } } }
     ]);
-    
+
     const stats = {
       total: statsAggr.reduce((sum, s) => sum + s.count, 0),
       applied: 0,
@@ -93,7 +93,7 @@ export const getApplications = async (req, res) => {
       selected: 0,
       rejected: 0
     };
-    
+
     statsAggr.forEach(s => {
       const key = String(s._id).toLowerCase();
       if (stats[key] !== undefined) stats[key] = s.count;
@@ -162,9 +162,9 @@ export const updateApplication = async (req, res) => {
     if (remarks !== undefined && typeof remarks !== "string") {
       return res.status(400).json({ message: "Remarks must be a string" });
     }
-    
+
     const application = await SecondYearRepresentativeApplication.findById(req.params.id);
-    
+
     if (!application) {
       return res.status(404).json({ message: "Application not found" });
     }
@@ -196,7 +196,7 @@ export const deleteApplication = async (req, res) => {
     }
 
     const application = await SecondYearRepresentativeApplication.findById(req.params.id);
-    
+
     if (!application) {
       return res.status(404).json({ message: "Application not found" });
     }

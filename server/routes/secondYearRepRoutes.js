@@ -17,5 +17,3 @@ router.get("/profile", getProfile);
 router.post("/apply", submitApplication);
 
 export default router;
-
-
