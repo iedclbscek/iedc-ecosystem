@@ -75,3 +75,13 @@ The API reference lives in Swagger:
 ## Email Template Center
 
 Student registration confirmation uses template key: `student_registration_confirmation`.
+
+## Second-year representative applications
+
+The public API is `/api/second-year-representatives/*`; review, settings, and CSV routes are under `/api/admin/second-year-reps` and require `secondYearReps` permission.
+
+Codes use the separate `second_year_rep_otps` collection. Startup waits for its unique email and TTL indexes and the applications' unique membership index. Codes previously issued in the shared `otps` collection must be requested again after this change. Eligibility uses the current third/fourth semester, including `3rd Semester` and `4th Semester`; records missing an admission number must be corrected before applying.
+
+OTP request limits are process-local. Multiple API workers need a shared limit store; deployments behind a proxy need correctly scoped Express `trust proxy` configuration for client IP limits. Forwarded headers are not trusted by default.
+
+Run `npm test` here for regression checks using stubbed database queries and mail transport. These checks do not verify live MongoDB indexes, SMTP delivery, or deployment behavior.

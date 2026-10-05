@@ -3,6 +3,8 @@ import dotenv from "dotenv";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import connectDB from "./config/db.js";
+import SecondYearRepOTP from "./models/SecondYearRepOTP.js";
+import SecondYearRepresentativeApplication from "./models/SecondYearRepresentativeApplication.js";
 import { seedAdminUser } from "./utils/seedAdmin.js";
 import { seedEmailTemplates } from "./utils/seedEmailTemplates.js";
 import { ensureRegistrationAdmissionNoIndex } from "./utils/ensureIndexes.js";
@@ -25,6 +27,7 @@ console.log("Cloudinary env check:", {
   apiSecret: Boolean(process.env.CLOUDINARY_API_SECRET),
 });
 await connectDB();
+await Promise.all([SecondYearRepOTP.init(), SecondYearRepresentativeApplication.init()]);
 await ensureRegistrationAdmissionNoIndex();
 await seedAdminUser();
 await seedEmailTemplates();

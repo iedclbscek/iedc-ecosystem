@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   fetchSecondYearReps,
@@ -7,17 +7,15 @@ import {
   deleteSecondYearRep,
   fetchSecondYearRepsSettings,
   updateSecondYearRepsSettings,
+  exportSecondYearReps,
 } from "../api/adminService";
 import toast from "react-hot-toast";
 import {
   Search,
   ChevronLeft,
   ChevronRight,
-  Filter,
   Eye,
   ArrowLeft,
-  Check,
-  X as XIcon,
   Trash2,
   Lock,
   Unlock,
@@ -40,9 +38,33 @@ const STATUS_COLORS = {
   Rejected: "bg-red-100 text-red-800",
 };
 
+function ReviewerNotes({ initialRemarks, isPending, onSave }) {
+  const [remarks, setRemarks] = useState(initialRemarks);
+
+  return (
+    <>
+      <textarea
+        aria-label="Reviewer notes"
+        disabled={isPending}
+        value={remarks}
+        onChange={(e) => setRemarks(e.target.value)}
+        placeholder="Add your evaluation remarks here..."
+        rows="5"
+        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:border-blue-500 outline-none resize-none mb-3"
+      />
+      <button
+        onClick={() => onSave(remarks)}
+        disabled={isPending || remarks === initialRemarks}
+        className="w-full py-2.5 bg-slate-800 text-white rounded-lg text-sm font-bold hover:bg-slate-700 transition-colors disabled:opacity-50"
+      >
+        Save Notes
+      </button>
+    </>
+  );
+}
+
 function ApplicationDetail({ applicationId, onBack }) {
   const queryClient = useQueryClient();
-  const [remarks, setRemarks] = useState("");
 
   const { data: app, isLoading } = useQuery({
     queryKey: ["SecondYearRep", applicationId],
@@ -50,11 +72,10 @@ function ApplicationDetail({ applicationId, onBack }) {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ status, remarks }) =>
-      updateSecondYearRep(applicationId, { status, remarks }),
+    mutationFn: (payload) => updateSecondYearRep(applicationId, payload),
     onSuccess: () => {
-      queryClient.invalidateQueries(["SecondYearRep", applicationId]);
-      queryClient.invalidateQueries(["SecondYearReps"]);
+      queryClient.invalidateQueries({ queryKey: ["SecondYearRep", applicationId] });
+      queryClient.invalidateQueries({ queryKey: ["SecondYearReps"] });
       toast.success("Application updated");
     },
     onError: (err) => {
@@ -65,7 +86,7 @@ function ApplicationDetail({ applicationId, onBack }) {
   const deleteMutation = useMutation({
     mutationFn: () => deleteSecondYearRep(applicationId),
     onSuccess: () => {
-      queryClient.invalidateQueries(["SecondYearReps"]);
+      queryClient.invalidateQueries({ queryKey: ["SecondYearReps"] });
       toast.success("Application deleted");
       onBack();
     },
@@ -79,12 +100,6 @@ function ApplicationDetail({ applicationId, onBack }) {
       deleteMutation.mutate();
     }
   };
-
-  useEffect(() => {
-    if (app?.review?.remarks) {
-      setRemarks(app.review.remarks);
-    }
-  }, [app]);
 
   if (isLoading) {
     return <div className="p-8 text-center text-slate-500">Loading...</div>;
@@ -100,11 +115,7 @@ function ApplicationDetail({ applicationId, onBack }) {
         return;
       }
     }
-    updateMutation.mutate({ status: newStatus, remarks });
-  };
-
-  const handleSaveReview = () => {
-    updateMutation.mutate({ status: app.status, remarks });
+    updateMutation.mutate({ status: newStatus });
   };
 
   return (
@@ -114,6 +125,7 @@ function ApplicationDetail({ applicationId, onBack }) {
         <div className="flex items-center gap-4">
           <button
             onClick={onBack}
+            aria-label="Back to applications"
             className="p-2 hover:bg-slate-200 rounded-lg text-slate-600 transition-colors"
           >
             <ArrowLeft size={20} />
@@ -127,7 +139,7 @@ function ApplicationDetail({ applicationId, onBack }) {
         <div className="flex items-center gap-3">
           <button
             onClick={handleDelete}
-            disabled={deleteMutation.isLoading}
+            disabled={deleteMutation.isPending || updateMutation.isPending}
             className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-1 text-sm font-medium mr-2"
             title="Delete Application"
           >
@@ -138,7 +150,7 @@ function ApplicationDetail({ applicationId, onBack }) {
           <select
             value={app.status}
             onChange={(e) => handleStatusChange(e.target.value)}
-            disabled={updateMutation.isLoading}
+            disabled={updateMutation.isPending || deleteMutation.isPending}
             className={`px-3 py-1.5 rounded-lg text-sm font-bold border-0 cursor-pointer outline-none ring-2 ring-transparent focus:ring-blue-500 ${
               STATUS_COLORS[app.status]
             }`}
@@ -193,20 +205,12 @@ function ApplicationDetail({ applicationId, onBack }) {
             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-200 pb-2">
               Reviewer Notes
             </h4>
-            <textarea
-              value={remarks}
-              onChange={(e) => setRemarks(e.target.value)}
-              placeholder="Add your evaluation remarks here..."
-              rows="5"
-              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:border-blue-500 outline-none resize-none mb-3"
+            <ReviewerNotes
+              key={app.review?.remarks || ""}
+              initialRemarks={app.review?.remarks || ""}
+              isPending={updateMutation.isPending || deleteMutation.isPending}
+              onSave={(remarks) => updateMutation.mutate({ remarks })}
             />
-            <button
-              onClick={handleSaveReview}
-              disabled={updateMutation.isLoading || remarks === app.review?.remarks}
-              className="w-full py-2.5 bg-slate-800 text-white rounded-lg text-sm font-bold hover:bg-slate-700 transition-colors disabled:opacity-50"
-            >
-              Save Notes
-            </button>
             {app.review?.reviewedBy && (
               <p className="text-xs text-slate-400 mt-3 text-center">
                 Last updated by {app.review.reviewedBy.name} on {new Date(app.review.reviewedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
@@ -223,7 +227,7 @@ function ApplicationDetail({ applicationId, onBack }) {
                 01 // Why IEDC?
               </h4>
               <p className="text-sm font-medium text-slate-800">
-                Why do you want to join the IEDC Executive Committee as a Second-Year Representative?
+                Why do you want to be part of IEDC, and what do you hope to learn or contribute through it?
               </p>
             </div>
             <div className="p-5 bg-white border border-slate-200 rounded-xl text-slate-700 text-sm leading-relaxed whitespace-pre-wrap shadow-sm">
@@ -237,7 +241,7 @@ function ApplicationDetail({ applicationId, onBack }) {
                 02 // Teamwork & Initiative
               </h4>
               <p className="text-sm font-medium text-slate-800">
-                Describe a time you took the initiative to organize an event, lead a project, or solve a problem.
+                Tell us about a time when you worked with a team or took initiative to get something done. What was your role, and what did you learn?
               </p>
             </div>
             <div className="p-5 bg-white border border-slate-200 rounded-xl text-slate-700 text-sm leading-relaxed whitespace-pre-wrap shadow-sm">
@@ -251,7 +255,7 @@ function ApplicationDetail({ applicationId, onBack }) {
                 03 // Representative Mindset
               </h4>
               <p className="text-sm font-medium text-slate-800">
-                What is one new idea or initiative you would want to introduce for Second-Year students if selected?
+                Imagine you are an IEDC Second-Year Representative. What is one problem or opportunity you notice among Second-Year students, and what would you do to address it?
               </p>
             </div>
             <div className="p-5 bg-white border border-slate-200 rounded-xl text-slate-700 text-sm leading-relaxed whitespace-pre-wrap shadow-sm">
@@ -272,7 +276,7 @@ export default function SecondYearReps() {
   const [departmentFilter, setDepartmentFilter] = useState("");
   const [selectedAppId, setSelectedAppId] = useState(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["SecondYearReps", page, search, statusFilter, departmentFilter],
     queryFn: () =>
       fetchSecondYearReps({
@@ -281,7 +285,7 @@ export default function SecondYearReps() {
         status: statusFilter,
         department: departmentFilter,
       }),
-    keepPreviousData: true,
+    placeholderData: (previousData) => previousData,
   });
 
   const { data: settingsData, isLoading: isSettingsLoading } = useQuery({
@@ -289,12 +293,25 @@ export default function SecondYearReps() {
     queryFn: fetchSecondYearRepsSettings,
   });
 
-  const isApplicationsOpen = settingsData?.isOpen ?? true;
+  const exportMutation = useMutation({
+    mutationFn: exportSecondYearReps,
+    onSuccess: (data) => {
+      const url = URL.createObjectURL(data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "second-year-representatives.csv";
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    },
+    onError: () => toast.error("Failed to export applications"),
+  });
+
+  const isApplicationsOpen = settingsData?.isOpen;
 
   const toggleSettingsMutation = useMutation({
     mutationFn: (newIsOpen) => updateSecondYearRepsSettings({ isOpen: newIsOpen }),
     onSuccess: (res) => {
-      queryClient.invalidateQueries(["SecondYearRepsSettings"]);
+      queryClient.invalidateQueries({ queryKey: ["SecondYearRepsSettings"] });
       toast.success(res?.message || "Settings updated");
     },
     onError: (err) => {
@@ -365,7 +382,7 @@ export default function SecondYearReps() {
                   isApplicationsOpen ? "text-green-700" : "text-red-700"
                 }`}
               >
-                {isApplicationsOpen ? "Open" : "Closed"}
+                {typeof isApplicationsOpen === "boolean" ? (isApplicationsOpen ? "Open" : "Closed") : "Unavailable"}
               </span>
             </div>
           </div>
@@ -374,7 +391,7 @@ export default function SecondYearReps() {
 
           <button
             onClick={handleToggleStatus}
-            disabled={toggleSettingsMutation.isLoading || isSettingsLoading}
+            disabled={toggleSettingsMutation.isPending || isSettingsLoading || typeof isApplicationsOpen !== "boolean"}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer ${
               isApplicationsOpen
                 ? "bg-red-50 text-red-700 hover:bg-red-100 border border-red-200"
@@ -442,10 +459,11 @@ export default function SecondYearReps() {
               />
             </div>
             <button 
-              onClick={() => window.open(`${import.meta.env.VITE_API_URL}/admin/Second-Year-reps/export/csv`, "_blank")}
+              onClick={() => exportMutation.mutate()}
+              disabled={exportMutation.isPending}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors whitespace-nowrap"
             >
-              Export CSV
+              {exportMutation.isPending ? "Exporting..." : "Export CSV"}
             </button>
           </div>
 
@@ -459,14 +477,14 @@ export default function SecondYearReps() {
               className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:border-blue-500 outline-none"
             >
               <option value="">All Departments</option>
-              <option value="CSE">CSE</option>
-              <option value="CSBS">CSBS</option>
-              <option value="CSE (AI & DS)">CSE (AI & DS)</option>
-              <option value="IT">IT</option>
-              <option value="ECE">ECE</option>
-              <option value="EEE">EEE</option>
-              <option value="ME">ME</option>
-              <option value="CE">CE</option>
+              <option value="Computer Science and Engineering">CSE</option>
+              <option value="Computer Science and Business Systems">CSBS</option>
+              <option value="Computer Science and Engineering(AI & Data Science)">CSE (AI & DS)</option>
+              <option value="Information Technology">IT</option>
+              <option value="Electronics and Communication Engineering">ECE</option>
+              <option value="Electrical and Electronics Engineering">EEE</option>
+              <option value="Mechanical Engineering">ME</option>
+              <option value="Civil Engineering">CE</option>
             </select>
 
             <select
@@ -517,6 +535,12 @@ export default function SecondYearReps() {
                     Loading applications...
                   </td>
                 </tr>
+              ) : isError ? (
+                <tr>
+                  <td colSpan="6" className="p-8 text-center text-red-600">
+                    Failed to load applications. Please try again.
+                  </td>
+                </tr>
               ) : data?.applications?.length === 0 ? (
                 <tr>
                   <td colSpan="6" className="p-8 text-center text-slate-500">
@@ -555,7 +579,7 @@ export default function SecondYearReps() {
                       </span>
                     </td>
                     <td className="p-4 text-right">
-                      <button className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                      <button aria-label={`View application for ${app.name}`} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
                         <Eye size={18} />
                       </button>
                     </td>
@@ -577,6 +601,7 @@ export default function SecondYearReps() {
           </p>
           <div className="flex gap-2">
             <button
+              aria-label="Previous page"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={!data || data.page <= 1}
               className="p-2 bg-white border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -584,6 +609,7 @@ export default function SecondYearReps() {
               <ChevronLeft size={18} />
             </button>
             <button
+              aria-label="Next page"
               onClick={() => setPage((p) => Math.min(data.pages, p + 1))}
               disabled={!data || data.page >= data.pages}
               className="p-2 bg-white border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"

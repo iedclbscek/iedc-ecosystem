@@ -144,6 +144,7 @@ iedc-ecosystem/                     ← pnpm Workspace Root
 | `/nexus` | `CommunitiesPage` | All 13 student clubs/communities |
 | `/nexus/:id` | `CommunityPage` | Individual community detail page |
 | `/register` | `RegistrationPage` | 3-step OTP-verified member registration |
+| `/second-year-representatives` | `SecondYearRepresentativesPage` | Membership verification and second-year representative applications |
 
 ### Home Sections
 `HeroSection` · `AboutSection` · `WhatWeDoSection` · `CommunitiesSection` · `EventsSection` · `ImpactSection` · `TeamPreviewSection`
@@ -161,6 +162,7 @@ iedc-ecosystem/                     ← pnpm Workspace Root
 | `/events` | `Events` | `events` |
 | `/users` | `Users` | `users` |
 | `/makerspace` | `Makerspace` | `makerspace` |
+| `/second-year-reps` | `SecondYearReps` | `secondYearReps` |
 | `/mailer` | `Mailer` | `mailer` |
 | `/settings` | `Settings` | `settings` |
 | `/team-entry/update` | `TeamEntryUpdate` | Token-based |
@@ -193,6 +195,7 @@ iedc-ecosystem/                     ← pnpm Workspace Root
 | `/api/registrations/*` | `registrationRoutes.js` | Event registration flow |
 | `/api/checkin/*` | `checkinRoutes.js` | QR check-in system |
 | `/api/events/*` | `eventsPublicRoutes.js` | Public event listing |
+| `/api/second-year-representatives/*` | `secondYearRepRoutes.js` | Representative application status, membership verification, profile, and submission |
 
 ### Auth Flow
 - Admin login issues an **HTTP-only JWT cookie** named `token`
@@ -313,6 +316,8 @@ cd apps/admin-portal && pnpm dev
 ---
 
 ## 🏗️ Building for Production
+
+Run the representative flow regression checks with `cd server && npm test`. These checks use local model stubs and do not send email or access MongoDB. Live database, email delivery, and deployed authentication still need verification in the configured environment.
 
 ```bash
 # Build main site

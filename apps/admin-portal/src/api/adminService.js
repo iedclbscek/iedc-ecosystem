@@ -712,3 +712,10 @@ export const updateSecondYearRepsSettings = async (payload) => {
   const { data } = await api.patch("/admin/second-year-reps/settings", payload);
   return data;
 };
+
+export const exportSecondYearReps = async () => {
+  const { data } = await api.get("/admin/second-year-reps/export/csv", {
+    responseType: "blob",
+  });
+  return data;
+};

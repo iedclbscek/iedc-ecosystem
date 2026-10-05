@@ -5,9 +5,6 @@ const otpSchema = new mongoose.Schema(
     email: { type: String, required: true, index: true },
     otp: { type: String, required: true },
     expiresAt: { type: Date, required: true },
-    purpose: { type: String, trim: true, index: true },
-    membershipId: { type: String, trim: true },
-    attempts: { type: Number, default: 0 },
   },
   { timestamps: true }
 );

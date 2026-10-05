@@ -2,10 +2,13 @@ import SecondYearRepresentativeApplication from "../models/SecondYearRepresentat
 import SystemSetting from "../models/SystemSetting.js";
 import { hasPermission } from "../middleware/requireAuth.js";
 
+const statuses = SecondYearRepresentativeApplication.schema.path("status").enumValues;
+
 // Utility for formatting error responses
 const handleError = (res, error, customMessage = "Server error") => {
   console.error(error);
-  res.status(500).json({ message: customMessage, error: error.message });
+  const status = ["CastError", "ValidationError"].includes(error.name) ? 400 : 500;
+  res.status(status).json({ message: customMessage, error: error.message });
 };
 
 // @desc    Get all Second-Year representative applications with filtering and pagination
@@ -17,9 +20,20 @@ export const getApplications = async (req, res) => {
       return res.status(403).json({ message: "Forbidden" });
     }
 
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
+    const parameters = ["page", "limit", "search", "department", "class", "status", "sort"];
+    if (parameters.some(key => req.query[key] !== undefined && typeof req.query[key] !== "string")) {
+      return res.status(400).json({ message: "Query parameters must be strings" });
+    }
+
+    const page = Number(req.query.page ?? 1);
+    const limit = Number(req.query.limit ?? 20);
     const skip = (page - 1) * limit;
+    if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(limit) || limit < 1 || limit > 100 || !Number.isSafeInteger(skip)) {
+      return res.status(400).json({ message: "page must be a positive integer and limit must be between 1 and 100" });
+    }
+    if (req.query.status && !statuses.includes(req.query.status)) {
+      return res.status(400).json({ message: "Invalid application status" });
+    }
 
     const query = {};
 
@@ -47,8 +61,11 @@ export const getApplications = async (req, res) => {
 
     let sort = { createdAt: -1 };
     if (req.query.sort) {
-      const sortField = req.query.sort.replace("-", "");
+      const sortField = req.query.sort.replace(/^-/, "");
       const sortOrder = req.query.sort.startsWith("-") ? -1 : 1;
+      if (!["submittedAt", "createdAt", "membershipId", "status", "memberSnapshot.name", "memberSnapshot.admissionNumber", "memberSnapshot.department", "memberSnapshot.class"].includes(sortField)) {
+        return res.status(400).json({ message: "Invalid sort field" });
+      }
       // map submittedAt to createdAt since timestamps are standard
       sort = { [sortField === "submittedAt" ? "createdAt" : sortField]: sortOrder };
     }
@@ -68,7 +85,7 @@ export const getApplications = async (req, res) => {
     ]);
     
     const stats = {
-      total,
+      total: statsAggr.reduce((sum, s) => sum + s.count, 0),
       applied: 0,
       reviewed: 0,
       shortlisted: 0,
@@ -135,7 +152,16 @@ export const updateApplication = async (req, res) => {
       return res.status(403).json({ message: "Forbidden" });
     }
 
-    const { status, remarks } = req.body;
+    const { status, remarks } = req.body || {};
+    if (status === undefined && remarks === undefined) {
+      return res.status(400).json({ message: "Provide a status or remarks to update" });
+    }
+    if (status !== undefined && !statuses.includes(status)) {
+      return res.status(400).json({ message: "Invalid application status" });
+    }
+    if (remarks !== undefined && typeof remarks !== "string") {
+      return res.status(400).json({ message: "Remarks must be a string" });
+    }
     
     const application = await SecondYearRepresentativeApplication.findById(req.params.id);
     
@@ -266,7 +292,7 @@ export const updateSettings = async (req, res) => {
       return res.status(403).json({ message: "Forbidden" });
     }
 
-    const { isOpen } = req.body;
+    const { isOpen } = req.body || {};
     if (typeof isOpen !== "boolean") {
       return res.status(400).json({ message: "isOpen must be a boolean" });
     }
@@ -286,5 +312,3 @@ export const updateSettings = async (req, res) => {
     handleError(res, error, "Failed to update settings");
   }
 };
-
-

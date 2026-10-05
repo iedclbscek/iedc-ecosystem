@@ -21,10 +21,8 @@ export const consumeRateLimit = (key, { max, windowMs }) => {
   }
 
   if (buckets.size >= MAX_KEYS) {
-    pruneExpired(now);
-    if (buckets.size >= MAX_KEYS) {
-      return { ok: false, remaining: 0, retryAfterMs: windowMs };
-    }
+    // ponytail: evict oldest at 1000 process-local keys; use a shared store for cross-worker limits.
+    buckets.delete(buckets.keys().next().value);
   }
 
   buckets.set(key, { count: 1, resetAt: now + windowMs });

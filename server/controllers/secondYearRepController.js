@@ -1,18 +1,27 @@
 import Registration from "../models/Registration.js";
 import SecondYearRepresentativeApplication from "../models/SecondYearRepresentativeApplication.js";
 import SystemSetting from "../models/SystemSetting.js";
-import OTP from "../models/OTP.js";
+import OTP from "../models/SecondYearRepOTP.js";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { sendMail } from "../utils/mailer.js";
 import { clientIp, consumeRateLimit } from "../utils/simpleRateLimit.js";
 
-const OTP_PURPOSE = "second_year_rep";
 const OTP_MAX_ATTEMPTS = 5;
 const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
 const MIN_ANSWER_LENGTH = 30;
 
-const normalizeEmail = (value) => String(value ?? "").trim().toLowerCase();
+const readString = (value) => typeof value === "string" ? value.trim() : "";
+const normalizeEmail = (value) => readString(value).toLowerCase();
+const identityIsValid = (membershipId, email) =>
+  membershipId.length > 0 && membershipId.length <= 100 &&
+  email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+const isSecondYear = (registration) =>
+  (registration.userType || "student") === "student" &&
+  ["S3", "S4", "3", "4", "3RD SEMESTER", "4TH SEMESTER"].includes(
+    readString(registration.semester).toUpperCase()
+  );
 
 const escapeRegex = (value) =>
   String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -45,7 +54,7 @@ const answersAreValid = (answers) => {
   if (!answers || typeof answers !== "object") return false;
   return requiredAnswers.every((key) => {
     const value = answers[key];
-    return typeof value === "string" && value.trim().length >= MIN_ANSWER_LENGTH;
+    return typeof value === "string" && value.trim().length >= MIN_ANSWER_LENGTH && value.trim().length <= 1500;
   });
 };
 
@@ -78,11 +87,20 @@ export const requestVerification = async (req, res) => {
       return res.status(403).json({ message: "Applications for Second-Year Representatives are currently closed." });
     }
 
-    const membershipId = String(req.body?.membershipId ?? "").trim();
+    const membershipId = readString(req.body?.membershipId);
     const email = normalizeEmail(req.body?.email);
 
-    if (!membershipId || !email) {
+    if (!identityIsValid(membershipId, email)) {
       return res.status(400).json({ message: "Membership ID and registered email are required." });
+    }
+
+    const ip = clientIp(req);
+    const sendLimit = consumeRateLimit(`syrep:otp-send:${ip}`, {
+      max: 30,
+      windowMs: 15 * 60 * 1000,
+    });
+    if (!sendLimit.ok) {
+      return res.status(429).json({ message: "Too many verification requests. Please try again later." });
     }
 
     const registration = await findRegistrationByMembershipAndEmail(membershipId, email);
@@ -90,20 +108,16 @@ export const requestVerification = async (req, res) => {
       return res.status(404).json({ message: "We couldn't find a matching IEDC membership with this ID and email." });
     }
 
-    const ip = clientIp(req);
-    const sendLimit = consumeRateLimit(`syrep:otp-send:${ip}:${email}`, {
+    if (!isSecondYear(registration)) {
+      return res.status(403).json({ message: "This application is only open to Second-Year students." });
+    }
+
+    const emailLimit = consumeRateLimit(`syrep:otp-send-email:${email}`, {
       max: 5,
       windowMs: 15 * 60 * 1000,
     });
-    if (!sendLimit.ok) {
+    if (!emailLimit.ok) {
       return res.status(429).json({ message: "Too many verification requests. Please try again later." });
-    }
-
-    const semester = String(registration.semester ?? "").toUpperCase();
-    const isSecondYear = ["S3", "S4", "3", "4"].includes(semester) || registration.yearOfJoining === (new Date().getFullYear() - 1).toString();
-
-    if (!isSecondYear) {
-      return res.status(403).json({ message: "This application is only open to Second-Year students." });
     }
 
     const existingApp = await SecondYearRepresentativeApplication.findOne({ membershipId: registration.membershipId }).lean();
@@ -114,24 +128,23 @@ export const requestVerification = async (req, res) => {
       });
     }
 
-    const existingOtp = await OTP.findOne({ email, purpose: OTP_PURPOSE });
-    if (existingOtp?.createdAt && Date.now() - existingOtp.createdAt.getTime() < OTP_RESEND_COOLDOWN_MS) {
-      return res.status(429).json({ message: "Please wait before requesting another verification code." });
-    }
-
-    const rawOtp = crypto.randomInt(100000, 999999).toString();
+    const rawOtp = crypto.randomInt(100000, 1000000).toString();
     const hashed = hashOtp(rawOtp);
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-    await OTP.deleteMany({ email, purpose: OTP_PURPOSE });
-    await OTP.create({
-      email,
-      otp: hashed,
-      expiresAt,
-      purpose: OTP_PURPOSE,
-      membershipId: registration.membershipId,
-      attempts: 0,
-    });
+    let record;
+    try {
+      record = await OTP.findOneAndUpdate(
+        { email, requestedAt: { $lte: new Date(Date.now() - OTP_RESEND_COOLDOWN_MS) } },
+        { $set: { email, otp: hashed, expiresAt, requestedAt: new Date(), membershipId: registration.membershipId, attempts: 0 } },
+        { upsert: true, new: true }
+      );
+    } catch (err) {
+      if (err.code === 11000) {
+        return res.status(429).json({ message: "Please wait before requesting another verification code." });
+      }
+      throw err;
+    }
 
     const subject = "IEDC Second-Year Representative Application - Verification Code";
     const html = `
@@ -144,9 +157,10 @@ export const requestVerification = async (req, res) => {
     `;
 
     try {
-      await sendMail({ to: email, subject, html });
+      const result = await sendMail({ to: email, subject, html });
+      if (!result?.sent) throw new Error("Verification email was not sent");
     } catch (e) {
-      console.error("Failed to send OTP email:", e);
+      await OTP.deleteOne({ _id: record._id, otp: hashed });
       return res.status(500).json({ message: "Failed to send verification email. Please try again later." });
     }
 
@@ -159,26 +173,28 @@ export const requestVerification = async (req, res) => {
 // Route 2: verifyOtp
 export const verifyOtp = async (req, res) => {
   try {
-    const membershipId = String(req.body?.membershipId ?? "").trim();
+    const membershipId = readString(req.body?.membershipId);
     const email = normalizeEmail(req.body?.email);
-    const otp = String(req.body?.otp ?? "").trim();
+    const otp = readString(req.body?.otp);
 
-    if (!membershipId || !email || !otp) {
+    if (!identityIsValid(membershipId, email) || !/^\d{6}$/.test(otp)) {
       return res.status(400).json({ message: "Membership ID, email, and OTP are required." });
     }
 
     const ip = clientIp(req);
-    const verifyLimit = consumeRateLimit(`syrep:otp-verify:${ip}:${email}`, {
-      max: 10,
+    const verifyLimit = consumeRateLimit(`syrep:otp-verify:${ip}`, {
+      max: 100,
       windowMs: 10 * 60 * 1000,
     });
     if (!verifyLimit.ok) {
       return res.status(429).json({ message: "Too many verification attempts. Please try again later." });
     }
 
-    const record = await OTP.findOne({ email, purpose: OTP_PURPOSE });
-    if (!record || !record.expiresAt || record.expiresAt.getTime() < Date.now()) {
-      await OTP.deleteMany({ email, purpose: OTP_PURPOSE });
+    const secret = getOtpTokenSecret();
+    if (!secret) throw new Error("OTP_TOKEN_SECRET not configured");
+
+    const record = await OTP.findOne({ email });
+    if (!record || !record.expiresAt || record.expiresAt.getTime() <= Date.now()) {
       return res.status(400).json({ message: "OTP expired or invalid" });
     }
 
@@ -190,12 +206,12 @@ export const verifyOtp = async (req, res) => {
     const incomingHash = hashOtp(otp);
     if (incomingHash !== record.otp || !submittedMatchesStored) {
       const updated = await OTP.findOneAndUpdate(
-        { _id: record._id, purpose: OTP_PURPOSE },
+        { _id: record._id, otp: record.otp, expiresAt: { $gt: new Date() }, attempts: { $lt: OTP_MAX_ATTEMPTS } },
         { $inc: { attempts: 1 } },
         { new: true }
       );
       if (!updated || updated.attempts >= OTP_MAX_ATTEMPTS) {
-        await OTP.deleteMany({ email, purpose: OTP_PURPOSE });
+        await OTP.deleteOne({ _id: record._id, otp: record.otp, attempts: { $gte: OTP_MAX_ATTEMPTS } });
         return res.status(429).json({ message: "Too many invalid OTP attempts. Request a new code." });
       }
       return res.status(400).json({ message: "OTP expired or invalid" });
@@ -203,12 +219,11 @@ export const verifyOtp = async (req, res) => {
 
     const consumed = await OTP.findOneAndDelete({
       _id: record._id,
-      purpose: OTP_PURPOSE,
       otp: incomingHash,
+      expiresAt: { $gt: new Date() },
       attempts: { $lt: OTP_MAX_ATTEMPTS },
     });
     if (!consumed) {
-      await OTP.deleteMany({ email, purpose: OTP_PURPOSE });
       return res.status(429).json({ message: "Too many invalid OTP attempts. Request a new code." });
     }
 
@@ -216,9 +231,9 @@ export const verifyOtp = async (req, res) => {
     if (!registration) {
       return res.status(404).json({ message: "Membership not found" });
     }
-
-    const secret = getOtpTokenSecret();
-    if (!secret) throw new Error("OTP_TOKEN_SECRET not configured");
+    if (!isSecondYear(registration)) {
+      return res.status(403).json({ message: "This application is only open to Second-Year students." });
+    }
 
     const otpToken = jwt.sign(
       { email, membershipId: registration.membershipId, scope: "second_year_rep" },
@@ -285,10 +300,10 @@ export const submitApplication = async (req, res) => {
       return res.status(401).json({ message: "Invalid token scope" });
     }
 
-    const { profile, answers } = req.body;
+    const { profile, answers } = req.body || {};
 
     if (!answersAreValid(answers)) {
-      return res.status(400).json({ message: "All 3 questions must be answered with at least 30 characters." });
+      return res.status(400).json({ message: "All 3 questions must be answered with 30 to 1500 characters." });
     }
 
     const registration = await Registration.findOne({ membershipId: payload.membershipId }).lean();
@@ -297,6 +312,12 @@ export const submitApplication = async (req, res) => {
     }
     if (payload.email && normalizeEmail(registration.email) !== normalizeEmail(payload.email)) {
       return res.status(401).json({ message: "Invalid token" });
+    }
+    if (!isSecondYear(registration)) {
+      return res.status(403).json({ message: "This application is only open to Second-Year students." });
+    }
+    if (!readString(registration.admissionNo)) {
+      return res.status(400).json({ message: "Your membership record is missing an admission number. Please contact IEDC to update it before applying." });
     }
 
     const existingApp = await SecondYearRepresentativeApplication.findOne({ membershipId: payload.membershipId }).lean();
