@@ -686,3 +686,36 @@ export const unbanMembershipId = async (membershipId) => {
   });
   return data;
 };
+
+// Second-Year Representatives
+export const fetchSecondYearReps = async (params) => {
+  const { data } = await api.get("/admin/second-year-reps", { params });
+  return data;
+};
+export const fetchSecondYearRep = async (id) => {
+  const { data } = await api.get(`/admin/second-year-reps/${id}`);
+  return data;
+};
+export const updateSecondYearRep = async (id, payload) => {
+  const { data } = await api.patch(`/admin/second-year-reps/${id}`, payload);
+  return data;
+};
+export const deleteSecondYearRep = async (id) => {
+  const { data } = await api.delete(`/admin/second-year-reps/${id}`);
+  return data;
+};
+export const fetchSecondYearRepsSettings = async () => {
+  const { data } = await api.get("/admin/second-year-reps/settings");
+  return data;
+};
+export const updateSecondYearRepsSettings = async (payload) => {
+  const { data } = await api.patch("/admin/second-year-reps/settings", payload);
+  return data;
+};
+
+export const exportSecondYearReps = async () => {
+  const { data } = await api.get("/admin/second-year-reps/export/csv", {
+    responseType: "blob",
+  });
+  return data;
+};

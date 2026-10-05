@@ -238,6 +238,8 @@ const permissionOptions = [
   { id: 'makerspace', label: 'Makerspace' },
   { id: 'mailer', label: 'Email Center' },
   { id: 'settings', label: 'Settings' },
+  { id: 'firstYearReps', label: 'First-Year Reps' },
+  { id: 'secondYearReps', label: 'Second-Year Reps' },
 ];
 
 const CLUB_PORTAL_PERMISSION_IDS = new Set(['dashboard', 'events', 'users']);

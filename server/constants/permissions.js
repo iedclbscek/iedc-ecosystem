@@ -6,6 +6,8 @@ export const PERMISSIONS = Object.freeze({
   MAILER: "mailer",
   SETTINGS: "settings",
   MAKERSPACE: "makerspace",
+  FIRST_YEAR_REPS: "firstYearReps",
+  SECOND_YEAR_REPS: "secondYearReps",
 });
 
 export const SCOPED_PERMISSIONS = Object.freeze({
@@ -16,6 +18,8 @@ export const SCOPED_PERMISSIONS = Object.freeze({
     REGISTRATIONS: PERMISSIONS.REGISTRATIONS,
     SETTINGS: PERMISSIONS.SETTINGS,
     MAILER: PERMISSIONS.MAILER,
+    FIRST_YEAR_REPS: PERMISSIONS.FIRST_YEAR_REPS,
+    SECOND_YEAR_REPS: PERMISSIONS.SECOND_YEAR_REPS,
   },
   CLUB: {
     EVENTS: PERMISSIONS.EVENTS,
