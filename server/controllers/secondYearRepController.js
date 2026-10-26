@@ -17,11 +17,15 @@ const identityIsValid = (membershipId, email) =>
   membershipId.length > 0 && membershipId.length <= 100 &&
   email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-const isSecondYear = (registration) =>
-  (registration.userType || "student") === "student" &&
-  ["S3", "S4", "3", "4", "3RD SEMESTER", "4TH SEMESTER"].includes(
-    readString(registration.semester).toUpperCase()
-  );
+// Second-year students joined in 2025, so their membership IDs start with "IEDC25".
+// IEDC24 = 3rd year, IEDC26 = 1st year.
+// Semester is NOT used as a fallback because 3rd-years also have S3/S4.
+const SECOND_YEAR_ID_PREFIX = "IEDC25";
+
+const isSecondYear = (registration) => {
+  if ((registration.userType || "student") !== "student") return false;
+  return readString(registration.membershipId).toUpperCase().startsWith(SECOND_YEAR_ID_PREFIX.toUpperCase());
+};
 
 const escapeRegex = (value) =>
   String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
