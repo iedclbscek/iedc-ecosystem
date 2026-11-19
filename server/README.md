@@ -16,11 +16,9 @@ Express + MongoDB API for the IEDC ecosystem.
 
 ## Local development
 
-From this folder:
+From the repository root, install dependencies with `pnpm install --frozen-lockfile` and copy `server/.env.example` to `server/.env`. Configure the copied file, then run `pnpm --dir server dev`.
 
-1) Install dependencies from the repository root: `pnpm install --frozen-lockfile`
-2) Create `server/.env`
-3) Run: `pnpm dev`
+See the root [development guide](../README.md#local-development) for coordinated setup of the API and both frontends.
 
 The server defaults to `http://localhost:5000` (unless `PORT` is set).
 
