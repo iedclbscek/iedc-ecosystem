@@ -10,6 +10,9 @@ export const setPublicCache = (
 };
 
 export const setPublicRevalidation = (res) => {
-  res.set("Cache-Control", "public, max-age=0, no-cache, must-revalidate");
+  // Browsers can reuse a stored admin-origin CORS response on the public site.
+  res.set("Cache-Control", "no-store");
+  res.set("CDN-Cache-Control", "no-store");
+  res.set("Vercel-CDN-Cache-Control", "no-store");
   res.set("Vary", "Origin");
 };

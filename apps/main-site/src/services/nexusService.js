@@ -2,7 +2,7 @@ import { legacyCatalogue, legacyPages } from '../../../../shared/legacyClubPages
 import { mergeNexusCatalogue } from '../../../../shared/nexusCatalogue.js';
 const API_BASE = import.meta.env?.VITE_API_URL || (import.meta.env?.DEV ? 'http://localhost:5000' : '');
 async function read(path,signal) {
- const response=await fetch(`${API_BASE}${path}`,{signal,cache:'no-cache'});
+ const response=await fetch(`${API_BASE}${path}`,{signal,cache:'no-store'});
  if(!response.ok){const body=await response.json().catch(()=>({}));const error=new Error(response.status===404?'This club page is currently unavailable.':'We could not load Nexus. Please try again.');error.status=response.status;error.legacy=body.legacy===true;error.withdrawn=body.withdrawn===true;throw error;}
  return response.json();
 }

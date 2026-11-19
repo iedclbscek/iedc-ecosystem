@@ -24,12 +24,14 @@ test("setPublicCache prevents caches from mixing origins", () => {
   assert.equal(headers.get("Vary"), "Origin");
 });
 
-test("setPublicRevalidation allows storage but forbids stale publication responses", () => {
+test("publication responses cannot retain another workspace origin in browser or CDN caches", () => {
   const headers = new Map();
   const res = { set: (name, value) => headers.set(name, value) };
 
   setPublicRevalidation(res);
 
-  assert.equal(headers.get("Cache-Control"), "public, max-age=0, no-cache, must-revalidate");
+  assert.equal(headers.get("Cache-Control"), "no-store");
+  assert.equal(headers.get("CDN-Cache-Control"), "no-store");
+  assert.equal(headers.get("Vercel-CDN-Cache-Control"), "no-store");
   assert.equal(headers.get("Vary"), "Origin");
 });

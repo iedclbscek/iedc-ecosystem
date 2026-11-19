@@ -29,3 +29,10 @@ test('published Nexus pages need one request and no directory round trip', async
  globalThis.fetch = async url => { requests.push(String(url)); return {ok:true,json:async()=>({slug:'gdg',page:{card:{title:'GDG'}},clubId:'club'})}; };
  try {const data=await getNexusPage('gdg');assert.equal(data.slug,'gdg');assert.equal(requests.length,1);assert.match(requests[0],/\/nexus\/gdg$/);} finally {globalThis.fetch=original;}
 });
+
+test('Nexus reads bypass responses cached for the admin origin', async () => {
+ const {getNexusCatalogue}=await import('./nexusService.js');
+ const original=globalThis.fetch;
+ globalThis.fetch=async(_url,options)=>{assert.equal(options.cache,'no-store');return {ok:true,json:async()=>({pages:[],withdrawn:[],order:[]})};};
+ try {await getNexusCatalogue();} finally {globalThis.fetch=original;}
+});
