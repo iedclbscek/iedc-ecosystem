@@ -1,3 +1,5 @@
+import PermissionIcons from '../components/PermissionIcons';
+import { workspacePages } from '../utils/workspacePages';
 import './team-access.css';
 import FormAlert from '../components/FormAlert';
 import PortalDialog from '../components/PortalDialog';
@@ -228,17 +230,7 @@ function ClubMemberManager({ meData, forcedClubId }) {
   );
 }
 
-const permissionOptions = [
-  { id: 'dashboard', label: 'Dashboard' },
-  { id: 'registrations', label: 'Members' },
-  { id: 'firstYearReps', label: 'First-year reps' },
-  { id: 'secondYearReps', label: 'Second-year reps' },
-  { id: 'events', label: 'Events' },
-  { id: 'users', label: 'Team & access' },
-  { id: 'makerspace', label: 'Makerspace' },
-  { id: 'mailer', label: 'Email center' },
-  { id: 'settings', label: 'Settings' },
-];
+const permissionOptions = workspacePages;
 
 const CLUB_EVENT_PERMISSION_OPTIONS = [
   { id: 'club_events_edit', label: 'Edit event details' },
@@ -417,7 +409,7 @@ function ClubPortalMemberManager({ meData, forcedClubId }) {
                           <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold bg-emerald-50 text-emerald-700">Enabled</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-slate-600">{perms.join(', ') || '—'}</td>
+                      <td className="px-6 py-4 text-slate-600"><PermissionIcons permissions={perms} /></td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <button
                           type="button"
@@ -1453,7 +1445,7 @@ export default function Users() {
                             )}
                           </td>
                           <td className="px-6 py-4 text-slate-600">
-                            {(Array.isArray(u?.permissions) ? u.permissions : []).join(', ') || '—'}
+                            <PermissionIcons permissions={u?.permissions} />
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center gap-2">

@@ -33,3 +33,6 @@
 .team-access-body .uppercase {text-transform:none;letter-spacing:0;}
 @media(max-width:480px) {.team-access-body {padding:16px;gap:16px}.team-permission-grid {grid-template-columns:minmax(0,1fr)}.member-access-fields {gap:16px}}
 @media(forced-colors:active) {.team-access-dialog input[type="checkbox"] {appearance:auto;}.team-access-dialog input[type="checkbox"]::after {display:none;}}
+
+.team-permission-icons {display:flex;align-items:center;gap:4px;min-height:28px;white-space:nowrap;}
+.team-permission-icon {display:inline-flex;align-items:center;justify-content:center;flex:none;width:24px;height:24px;border:1px solid var(--op-line);border-radius:7px;background:var(--op-tint);color:#4f64a0;}

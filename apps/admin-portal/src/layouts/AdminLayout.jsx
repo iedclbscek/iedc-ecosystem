@@ -1,6 +1,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CalendarDays, Users, Mail, Settings, LogOut, ShieldCheck, Menu, X, Wrench, UserPlus, Search, PanelsTopLeft } from 'lucide-react';
+import { LogOut, Menu, X, Search, PanelsTopLeft } from 'lucide-react';
+import { workspacePages } from '../utils/workspacePages';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { logout, me } from '../api/authService';
@@ -9,12 +10,7 @@ import PageSkeleton from '../components/PageSkeleton';
 import { hasWorkspacePermission, normalizePortalRole } from '../utils/authorization';
 import './AdminShell.css';
 
-const links = [
-  ['/', 'Overview', 'dashboard', LayoutDashboard], ['/events', 'Events', 'events', CalendarDays],
-  ['/registrations', 'Members', 'registrations', Users], ['/users', 'Team & access', 'users', ShieldCheck],
-  ['/first-year-reps', 'First-year reps', 'firstYearReps', UserPlus], ['/second-year-reps', 'Second-year reps', 'secondYearReps', UserPlus], ['/makerspace', 'Makerspace', 'makerspace', Wrench],
-  ['/mailer', 'Email center', 'mailer', Mail], ['/settings', 'Settings', 'settings', Settings],
-];
+const links = workspacePages.map(({ id, label, path, Icon }) => [path, id === 'dashboard' ? 'Overview' : label, id, Icon]);
 
 function Brand() {
   return <div className="shell-brand"><img src="/iedc-mark.webp" width="34" height="34" alt=""/><div><strong>IEDC</strong><span>LBSCEK</span></div></div>;

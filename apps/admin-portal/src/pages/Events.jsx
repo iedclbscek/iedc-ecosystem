@@ -491,19 +491,22 @@ function ClubsEvents({ tabs }) {
             {mode === 'club'
               ? 'Manage your club events and coordinators.'
               : 'Select a club to manage its events and coordinators.'}
+            {!isAdmin && mode !== 'club' && <span id="club-create-help" className="block text-xs mt-1">Club creation is available to superadmins.</span>}
           </p>
         </div>
 
         {mode === 'club' && canEditEvents && (
           <button type="button" className="op-primary" onClick={() => { createEventMutation.reset(); setIsCreateEventOpen(true); }}><Plus size={17} /> New event</button>
         )}
-        {isAdmin && mode !== 'club' ? (
+        {mode !== 'club' ? (
           <button
+            type="button" disabled={!isAdmin}
+            aria-describedby={!isAdmin ? 'club-create-help' : undefined}
             onClick={() => setIsCreateClubOpen(true)}
             className="op-primary"
           >
             <Plus size={18} />
-            New club
+            Create club
           </button>
         ) : null}
       </div>
@@ -532,7 +535,7 @@ function ClubsEvents({ tabs }) {
             ) : clubsError ? (
               <FormAlert className="m-4">Could not load clubs. <button type="button" onClick={() => retryClubs()}>Try again</button></FormAlert>
             ) : filteredClubs.length === 0 ? (
-              <div className="p-6 text-slate-500">No clubs.</div>
+              <div className="p-6 text-slate-500">{clubSearch.trim() ? 'No clubs match your search.' : isAdmin ? 'No clubs yet. Create a club to get started.' : 'No clubs are assigned to your account.'}</div>
             ) : (
               <div className="divide-y divide-slate-50">
                 {filteredClubs.map((club) => {
