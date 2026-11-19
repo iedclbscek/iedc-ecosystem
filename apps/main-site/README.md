@@ -5,14 +5,13 @@ Public-facing website built with React + Vite + Tailwind.
 ## Tech stack
 
 * React + Vite
-* Tailwind CSS (v4)
+* Tailwind CSS
 * React Router
 * Axios
 
 ## Prerequisites
 
-* Node.js `>= 18`
-* pnpm (recommended; this repo uses `pnpm-workspace.yaml`)
+* Use the Node.js range and pinned pnpm release declared in the root [package.json](../../package.json).
 
 ## Setup
 
@@ -20,7 +19,7 @@ From the repo root:
 
 1. Install dependencies:
 
-    `pnpm install`
+    `pnpm install --frozen-lockfile`
 
 2. Create `apps/main-site/.env`:
 

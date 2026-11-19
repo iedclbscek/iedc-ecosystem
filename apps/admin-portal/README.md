@@ -2,11 +2,13 @@
 
 Admin dashboard for IEDC. Built with React + Vite.
 
+See the root [development guide](../../README.md#local-development) for runtime requirements and coordinated local setup.
+
 ## Local development
 
 From `apps/admin-portal`:
 
-- Install: `pnpm install`
+- Install dependencies from the repository root: `pnpm install --frozen-lockfile`
 - Run: `pnpm dev`
 
 ### Environment variables

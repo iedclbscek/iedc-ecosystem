@@ -18,7 +18,7 @@ Express + MongoDB API for the IEDC ecosystem.
 
 From this folder:
 
-1) Install deps: `pnpm install`
+1) Install dependencies from the repository root: `pnpm install --frozen-lockfile`
 2) Create `server/.env`
 3) Run: `pnpm dev`
 
@@ -30,7 +30,7 @@ Create `server/.env`.
 
 ### Required
 
-* `MONGO_URI=...` (or whatever `config/db.js` expects)
+* `MONGO_URI=...`
 * `JWT_SECRET=...`
 
 ### Recommended (production)
@@ -100,7 +100,7 @@ Save/publish increment the revision atomically. A stale revision returns 409 wit
 saved content. Publish copies the persisted draft, so a publisher cannot inject an unsaved body.
 Deleting a club withdraws its public page while retaining a slug tombstone.
 
-Pages allow 40 containers, 100 widgets, 100 KB of custom code per widget and 1 MB total. Image URLs
+Page limits and supported fields are defined in [the shared schema](../shared/clubPageSchema.js). Image URLs
 require HTTP(S) or a site-relative path and image widgets require alternative text. Custom code runs
 in an opaque-origin iframe with only scripts allowed, restrictive CSP, no parent data bridge, and no
 API connections. This sandbox limits authority, not CPU or memory usage. Review code before publishing.
@@ -122,7 +122,7 @@ The Team members widget can use `source: "club"` for the owning club's live team
 it does not change membership or account roles. Legacy team widgets retain their custom lists.
 The live source includes club-associated users who already opted into public website visibility
 or have a visible linked team profile, excluding inactive club memberships. It returns only
-`{ people: [{ name, role, image, url }] }`, without private email addresses or membership IDs.
+a public team projection, including display details and social links, without private email addresses or membership IDs.
 `GET /api/public/nexus/:slug/team` requires a published page; editors can preview the same safe data
 before publication through `GET /api/admin/clubs/:clubId/page/team`.
 
@@ -130,8 +130,8 @@ before publication through `GET /api/admin/clubs/:clubId/page/team`.
 
 The public API is `/api/second-year-representatives/*`; review, settings, and CSV routes are under `/api/admin/second-year-reps` and require `secondYearReps` permission.
 
-Codes use the separate `second_year_rep_otps` collection. Startup waits for its unique email and TTL indexes and the applications' unique membership index. Codes previously issued in the shared `otps` collection must be requested again after this change. Eligibility requires a student membership ID beginning with `IEDC25`; semester and joining year do not override that cohort restriction. Records missing an admission number must be corrected before applying.
+Codes use the separate `second_year_rep_otps` collection. Startup waits for its unique email and TTL indexes and the applications' unique membership index. Eligibility is defined in [the representative controller](controllers/secondYearRepController.js); semester does not override its cohort restriction. Records missing an admission number must be corrected before applying.
 
 OTP request limits are process-local. Multiple API workers need a shared limit store; deployments behind a proxy need correctly scoped Express `trust proxy` configuration for client IP limits. Forwarded headers are not trusted by default.
 
-Run `npm test` here for regression checks using stubbed database queries and mail transport. These checks do not verify live MongoDB indexes, SMTP delivery, or deployment behavior.
+Run `pnpm test` here for regression checks using stubbed database queries and mail transport. These checks do not verify live MongoDB indexes, SMTP delivery, or deployment behavior.
