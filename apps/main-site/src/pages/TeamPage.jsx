@@ -1,3 +1,4 @@
+import { isCancel } from 'axios';
 import { teamSection } from '../../../../shared/teamSections';
 import { createElement, useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
@@ -6,7 +7,7 @@ import {
   FaArrowLeft, FaSearch, FaLinkedinIn, FaGithub, FaTwitter,
   FaTimes,
 } from "react-icons/fa";
-import axios from "axios";
+import publicApi from "../services/publicApi.js";
 import ExecomProfilePage from "./ExecomProfilePage";
 import { PublicErrorState, TeamSkeleton } from "../components/ui/PublicPageState";
 
@@ -68,7 +69,7 @@ const TeamPage = () => {
         setIsYearsLoading(true);
         setLoading(true);
         setLoadError("");
-        const { data } = await axios.get(`${API_BASE_URL}/api/public/execom/years`, {
+        const { data } = await publicApi.get(`${API_BASE_URL}/api/public/execom/years`, {
           params: { includeRoster: true },
           signal: controller.signal,
         });
@@ -107,7 +108,7 @@ const TeamPage = () => {
       try {
         setLoading(true);
         setLoadError("");
-        const { data } = await axios.get(`${API_BASE_URL}/api/public/execom`, {
+        const { data } = await publicApi.get(`${API_BASE_URL}/api/public/execom`, {
           params: { year: selectedYear },
           signal: controller.signal,
         });
@@ -118,7 +119,7 @@ const TeamPage = () => {
         const formatted = (yearData.members || []).map(formatMember);
         setRawData(formatted);
       } catch (err) {
-        if (axios.isCancel(err)) return;
+        if (isCancel(err)) return;
         setLoadError("We could not load the selected team year. Please try again.");
         setRawData([]);
       } finally {
@@ -399,14 +400,14 @@ const EditorialCard = ({ member, onSelect }) => {
             animate={{ width: hovered ? 52 : 20 }}
             transition={{ duration: 0.3 }}
           />
-          <h3 className="font-black text-white text-base leading-tight">{member.name}</h3>
+          <h3 className="min-h-[2.5em] font-black text-white text-base leading-tight">{member.name}</h3>
           <p className="font-mono text-white/55 text-[10px] uppercase tracking-widest mt-1 line-clamp-1">
             {member.role}
           </p>
 
           {/* Social links */}
           <Motion.div
-            className="flex gap-2 mt-3"
+            className="flex min-h-7 gap-2 mt-3"
             animate={{ opacity: hovered || focused ? 1 : 0, y: hovered || focused ? 0 : 8 }}
             transition={{ duration: 0.2, delay: hovered ? 0.06 : 0 }}
           >

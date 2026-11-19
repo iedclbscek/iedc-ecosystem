@@ -294,6 +294,7 @@ const FirstYearRepresentativesPage = () => {
   return (
     <div className="min-h-screen bg-bg-main selection:bg-accent selection:text-white pb-20">
       
+      <h1 className="sr-only">First-year representatives</h1>
       {/* HERO SECTION */}
       <section className="bg-text-dark text-white pt-32 pb-16 px-6 relative overflow-hidden">
         {/* Subtle Ambient Background Motion */}

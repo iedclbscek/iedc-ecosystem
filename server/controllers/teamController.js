@@ -1352,6 +1352,9 @@ export const promoteClubPortalMember = async (req, res) => {
   if (!registrationId) {
     return res.status(400).json({ message: "registrationId is required" });
   }
+  if (portalAccessEnabled !== undefined && typeof portalAccessEnabled !== "boolean") {
+    return res.status(400).json({ message: "portalAccessEnabled must be a boolean" });
+  }
 
   try {
     const club = await Club.findById(clubId);
@@ -1489,6 +1492,9 @@ export const updateClubPortalMember = async (req, res) => {
 
   if (!clubId || !userId) {
     return res.status(400).json({ message: "clubId and userId are required" });
+  }
+  if (portalAccessEnabled !== undefined && typeof portalAccessEnabled !== "boolean") {
+    return res.status(400).json({ message: "portalAccessEnabled must be a boolean" });
   }
 
   try {

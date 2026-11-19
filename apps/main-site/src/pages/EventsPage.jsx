@@ -1,7 +1,8 @@
+import { isCancel } from 'axios';
 import { useState, useEffect } from 'react';
 import { motion as Motion, AnimatePresence } from 'framer-motion';
 import { FaCalendarAlt, FaMapMarkerAlt, FaFilter, FaArrowRight, FaHistory, FaPlus } from 'react-icons/fa';
-import axios from 'axios';
+import publicApi from '../services/publicApi.js';
 import { normalizePublicEvent, publicEventRegistration } from '../utils/publicEvent';
 import { EventsSkeleton, PublicErrorState } from '../components/ui/PublicPageState';
 import EventDetailModal from '../components/ui/EventDetailModal'; // Assuming you have this
@@ -38,11 +39,11 @@ const EventsPage = () => {
         setError('');
         const category = activeFilter === 'All' ? undefined : activeFilter;
         const [upcomingResponse, pastResponse] = await Promise.all([
-          axios.get(`${API_BASE_URL}/api/events`, {
+          publicApi.get(`${API_BASE_URL}/api/events`, {
             params: { limit: PAGE_SIZE, page: 1, time: 'upcoming', category, includeCategories: true },
             signal: controller.signal,
           }),
-          axios.get(`${API_BASE_URL}/api/events`, {
+          publicApi.get(`${API_BASE_URL}/api/events`, {
             params: { limit: PAGE_SIZE, page: 1, time: 'past', category },
             signal: controller.signal,
           }),
@@ -59,7 +60,7 @@ const EventsPage = () => {
         setCategories(['All', ...(upcomingResponse.data.categories || [])]);
 
       } catch (error) {
-        if (axios.isCancel(error)) return;
+        if (isCancel(error)) return;
         console.error('Error fetching events:', error);
         setError('We could not load the event feed. Check your connection and try again.');
       } finally {
@@ -77,7 +78,7 @@ const EventsPage = () => {
     try {
       setLoadingMore(time);
       setPaginationError(null);
-      const { data } = await axios.get(`${API_BASE_URL}/api/events`, {
+      const { data } = await publicApi.get(`${API_BASE_URL}/api/events`, {
         params: {
           limit: PAGE_SIZE,
           page: nextPage,
@@ -302,6 +303,7 @@ const EventsPage = () => {
 
 // --- SUB-COMPONENT: The "Dossier" Card ---
 const EventCard = ({ event, index, onClick }) => {
+  const [failedPoster, setFailedPoster] = useState(null);
   const dateObj = event.date;
   const { isOpen } = publicEventRegistration(event);
   
@@ -333,12 +335,12 @@ const EventCard = ({ event, index, onClick }) => {
 
       {/* 2. Image Area */}
       <div className="relative h-64 overflow-hidden bg-gray-100 flex items-center justify-center">
-        {(event.posterUrl || event.image) ? (
+        {event.image && failedPoster !== event.image ? (
           <img 
-            src={event.posterUrl || event.image} 
+            src={event.image}
             alt={event.title} 
             className="w-full h-full object-contain grayscale group-hover:grayscale-0 transition-all duration-500 scale-100 group-hover:scale-105"
-            onError={(e) => { e.target.style.display = 'none'; }}
+            onError={() => setFailedPoster(event.image)}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-gray-300 font-mono text-4xl font-black">

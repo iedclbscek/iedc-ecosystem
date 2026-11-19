@@ -28,6 +28,13 @@ const Navbar = () => {
     setIsMenuOpen(false);
   }, [location]);
 
+  useEffect(() => {
+    if (!isMenuOpen) return;
+    const close = event => { if (event.key === 'Escape') setIsMenuOpen(false); };
+    window.addEventListener('keydown', close);
+    return () => window.removeEventListener('keydown', close);
+  }, [isMenuOpen]);
+
   return (
     <nav
       className={`fixed top-0 w-full z-50 transition-all duration-300 border-b ${
@@ -92,6 +99,10 @@ const Navbar = () => {
 
           {/* --- MOBILE MENU BUTTON --- */}
           <button
+            type="button"
+            aria-label={isMenuOpen ? 'Close navigation' : 'Open navigation'}
+            aria-expanded={isMenuOpen}
+            aria-controls="mobile-navigation"
             onClick={() => setIsMenuOpen(!isMenuOpen)}
             className="md:hidden p-2 text-text-dark hover:bg-gray-100 transition-colors border border-transparent hover:border-gray-200"
           >
@@ -100,7 +111,7 @@ const Navbar = () => {
         </div>
 
         {/* --- MOBILE MENU DROPDOWN --- */}
-        <div 
+        <div id="mobile-navigation" inert={!isMenuOpen} aria-hidden={!isMenuOpen}
           className={`md:hidden overflow-hidden transition-all duration-300 ease-in-out ${
             isMenuOpen ? 'max-h-96 opacity-100 mt-4 border-t border-gray-100' : 'max-h-0 opacity-0'
           }`}

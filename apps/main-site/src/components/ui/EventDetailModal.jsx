@@ -1,6 +1,6 @@
 import { createElement, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowUpRight, CalendarDays, Clock3, Image, MapPin, Users, X } from 'lucide-react';
+import { ArrowUpRight, CalendarDays, Clock3, MapPin, Users, X } from 'lucide-react';
 import { normalizePublicEvent, publicEventRegistration } from '../../utils/publicEvent';
 import './event-detail-modal.css';
 
@@ -51,11 +51,9 @@ function EventDialog({ event: source, onClose }) {
           <div className="public-event-meta"><span>{event.category}</span><span className="public-event-status" data-past={isPast}>{status}</span></div>
           <h2 id="public-event-title">{event.title}</h2>
           {event.shortDescription && <p className="public-event-summary">{event.shortDescription}</p>}
-          <div className="public-event-poster">
-            {event.image && !failedImage
-              ? <img src={event.image} alt={event.title + ' poster'} onError={() => setFailedImage(true)} />
-              : <div className="public-event-no-image"><Image size={26} aria-hidden="true" /><span>Poster to be announced</span></div>}
-          </div>
+          {event.image && !failedImage && <div className="public-event-poster">
+            <img src={event.image} alt={event.title + ' poster'} onError={() => setFailedImage(true)} />
+          </div>}
           {(event.fullDescription || event.description) && <section className="public-event-about">
             <h3>About the event</h3>
             <p>{event.fullDescription || event.description}</p>

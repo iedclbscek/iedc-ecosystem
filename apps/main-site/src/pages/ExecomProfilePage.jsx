@@ -9,7 +9,7 @@ import {
   FaShareAlt,
   FaCheck,
 } from "react-icons/fa";
-import axios from "axios";
+import publicApi from "../services/publicApi.js";
 import { ProfileSkeleton, PublicErrorState } from "../components/ui/PublicPageState";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -39,7 +39,7 @@ const ExecomProfilePage = ({ memberId }) => {
       try {
         setLoading(true);
         setError(null);
-        const { data } = await axios.get(
+        const { data } = await publicApi.get(
           `${API_BASE_URL}/api/public/execom/${encodeURIComponent(id)}`, { signal: controller.signal }
         );
         setMember(data.member);

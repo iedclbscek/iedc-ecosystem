@@ -18,7 +18,7 @@ import {
   normalizeOptionalString,
   resolveOptionalRegistrationLink,
 } from "../utils/eventPatch.js";
-import { setPublicRevalidation } from "../utils/httpCache.js";
+import { setPublicNoStore } from "../utils/httpCache.js";
 import { paginationMeta, parsePagination } from "../utils/pagination.js";
 import {
   buildPublicEventsPipeline,
@@ -686,7 +686,7 @@ export const listPublicEvents = async (req, res) => {
       categories = categoryRows.map((row) => row._id);
     }
 
-    setPublicRevalidation(res);
+    setPublicNoStore(res);
     return res.json({ success: true, events: events.map(publicEventResponse), page, limit, hasMore, categories });
   } catch (error) {
     return res
@@ -697,6 +697,9 @@ export const listPublicEvents = async (req, res) => {
 
 // Public: get one event by id for main website
 export const getPublicEventById = async (req, res) => {
+  if (!mongoose.isObjectIdOrHexString(req.params.id)) {
+    return res.status(404).json({ success: false, message: "Event not found" });
+  }
   try {
     const event = await Event.findById(req.params.id)
       .where(publicEventFilter)
@@ -711,7 +714,7 @@ export const getPublicEventById = async (req, res) => {
         .json({ success: false, message: "Event not found" });
     }
 
-    setPublicRevalidation(res);
+    setPublicNoStore(res);
     return res.json({ success: true, event: publicEventResponse(event) });
   } catch (error) {
     return res

@@ -12,7 +12,7 @@ import {
   getWebsiteTeamEntrySelf,
   updateWebsiteTeamEntrySelf,
 } from "../controllers/teamController.js";
-import { setPublicCache } from "../utils/httpCache.js";
+import { setPublicNoStore } from "../utils/httpCache.js";
 
 import { getPublicNexus, getPublicClubPage } from "../controllers/clubPageController.js";
 import { getPublicClubPageTeam } from "../controllers/clubPageTeamController.js";
@@ -48,7 +48,7 @@ router.get("/team", async (req, res) => {
       .sort({ "websiteProfile.order": 1, createdAt: 1 })
       .lean();
 
-    setPublicCache(res);
+    setPublicNoStore(res);
     res.json({ team: users });
   } catch (error) {
     res
@@ -131,7 +131,7 @@ router.get("/execom", async (req, res) => {
     const years = Array.from(yearsMap.keys()).sort((a, b) =>
       b.localeCompare(a),
     );
-    setPublicCache(res);
+    setPublicNoStore(res);
     return res.json({
       years: years.map((y) => ({ year: y, members: yearsMap.get(y) })),
     });
@@ -209,11 +209,7 @@ router.get("/execom/years", async (req, res) => {
       }));
     }
 
-    setPublicCache(res, {
-      browserSeconds: 300,
-      sharedSeconds: 1800,
-      staleSeconds: 86400,
-    });
+    setPublicNoStore(res);
     return res.json({ years: normalizedYears, roster });
   } catch (error) {
     return res
@@ -291,7 +287,7 @@ router.get("/execom/:id", async (req, res) => {
           },
     };
 
-    setPublicCache(res);
+    setPublicNoStore(res);
     return res.json({ member });
   } catch (error) {
     if (error.name === "CastError") {

@@ -1,3 +1,4 @@
+import { isCancel } from 'axios';
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
@@ -17,7 +18,7 @@ import {
   Camera,
   X
 } from 'lucide-react';
-import axios from 'axios';
+import publicApi from '../services/publicApi.js';
 import { normalizePublicEvent, parseEventDate, publicEventRegistration } from '../utils/publicEvent';
 import EventRegistrationModal from '../components/ui/EventRegistrationModal';
 import { EventDetailSkeleton, PublicErrorState } from '../components/ui/PublicPageState';
@@ -28,6 +29,7 @@ const EventPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [event, setEvent] = useState(null);
+  const [failedPoster, setFailedPoster] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showRegistrationModal, setShowRegistrationModal] = useState(false);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(null);
@@ -45,7 +47,7 @@ const EventPage = () => {
     try {
       setLoading(true);
       setLoadError('');
-      const response = await axios.get(`${API_BASE_URL}/api/events/${id}`, { signal });
+      const response = await publicApi.get(`${API_BASE_URL}/api/events/${id}`, { signal });
       
       if (response.data.success) {
         setEvent(normalizePublicEvent(response.data.event));
@@ -53,7 +55,7 @@ const EventPage = () => {
         navigate('/404');
       }
     } catch (error) {
-      if (axios.isCancel(error)) return;
+      if (isCancel(error)) return;
       console.error('Error fetching event:', error);
       if (error.response?.status === 404) navigate('/404');
       else setLoadError('We could not load this event. Check your connection and try again.');
@@ -178,17 +180,17 @@ const EventPage = () => {
     <div className="min-h-screen bg-gray-50">
       {/* Hero Section */}
       <div className="relative h-96 bg-gradient-to-br from-blue-600 to-purple-700 overflow-hidden flex justify-center items-center">
-        {(event.posterUrl || event.image) && (
+        {event.image && failedPoster !== event.image && (
           <img
-            src={event.posterUrl || event.image}
+            src={event.image} onError={() => setFailedPoster(event.image)}
             alt={event.title}
             className="absolute inset-0 w-full h-full object-contain opacity-40 mix-blend-luminosity blur-sm"
           />
         )}
         
-        {(event.posterUrl || event.image) && (
+        {event.image && failedPoster !== event.image && (
           <img
-            src={event.posterUrl || event.image}
+            src={event.image} onError={() => setFailedPoster(event.image)}
             alt={event.title}
             className="relative z-0 max-h-full object-contain drop-shadow-2xl"
           />

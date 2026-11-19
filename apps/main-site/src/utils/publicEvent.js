@@ -21,6 +21,18 @@ function eventLink(value) {
   }
 }
 
+function eventPoster(event) {
+  for (const value of [event.posterUrl, event.image]) {
+    const src = typeof value === 'string' ? value.trim() : '';
+    if (/^\/(?!\/)/.test(src)) return src;
+    try {
+      const url = new URL(src);
+      if (['https:', 'http:'].includes(url.protocol) && !url.username && !url.password) return src;
+    } catch { /* Missing and non-URL placeholders have no poster. */ }
+  }
+  return null;
+}
+
 export function normalizePublicEvent(event) {
   return {
     ...event,
@@ -28,7 +40,7 @@ export function normalizePublicEvent(event) {
     endDate: parseEventDate(event.endAt || event.endDate),
     category: event.category || event.club?.name || 'IEDC',
     location: event.location || event.venue || 'TBA',
-    image: event.posterUrl || event.image || null,
+    image: eventPoster(event),
     fullDescription: event.fullDescription || event.description || '',
   };
 }

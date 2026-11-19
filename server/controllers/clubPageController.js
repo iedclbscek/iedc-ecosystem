@@ -5,7 +5,7 @@ import {resolveClubAccess} from '../utils/clubAccess.js';
 import {isSuperAdmin} from '../utils/authorization.js';
 import {validateClubPage} from '../utils/clubPageValidation.js';
 import {emptyClubPage} from '../../shared/clubPageSchema.js';
-import {setPublicRevalidation} from '../utils/httpCache.js';
+import {setPublicNoStore} from '../utils/httpCache.js';
 const issue=(status,message)=>{const error=new Error(message);error.status=status;throw error;};
 const respond=(res,error)=>res.status(error.code===11000?409:error.status||500).json({message:error.code===11000?'This public URL is already assigned to a club.':error.status?error.message:'Could not update the Nexus page. Please try again.',...(error.field?{field:error.field}:{})});
 const scoped=async(req,capability)=>{
@@ -65,11 +65,11 @@ export const putNexusOrder=async(req,res)=>{try{
 export const getPublicNexus=async(req,res)=>{try{
  const [rows,ordering]=await Promise.all([ClubPage.aggregate([{$match:{adopted:true}},{$lookup:{from:'clubs',localField:'clubId',foreignField:'_id',pipeline:[{$project:{_id:1}}],as:'_owner'}},{$project:{slug:1,'published.card':1,hasOwner:{$gt:[{$size:'$_owner'},0]}}}]),NexusOrder.findById('directory').lean()]);
  const order=ordering?.slugs||[];const pages=rows.filter(row=>row.published&&row.hasOwner).map(row=>({slug:row.slug,card:row.published.card,order:order.indexOf(row.slug)}));
- setPublicRevalidation(res);res.json({pages,withdrawn:rows.filter(row=>!row.published||!row.hasOwner).map(row=>row.slug),order});
+ setPublicNoStore(res);res.json({pages,withdrawn:rows.filter(row=>!row.published||!row.hasOwner).map(row=>row.slug),order});
 }catch(error){respond(res,error);}};
 export const getPublicClubPage=async(req,res)=>{try{
  const page=await ClubPage.findOne({slug:req.params.slug}).select('slug published clubId adopted').lean();
- setPublicRevalidation(res);
+ setPublicNoStore(res);
  if(!page?.adopted)return res.status(404).json({message:'No published club page.',legacy:true});
  if(!page.published||!await Club.exists({_id:page.clubId}))return res.status(404).json({message:'This club page is currently unpublished.',withdrawn:true});
  res.json({slug:page.slug,page:page.published,clubId:page.clubId});

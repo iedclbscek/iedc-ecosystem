@@ -6,7 +6,7 @@ import ClubMembership from '../models/ClubMembership.js';
 import ClubPage from '../models/ClubPage.js';
 import WebsiteTeamEntry from '../models/WebsiteTeamEntry.js';
 import {resolveClubAccess} from '../utils/clubAccess.js';
-import {setPublicRevalidation} from '../utils/httpCache.js';
+import {setPublicNoStore} from '../utils/httpCache.js';
 
 async function publicPeople(club) {
  const ids=[...new Set([...(club.managerUsers||[]),...(club.editorUsers||[]),...(club.memberUsers||[])].map(String))];
@@ -36,7 +36,7 @@ export async function getPublicClubPageTeam(req,res) {
   const page=await ClubPage.findOne({slug:req.params.slug,adopted:true,published:{$ne:null}}).select('clubId').lean();
   const club=page&&await Club.findById(page.clubId).lean();
   if(!club)return res.status(404).json({message:'This club page is not published.'});
-  setPublicRevalidation(res);return res.json({people:await publicPeople(club)});
+  setPublicNoStore(res);return res.json({people:await publicPeople(club)});
  }catch{return res.status(500).json({message:'Could not load the club team. Please try again.'});}
 }
 

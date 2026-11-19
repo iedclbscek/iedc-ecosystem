@@ -33,3 +33,5 @@
 .nexus-theme-public .nexus-contact .nexus-links a:hover{border-color:#fff}
 @media(max-width:640px){.nexus-theme-public .nexus-page-hero{padding:32px 20px}.nexus-theme-public .nexus-page-sections{padding:32px 16px;gap:32px}.nexus-theme-public .nexus-widget{padding:24px}.nexus-theme-public .nexus-body{padding:20px}.nexus-theme-public .nexus-list{grid-template-columns:minmax(0,1fr)}}
 .nexus-member-socials{display:flex;align-items:center;gap:6px;margin-top:9px}.nexus-member-socials a{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border:1px solid var(--nexus-border);border-radius:4px;color:var(--nexus-muted);transition:color .15s,border-color .15s}.nexus-member-socials a:hover{color:var(--nexus-accent);border-color:var(--nexus-accent)}
+
+.nexus-image-unavailable { display: grid; place-items: center; min-height: 160px; aspect-ratio: 16 / 10; background: #f0f0ec; color: #6e6e6e; border: 1px solid #e5e5df; font: 12px/1.5 monospace; text-align: center; padding: 20px; }

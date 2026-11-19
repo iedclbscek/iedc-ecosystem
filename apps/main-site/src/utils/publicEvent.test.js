@@ -46,3 +46,11 @@ test('legacy event dates, images, links and explicit internal registration remai
   assert.equal(publicEventRegistration(event, now).isOpen, true);
   assert.equal(registration({ registrationLink: 'mailto:events@example.org' }).registrationHref, 'mailto:events@example.org');
 });
+
+test('only real poster URLs render; missing or placeholder data posters are omitted', () => {
+ for (const posterUrl of [undefined, '', 'data:image/svg+xml,<svg>Mock Cloudinary Upload</svg>', 'javascript:alert(1)']) {
+  assert.equal(normalizePublicEvent({posterUrl}).image,null);
+ }
+ assert.equal(normalizePublicEvent({posterUrl:'https://res.cloudinary.com/example/image/upload/poster.jpg'}).image,'https://res.cloudinary.com/example/image/upload/poster.jpg');
+ assert.equal(normalizePublicEvent({posterUrl:'data:image/svg+xml,mock',image:'/uploaded.jpg'}).image,'/uploaded.jpg');
+});

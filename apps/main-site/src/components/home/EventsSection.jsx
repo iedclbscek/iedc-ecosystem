@@ -1,8 +1,9 @@
+import { isCancel } from 'axios';
 import { useEffect, useState, useRef } from 'react';
 import { motion as Motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { FaRocket, FaArrowRight, FaChevronRight, FaChevronLeft } from 'react-icons/fa';
-import axios from 'axios';
+import publicApi from '../../services/publicApi.js';
 import EventDetailModal from '../ui/EventDetailModal';
 import { normalizePublicEvent, publicEventRegistration } from '../../utils/publicEvent';
 
@@ -22,14 +23,14 @@ const EventsSection = () => {
       try {
         setLoading(true);
         setError('');
-        const { data } = await axios.get(`${baseUrl}/api/events`, {
+        const { data } = await publicApi.get(`${baseUrl}/api/events`, {
           params: { time: 'upcoming', limit: 5 },
           signal: controller.signal,
         });
         const normalized = (data.events || []).map(normalizePublicEvent);
         setUpcomingEvents(normalized);
       } catch (requestError) {
-        if (axios.isCancel(requestError)) return;
+        if (isCancel(requestError)) return;
         setError('Upcoming events could not be loaded.');
       } finally {
         if (!controller.signal.aborted) setLoading(false);
@@ -144,6 +145,7 @@ const EventsSection = () => {
 };
 
 const EventCard = ({ event, index, onClick }) => {
+  const [failedPoster, setFailedPoster] = useState(null);
   const day = event.date?.getDate() ?? 'TBA';
   const month = event.date?.toLocaleString('default', { month: 'short' }).toUpperCase();
   const { isOpen } = publicEventRegistration(event);
@@ -180,9 +182,9 @@ const EventCard = ({ event, index, onClick }) => {
 
       {/* Image Block */}
       <div className="relative h-[200px] overflow-hidden grayscale group-hover:grayscale-0 transition-all duration-500">
-        {event.image ? (
+        {event.image && failedPoster !== event.image ? (
           <img 
-            src={event.image} 
+            src={event.image} onError={() => setFailedPoster(event.image)}
             alt={event.title} 
             className="w-full h-full object-cover"
           />
