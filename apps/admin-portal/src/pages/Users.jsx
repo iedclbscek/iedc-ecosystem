@@ -232,13 +232,12 @@ const permissionOptions = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'registrations', label: 'Members' },
   { id: 'firstYearReps', label: 'First-year reps' },
+  { id: 'secondYearReps', label: 'Second-year reps' },
   { id: 'events', label: 'Events' },
   { id: 'users', label: 'Team & access' },
   { id: 'makerspace', label: 'Makerspace' },
   { id: 'mailer', label: 'Email center' },
   { id: 'settings', label: 'Settings' },
-  { id: 'firstYearReps', label: 'First-Year Reps' },
-  { id: 'secondYearReps', label: 'Second-Year Reps' },
 ];
 
 const CLUB_EVENT_PERMISSION_OPTIONS = [
@@ -1504,7 +1503,8 @@ export default function Users() {
             <button type="button" className="op-icon" aria-label="Close member editor" disabled={updateMutation.isPending} onClick={() => setIsEditOpen(false)}><X size={16} /></button>
           </header>
           <form className="member-access-form" onSubmit={event => { event.preventDefault(); if (!updateMutation.isPending) submitEdit(); }}>
-            <fieldset className="team-access-body" disabled={updateMutation.isPending}>
+            <div className="team-access-body">
+            <fieldset className="member-access-fields" disabled={updateMutation.isPending}>
               <legend className="sr-only">Member account settings</legend>
               <div className="member-access-identity">
                 <span className="member-access-avatar" aria-hidden="true">{selectedUser?.name?.slice(0, 1).toUpperCase() || 'M'}</span>
@@ -1555,6 +1555,7 @@ export default function Users() {
                 }}>Open roster</button>
               </section>
             </fieldset>
+            </div>
             {updateMutation.isError && <FormAlert className="mx-5 mb-3">{updateMutation.error?.response?.data?.message || 'Could not save this member. Your changes are still here. Try again.'}</FormAlert>}
             <footer className="op-dialog-foot">
               <button type="button" className="op-secondary" disabled={updateMutation.isPending} onClick={() => setIsEditOpen(false)}>Cancel</button>

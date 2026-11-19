@@ -4,7 +4,9 @@
 .team-access-dialog .op-dialog-head h3 {font-size:18px;font-weight:650;letter-spacing:-.035em;}
 .team-access-dialog .op-dialog-head p {font-size:12px;line-height:1.5;color:var(--op-muted);margin-top:3px;}
 .team-access-body {padding:20px;min-height:0;min-width:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#b4c1db transparent;display:grid;gap:18px;}
-.member-access-form {display:flex;flex-direction:column;min-height:0;}
+.member-access-form {display:flex;flex:1;flex-direction:column;min-height:0;overflow:hidden;}
+.member-access-form > .team-access-body {display:block;flex:1;}
+.member-access-fields {display:grid;gap:18px;min-width:0;margin:0;padding:0;border:0;}
 .member-access-identity {display:flex;align-items:center;gap:12px;min-width:0;padding-bottom:18px;border-bottom:1px solid var(--op-line);}
 .member-access-identity strong {font-size:15px;font-weight:650;}
 .member-access-identity p,.member-access-identity small {display:block;font-size:12px;color:var(--op-muted);overflow-wrap:anywhere;}
@@ -29,5 +31,5 @@
 .team-access-body label.cursor-pointer:has(input:checked) {border-color:#c5d2fc;background:#f5f7ff;}
 .team-access-body input:not([type="checkbox"]):not([type="radio"]):not([type="file"]) {font-size:13px;border-radius:8px;min-height:38px;padding-block:8px;}
 .team-access-body .uppercase {text-transform:none;letter-spacing:0;}
-@media(max-width:480px) {.team-access-body {padding:16px;gap:16px}.team-permission-grid {grid-template-columns:minmax(0,1fr)}}
+@media(max-width:480px) {.team-access-body {padding:16px;gap:16px}.team-permission-grid {grid-template-columns:minmax(0,1fr)}.member-access-fields {gap:16px}}
 @media(forced-colors:active) {.team-access-dialog input[type="checkbox"] {appearance:auto;}.team-access-dialog input[type="checkbox"]::after {display:none;}}
