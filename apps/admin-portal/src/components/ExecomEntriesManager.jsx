@@ -1,16 +1,24 @@
-import React, { useMemo, useState } from 'react';
+import { teamSection, teamSections } from '../../../../shared/teamSections';
+import FormAlert from './FormAlert';
+import './execom-roster.css';
+import './execom-profile-editor.css';
+import { RowsSkeleton } from './InlineSkeleton';
+import { normalizePortalRole } from '../utils/authorization';
+import PortalDialog from './PortalDialog';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
 import {
   SortableContext,
   verticalListSortingStrategy,
   arrayMove,
+  sortableKeyboardCoordinates,
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Loader2, Plus, Trash2, Send } from 'lucide-react';
+import { ArrowUp, ArrowDown, GripVertical, Loader2, Plus, Trash2, Send, Upload, UserRound, X } from 'lucide-react';
 import toast from 'react-hot-toast';
-import ReactCrop from 'react-image-crop';
+import ReactCrop, { centerCrop, makeAspectCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import {
   createWebsiteTeamEntry,
@@ -25,9 +33,155 @@ import {
 
 const normalize = (v) => String(v ?? '').trim().toLowerCase();
 
-function SortableRow({ entry, onUpdate, onDelete, onEdit, onSendEmail, sendingEmailId }) {
+function RosterDialog({ title, subtitle, busy, onClose, onSubmit, onInput, submitLabel, error, children }) {
+  return (
+    <PortalDialog label={title} onClose={onClose} busy={busy} className="roster-dialog">
+      <form className="roster-dialog-form" noValidate onInput={onInput} onSubmit={event => {
+        event.preventDefault();
+        if (!busy) onSubmit(event.currentTarget);
+      }}>
+        <header className="op-dialog-head roster-dialog-head">
+          <div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div>
+          <button type="button" className="op-icon" aria-label={'Close ' + title} disabled={busy} onClick={onClose}><X size={16} /></button>
+        </header>
+        <div className="roster-dialog-scroll"><fieldset disabled={busy} className="roster-dialog-fields">{children}</fieldset></div>
+        <footer className="roster-dialog-foot">
+          {error && <FormAlert>{error}</FormAlert>}
+          <div className="op-actions"><button type="button" className="op-secondary" disabled={busy} onClick={onClose}>Cancel</button>
+            <button className="op-primary" type="submit" disabled={busy}>{busy && <Loader2 size={15} className="animate-spin" />}{submitLabel}</button>
+          </div>
+        </footer>
+      </form>
+    </PortalDialog>
+  );
+}
+
+function ProfileField({ label, value, onChange, ...props }) {
+  return <label className="op-field">{label}<input {...props} value={value} onChange={event => onChange(event.target.value)} /></label>;
+}
+
+function VisibilityField({ value, onChange }) {
+  return <label className="roster-visibility"><span><strong>Visible on website</strong><small>Show this profile on the public Execom roster.</small></span>
+    <input type="checkbox" checked={value} onChange={event => onChange(event.target.checked)} />
+  </label>;
+}
+
+function requiredMessage(form) {
+  for (const input of form.querySelectorAll('input:not(:disabled)')) {
+    if (input.required && !input.value.trim()) {
+      input.focus();
+      return 'Enter ' + input.dataset.requiredLabel + '.';
+    }
+    if (input.validity.typeMismatch) {
+      input.focus();
+      return 'Enter a valid email address.';
+    }
+  }
+  return '';
+}
+
+function ProfilePhoto({ value, onChange, onBusyChange, uploading }) {
+  const fileInput = useRef(null);
+  const image = useRef(null);
+  const started = useRef(false);
+  const [file, setFile] = useState(null);
+  const [crop, setCrop] = useState(null);
+  const [error, setError] = useState('');
+  const [unavailable, setUnavailable] = useState('');
+  useEffect(() => () => { if (file) URL.revokeObjectURL(file.url); }, [file]);
+
+  function choose(candidate) {
+    if (!candidate) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(candidate.type)) { setError('Choose a JPEG, PNG or WebP photo.'); return; }
+    if (candidate.size > 3 * 1024 * 1024) { setError('Choose a photo of 3 MB or less.'); return; }
+    setError('');
+    setCrop(null);
+    setFile({ url: URL.createObjectURL(candidate), name: candidate.name });
+  }
+
+  function closeCrop() {
+    setFile(null);
+    setCrop(null);
+    setError('');
+  }
+
+  async function upload() {
+    if (started.current || !crop?.width || !crop.height || !image.current) return;
+    started.current = true;
+    onBusyChange(true);
+    setError('');
+    try {
+      const img = image.current;
+      const sourceWidth = img.naturalWidth * crop.width / 100;
+      const sourceHeight = img.naturalHeight * crop.height / 100;
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = Math.max(1, Math.round(Math.min(1600, sourceWidth, sourceHeight)));
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Your browser could not prepare this crop.');
+      context.imageSmoothingQuality = 'high';
+      context.drawImage(img, img.naturalWidth * crop.x / 100, img.naturalHeight * crop.y / 100, sourceWidth, sourceHeight,
+        0, 0, canvas.width, canvas.height);
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', .9));
+      if (!blob) throw new Error('Could not prepare the crop. Choose another photo.');
+      const source = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('Could not read the cropped photo.'));
+        reader.readAsDataURL(blob);
+      });
+      const result = await uploadCloudinaryImage({ source, purpose: 'profile' });
+      if (!result?.url) throw new Error('No photo URL was returned. Try the upload again.');
+      onChange(result.url);
+      setUnavailable('');
+      closeCrop();
+    } catch (failure) {
+      setError(failure.response?.data?.message || (failure.isAxiosError ? 'Could not upload this photo. Try again.' : failure.message));
+    } finally {
+      started.current = false;
+      onBusyChange(false);
+    }
+  }
+
+  return <>
+    <div className="roster-photo">
+      {value && unavailable !== value ? <img alt="Profile photo preview" src={value} onError={() => setUnavailable(value)} />
+        : <span className="roster-photo-placeholder"><UserRound size={22} /></span>}
+      <div><strong>Profile photo</strong><span>JPEG, PNG or WebP · Up to 3 MB</span></div>
+      <input ref={fileInput} hidden type="file" aria-label="Profile photo file" accept="image/jpeg,image/png,image/webp"
+        onChange={event => { const imageFile = event.target.files?.[0]; event.target.value = ''; choose(imageFile); }} />
+      <button type="button" className="op-secondary" onClick={() => fileInput.current?.click()}><Upload size={14} />Choose photo</button>
+    </div>
+    <ProfileField label="Photo URL" inputMode="url" value={value} onChange={onChange} placeholder="https://" />
+    {!file && error && <FormAlert>{error}</FormAlert>}
+    {file && <PortalDialog label="Crop image" className="roster-dialog roster-photo-dialog" onClose={closeCrop} busy={uploading}>
+      <header className="op-dialog-head roster-dialog-head"><div><h2>Crop image</h2><p>{file.name}</p></div>
+        <button type="button" className="op-icon" aria-label="Close crop editor" disabled={uploading} onClick={closeCrop}><X size={16} /></button>
+      </header>
+      <div className="roster-dialog-scroll roster-crop-body">
+        <div className="roster-crop-stage"><ReactCrop crop={crop || undefined} aspect={1} keepSelection ruleOfThirds
+          disabled={uploading || !crop} onChange={(_, next) => setCrop(next)}>
+          <img src={file.url} ref={image} alt="Profile photo to crop" onLoad={event => {
+            const { naturalWidth, naturalHeight } = event.currentTarget;
+            setCrop(centerCrop(makeAspectCrop({ unit: '%', width: 100 }, 1, naturalWidth, naturalHeight), naturalWidth, naturalHeight));
+          }} onError={() => { setCrop(null); setError('Could not open this image. Cancel and choose another photo.'); }} />
+        </ReactCrop></div>
+        <p className="op-caption">Move or resize the square frame to choose the profile photo.</p>
+      </div>
+      <footer className="roster-dialog-foot">
+        {error && <FormAlert>{error}</FormAlert>}
+        <div className="op-actions"><button type="button" className="op-secondary" onClick={closeCrop} disabled={uploading}>Cancel</button>
+          <button type="button" className="op-primary" onClick={upload} disabled={uploading || !crop?.width || !crop.height}>
+            {uploading ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}{uploading ? 'Uploading…' : 'Upload photo'}
+          </button>
+        </div>
+      </footer>
+    </PortalDialog>}
+  </>;
+}
+
+function SortableRow({ entry, onDelete, onEdit, onSendEmail, sendingEmailId, arranging, busy, index, count, onMove }) {
   const id = String(entry?._id ?? entry?.id ?? '');
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled: !arranging || busy });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -42,19 +196,16 @@ function SortableRow({ entry, onUpdate, onDelete, onEdit, onSendEmail, sendingEm
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-2xl border border-slate-200 bg-white shadow-sm ${
-        isDragging ? 'opacity-80' : ''
-      }`}
+      className={`roster-row ${isDragging ? 'roster-row-dragging' : ''}`}
     >
-      <button
-        type="button"
-        className="shrink-0 inline-flex items-center justify-center w-10 h-10 rounded-xl border border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100"
-        title="Drag to reorder"
-        {...attributes}
-        {...listeners}
-      >
-        <GripVertical size={18} />
-      </button>
+      {arranging && <div className="roster-order-controls">
+        <button type="button" className="op-icon roster-drag" aria-label={'Drag ' + displayName} disabled={busy} {...attributes} {...listeners}>
+          <GripVertical size={16} />
+        </button>
+        <span className="roster-position">{index + 1}</span>
+        <button type="button" className="op-icon" aria-label={'Move ' + displayName + ' up'} disabled={busy || index === 0} onClick={() => onMove(-1)}><ArrowUp size={14} /></button>
+        <button type="button" className="op-icon" aria-label={'Move ' + displayName + ' down'} disabled={busy || index === count - 1} onClick={() => onMove(1)}><ArrowDown size={14} /></button>
+      </div>}
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
@@ -68,55 +219,16 @@ function SortableRow({ entry, onUpdate, onDelete, onEdit, onSendEmail, sendingEm
         <div className="text-xs text-slate-500 truncate">{displayEmail || ''}</div>
       </div>
 
-      <div className="w-full sm:w-56">
-        <input
-          type="text"
-          defaultValue={entry?.roleTitle || ''}
-          placeholder="Website role title (e.g. CEO)"
-          className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none"
-          onBlur={(e) => {
-            const next = String(e.target.value ?? '').trim();
-            if (next === String(entry?.roleTitle || '').trim()) return;
-            onUpdate({ id, roleTitle: next });
-          }}
-        />
-      </div>
+      <span className="roster-role">{entry.roleTitle || 'Member'}</span>
+      <span className={entry.visible ? 'op-status active' : 'op-status'}>{entry.visible ? 'Visible' : 'Hidden'}</span>
+      {!arranging && <div className="roster-actions">
+        <button type="button" className="op-icon" aria-label={'Send update email to ' + displayName} title="Send profile update email" onClick={() => onSendEmail?.(entry)} disabled={busy || sendingEmailId === id}>
+          {sendingEmailId === id ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+        </button>
+        <button type="button" className="op-secondary" disabled={busy} onClick={() => onEdit?.(entry)}>Edit</button>
+        <button type="button" className="op-icon danger" aria-label={'Remove ' + displayName} disabled={busy} onClick={() => onDelete(id)}><Trash2 size={14} /></button>
+      </div>}
 
-      <label className="inline-flex items-center gap-2 text-sm text-slate-700">
-        <input
-          type="checkbox"
-          checked={Boolean(entry?.visible)}
-          onChange={(e) => onUpdate({ id, visible: e.target.checked })}
-        />
-        Visible
-      </label>
-
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-white text-blue-700 text-sm font-semibold hover:bg-slate-50"
-          onClick={() => onSendEmail?.(entry)}
-          disabled={sendingEmailId === id}
-        >
-          {sendingEmailId === id ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-          Send email
-        </button>
-        <button
-          type="button"
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-50"
-          onClick={() => onEdit?.(entry)}
-        >
-          Edit
-        </button>
-        <button
-          type="button"
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-white text-red-600 text-sm font-semibold hover:bg-slate-50"
-          onClick={() => onDelete(id)}
-        >
-          <Trash2 size={16} />
-          Remove
-        </button>
-      </div>
     </div>
   );
 }
@@ -125,7 +237,7 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
   const queryClient = useQueryClient();
 
   const execomUsers = useMemo(
-    () => (Array.isArray(users) ? users : []).filter((u) => normalize(u?.role) === 'execom'),
+    () => (Array.isArray(users) ? users : []).filter((u) => normalizePortalRole(u?.role) === 'iedc_execom'),
     [users]
   );
 
@@ -141,7 +253,8 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
     [yearsData]
   );
   const [year, setYear] = useState('');
-  const effectiveYear = year || (years.length > 0 ? String(years[0]) : '');
+  const [orderDraft, setOrderDraft] = useState(null);
+  const effectiveYear = years.includes(year) ? year : years[0] || '';
 
   const entriesQuery = useQuery({
     queryKey: ['websiteTeamEntries', 'execom', effectiveYear],
@@ -160,34 +273,31 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
     });
   }, [entriesQuery.data]);
 
+  const refreshRoster = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['websiteTeamYears', 'execom'] }),
+    queryClient.invalidateQueries({ queryKey: ['websiteTeamEntries', 'execom'] }),
+  ]);
+
   const createMutation = useMutation({
     mutationFn: createWebsiteTeamEntry,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['websiteTeamYears', 'execom'] });
-      queryClient.invalidateQueries({ queryKey: ['websiteTeamEntries', 'execom'] });
+    onSuccess: async () => {
+      await refreshRoster();
       toast.success('Added to execom year');
-    },
-    onError: (e) => {
-      toast.error(e?.response?.data?.message || 'Failed to add');
     },
   });
 
   const updateMutation = useMutation({
     mutationFn: updateWebsiteTeamEntry,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['websiteTeamEntries', 'execom', effectiveYear] });
+    onSuccess: async () => {
+      await refreshRoster();
       toast.success('Updated entry');
-    },
-    onError: (e) => {
-      toast.error(e?.response?.data?.message || 'Failed to update');
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteWebsiteTeamEntry,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['websiteTeamYears', 'execom'] });
-      queryClient.invalidateQueries({ queryKey: ['websiteTeamEntries', 'execom'] });
+    onSuccess: async () => {
+      await refreshRoster();
       toast.success('Removed');
     },
     onError: (e) => {
@@ -197,49 +307,23 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
 
   const reorderMutation = useMutation({
     mutationFn: reorderWebsiteTeamEntries,
-    onMutate: async (vars) => {
-      const yr = String(vars?.year ?? '').trim();
-      if (!yr) return {};
-
-      const key = ['websiteTeamEntries', 'execom', yr];
-      await queryClient.cancelQueries({ queryKey: key });
-
-      const previous = queryClient.getQueryData(key);
-      const nextOrderedIds = Array.isArray(vars?.orderedIds)
-        ? vars.orderedIds.map((v) => String(v)).filter(Boolean)
-        : [];
-
-      queryClient.setQueryData(key, (old) => {
-        const currentEntries = Array.isArray(old?.entries) ? old.entries : [];
-        if (currentEntries.length === 0 || nextOrderedIds.length === 0) return old;
-
-        const byId = new Map(currentEntries.map((e) => [String(e?._id), e]));
-        const reordered = nextOrderedIds
-          .map((id, index) => {
-            const entry = byId.get(String(id));
-            if (!entry) return null;
-            return { ...entry, order: index };
-          })
-          .filter(Boolean);
-
-        // If ids mismatch, fall back to old.
-        if (reordered.length !== nextOrderedIds.length) return old;
-
-        return { ...(old || {}), entries: reordered };
-      });
-
-      return { previous, key };
-    },
-    onError: (e, _vars, ctx) => {
-      if (ctx?.previous && ctx?.key) {
-        queryClient.setQueryData(ctx.key, ctx.previous);
-      }
-      toast.error(e?.response?.data?.message || 'Failed to reorder');
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['websiteTeamEntries', 'execom', effectiveYear] });
+    onSuccess: async (_result, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ['websiteTeamEntries', 'execom', variables.year] });
+      setOrderDraft(null);
+      toast.success('Website order saved');
     },
   });
+  const arranging = orderDraft !== null;
+  const displayEntries = orderDraft ?? sortedEntries;
+  const busy = reorderMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
+  const sectionFor = entry => teamSection(entry.roleTitle, entry.userRef?.membershipId || entry.customMembershipId);
+  function moveEntry(fromId, toId) {
+    if (!orderDraft || busy || fromId === toId) return;
+    const from = orderDraft.findIndex(entry => String(entry._id) === fromId);
+    const to = orderDraft.findIndex(entry => String(entry._id) === toId);
+    if (from < 0 || to < 0 || sectionFor(orderDraft[from]) !== sectionFor(orderDraft[to])) return;
+    setOrderDraft(arrayMove(orderDraft, from, to));
+  }
 
   const sendUpdateEmailMutation = useMutation({
     mutationFn: ({ id }) => sendWebsiteTeamUpdateEmail(id),
@@ -263,7 +347,10 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
     sendUpdateEmailMutation.mutate({ id });
   };
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   const [isUploading, setIsUploading] = useState(false);
   const [editEntry, setEditEntry] = useState(null);
@@ -280,10 +367,7 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
     github: '',
     twitter: '',
   });
-  const [cropper, setCropper] = useState(null);
-  const [cropSrc, setCropSrc] = useState(null);
-  const [cropState, setCropState] = useState({ unit: 'px', x: 0, y: 0, width: 200, height: 200, aspect: 1 });
-  const [cropImageEl, setCropImageEl] = useState(null);
+  const [formError, setFormError] = useState('');
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [newUserId, setNewUserId] = useState('');
@@ -309,6 +393,8 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
 
   const startEdit = (entry) => {
     if (!entry) return;
+    updateMutation.reset();
+    setFormError('');
     setEditEntry(entry);
     setEditForm({
       year: String(entry.year || effectiveYear || ''),
@@ -328,141 +414,47 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
     setEditForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  const fileToBase64 = (file) =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result;
-        const base64 = typeof result === 'string' ? result.split(',')[1] : '';
-        if (!base64) {
-          reject(new Error('Could not read file'));
-        } else {
-          resolve(base64);
-        }
-      };
-      reader.onerror = () => reject(new Error('Could not read file'));
-      reader.readAsDataURL(file);
-    });
+  function startAdd() {
+    createMutation.reset();
+    setFormError('');
+    setNewYear(effectiveYear);
+    setNewEntryType('user');
+    setNewUserId('');
+    setNewUserSearch('');
+    setNewRoleTitle('');
+    setCustomName('');
+    setCustomEmail('');
+    setCustomMembershipId('');
+    setNewVisible(true);
+    setIsAddOpen(true);
+  }
 
-  const blobToBase64 = (blob) =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = reader.result;
-        const base64 = typeof result === 'string' ? result.split(',')[1] : '';
-        if (!base64) {
-          reject(new Error('Could not read file'));
-        } else {
-          resolve(base64);
-        }
-      };
-      reader.onerror = () => reject(new Error('Could not read file'));
-      reader.readAsDataURL(blob);
-    });
-
-  const openCropper = (file) => {
-    console.log('Opening cropper for file:', file.name, file.type, file.size, 'bytes');
-    const maxBytes = 3 * 1024 * 1024; // ~3MB limit
-    if (file.size > maxBytes) {
-      toast.error('File too large. Max 3MB.');
+  function handleAdd(form) {
+    const error = requiredMessage(form);
+    if (error) { setFormError(error); return; }
+    if (newEntryType === 'user' && !newUserId) {
+      setFormError('Select the Execom member to add.');
+      form.elements.namedItem('memberSearch')?.focus();
       return;
     }
+    setFormError('');
+    const nextYear = newYear.trim();
+    createMutation.mutate({
+      category: 'execom', year: nextYear, entryType: newEntryType,
+      userId: newEntryType === 'user' ? newUserId : undefined,
+      customName: newEntryType === 'custom' ? customName.trim() : undefined,
+      customEmail: newEntryType === 'custom' ? customEmail.trim() : undefined,
+      customMembershipId: newEntryType === 'custom' ? customMembershipId.trim() : undefined,
+      roleTitle: newRoleTitle.trim(), visible: newVisible,
+    }, { onSuccess: () => { setYear(nextYear); setIsAddOpen(false); } });
+  }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result;
-      console.log('File read successfully, data URL length:', dataUrl.length);
-      setCropSrc(dataUrl);
-      setCropper({ file });
-    };
-    reader.onerror = (err) => {
-      console.error('FileReader error:', err);
-      toast.error('Could not read file');
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const applyCropAndUpload = async () => {
-    if (!cropper || !cropImageEl) return;
-    try {
-      setIsUploading(true);
-      const image = cropImageEl;
-      const scaleX = image.naturalWidth / image.width;
-      const scaleY = image.naturalHeight / image.height;
-      const { x = 0, y = 0, width = 0, height = 0 } = cropState;
-
-      // Render a higher-resolution square to preserve clarity.
-      const targetSize = Math.min(Math.max(Math.round(Math.min(width, height)), 800), 1600); // clamp between 800-1600px
-
-      const canvas = document.createElement('canvas');
-      canvas.width = targetSize;
-      canvas.height = targetSize;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(
-        image,
-        x * scaleX,
-        y * scaleY,
-        width * scaleX,
-        height * scaleY,
-        0,
-        0,
-        targetSize,
-        targetSize,
-      );
-
-      const blob = await new Promise((resolve, reject) => {
-        canvas.toBlob(
-          (b) => {
-            if (!b) return reject(new Error('Failed to crop image'));
-            resolve(b);
-          },
-          cropper.file?.type || 'image/jpeg',
-          0.96,
-        );
-      });
-
-      console.log('Blob created, size:', blob.size, 'bytes');
-      const base64 = await blobToBase64(blob);
-      console.log('Base64 created, length:', base64.length);
-      
-      const { url } = await uploadCloudinaryImage({ source: base64 });
-      console.log('Upload successful, URL:', url);
-      
-      setEditForm((prev) => ({ ...prev, imageUrl: url }));
-      toast.success('Image uploaded');
-      setCropper(null);
-      setCropSrc(null);
-      setCropImageEl(null);
-    } catch (err) {
-      console.error('Image upload error:', err);
-      console.error('Error response:', err?.response);
-      toast.error(err?.response?.data?.message || err?.message || 'Upload failed');
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const handleImageFile = (file) => {
-    if (!file) return;
-    openCropper(file);
-  };
-
-  const onCropImageLoaded = (img) => {
-    if (!img) return;
-    setCropImageEl(img);
-    const size = Math.min(img.naturalWidth, img.naturalHeight, 320);
-    const x = (img.naturalWidth - size) / 2;
-    const y = (img.naturalHeight - size) / 2;
-    setCropState({ unit: 'px', x, y, width: size, height: size, aspect: 1 });
-  };
-
-  const handleSaveEdit = () => {
+  const handleSaveEdit = (form) => {
     if (!editEntry) return;
-    const trimmedYear = String(editForm.year || '').trim();
-    if (!trimmedYear) {
-      toast.error('Year is required');
-      return;
-    }
+    const error = requiredMessage(form);
+    if (error) { setFormError(error); return; }
+    setFormError('');
+    const trimmedYear = editForm.year.trim();
 
     const payload = {
       id: editEntry._id,
@@ -479,14 +471,11 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
       payload.customName = editForm.customName.trim();
       payload.customEmail = editForm.customEmail.trim();
       payload.customMembershipId = editForm.customMembershipId.trim();
-      if (!payload.customName) {
-        toast.error('Name is required for custom entries');
-        return;
-      }
     }
 
     updateMutation.mutate(payload, {
       onSuccess: () => {
+        setYear(trimmedYear);
         setEditEntry(null);
       },
     });
@@ -497,33 +486,30 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="op-card overflow-hidden min-w-0">
+      <div className="op-card-head">
         <div>
-          <div className="font-bold text-slate-900">Website Execom (year-wise)</div>
+          <div className="font-bold text-slate-900">Website roster</div>
           <div className="text-sm text-slate-500">
-            Same person can be added to multiple years with different role titles and ordering.
+            Arrange members within the same sections shown on the main site.
           </div>
         </div>
         <button
           type="button"
-          onClick={() => {
-            setNewYear(effectiveYear);
-            setIsAddOpen(true);
-          }}
-          className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl font-semibold"
+          disabled={arranging || busy}
+          onClick={startAdd}
+          className="op-primary"
         >
           <Plus size={18} />
           Add to year
         </button>
       </div>
 
-      <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center gap-3">
+      <div className="roster-toolbar">
         <div className="text-sm font-semibold text-slate-700">Year</div>
         <select
-          value={effectiveYear}
+          aria-label="Roster year" value={effectiveYear} disabled={arranging || busy}
           onChange={(e) => setYear(e.target.value)}
-          className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm"
         >
           <option value="">Select year...</option>
           {years.map((y) => (
@@ -532,511 +518,111 @@ export default function ExecomEntriesManager({ users, canManageUsers }) {
             </option>
           ))}
         </select>
+        {effectiveYear && sortedEntries.length > 0 && <div className="roster-toolbar-actions">
+          {arranging ? <>
+            <button className="op-secondary" type="button" disabled={busy} onClick={() => { setOrderDraft(null); reorderMutation.reset(); }}>Cancel</button>
+            <button className="op-primary" type="button" disabled={busy} onClick={() => reorderMutation.mutate({
+              category: 'execom', year: effectiveYear, orderedIds: orderDraft.map(entry => String(entry._id)),
+            })}>{busy ? 'Saving…' : 'Save order'}</button>
+          </> : <button className="op-secondary" type="button" disabled={busy} onClick={() => { reorderMutation.reset(); setOrderDraft(sortedEntries); }}>Arrange members</button>}
+        </div>}
         {yearsLoading ? (
           <div className="inline-flex items-center gap-2 text-sm text-slate-500">
             <Loader2 className="animate-spin" size={16} />
             Loading years...
           </div>
         ) : null}
-        {years.length === 0 ? (
+        {!yearsLoading && years.length === 0 ? (
           <div className="text-sm text-slate-500">
             No years yet. Use "Add to year" to create the first year.
           </div>
         ) : null}
       </div>
 
-      <div className="p-6">
-        {entriesQuery.isLoading ? (
-          <div className="flex items-center gap-2 text-slate-500">
-            <Loader2 className="animate-spin" size={18} />
-            Loading entries...
-          </div>
-        ) : entriesQuery.isError ? (
-          <div className="text-slate-500">Failed to load entries.</div>
-        ) : !effectiveYear ? (
-          <div className="text-slate-500">Select a year to manage entries.</div>
-        ) : sortedEntries.length === 0 ? (
-          <div className="text-slate-500">No execom entries for this year.</div>
-        ) : (
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={(event) => {
-              const { active, over } = event;
-              if (!over || active.id === over.id) return;
-              const oldIndex = sortedEntries.findIndex((e) => String(e?._id) === String(active.id));
-              const newIndex = sortedEntries.findIndex((e) => String(e?._id) === String(over.id));
-              if (oldIndex < 0 || newIndex < 0) return;
-
-              const next = arrayMove(sortedEntries, oldIndex, newIndex);
-              reorderMutation.mutate({
-                category: 'execom',
-                year: effectiveYear,
-                orderedIds: next.map((e) => String(e?._id)),
-              });
-            }}
-          >
-            <SortableContext
-              items={sortedEntries.map((e) => String(e?._id))}
-              strategy={verticalListSortingStrategy}
-            >
-              <div className="space-y-3">
-                {sortedEntries.map((entry) => (
-                  <SortableRow
-                    key={String(entry?._id)}
-                    entry={entry}
-                    onUpdate={(patch) => updateMutation.mutate({ ...patch })}
-                    onDelete={(id) => deleteMutation.mutate(id)}
-                    onEdit={startEdit}
-                    onSendEmail={handleSendEmail}
-                    sendingEmailId={sendingEmailId}
-                  />
-                ))}
-              </div>
-            </SortableContext>
-          </DndContext>
-        )}
+      <div className="roster-content">
+        {reorderMutation.isError && <FormAlert>{reorderMutation.error?.response?.data?.message || 'Could not save the order. Your arrangement is still here. Try again.'}</FormAlert>}
+        {arranging && <p className="op-caption" role="status">Drag using the handle or use the arrows. Select Save order to update the main site.</p>}
+        {entriesQuery.isLoading ? <RowsSkeleton rows={4} columns={3} label="Loading website roster" />
+          : entriesQuery.isError ? <FormAlert>Could not load this roster. <button type="button" onClick={() => entriesQuery.refetch()}>Try again</button></FormAlert>
+          : !displayEntries.length ? <p className="op-empty">No members for this year. Add a member to start the roster.</p>
+          : <DndContext key={effectiveYear + String(arranging)} sensors={sensors} collisionDetection={closestCenter} onDragEnd={({ active, over }) => {
+            if (over) moveEntry(String(active.id), String(over.id));
+          }}>
+            {teamSections.map(([key, title]) => {
+              const members = displayEntries.filter(entry => sectionFor(entry) === key);
+              if (!members.length) return null;
+              return <section key={key} className="roster-section" aria-label={title}>
+                <header><h3>{title}</h3><span className="op-count">{members.length}</span></header>
+                <SortableContext items={members.map(entry => String(entry._id))} strategy={verticalListSortingStrategy}>
+                  <div className="roster-list">{members.map((entry, index) => <SortableRow key={String(entry._id)} entry={entry}
+                    arranging={arranging} busy={busy} index={index} count={members.length}
+                    onMove={offset => moveEntry(String(entry._id), String(members[index + offset]._id))}
+                    onDelete={id => deleteMutation.mutate(id)} onEdit={startEdit} onSendEmail={handleSendEmail} sendingEmailId={sendingEmailId}
+                  />)}</div>
+                </SortableContext>
+              </section>;
+            })}
+          </DndContext>}
       </div>
 
-      {editEntry ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30">
-          <div className="w-full max-w-2xl bg-white rounded-2xl border border-slate-200 shadow-xl">
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-              <div>
-                <div className="font-bold text-slate-900">Edit Execom Entry</div>
-                <div className="text-sm text-slate-500">Update image, socials, and displayed details.</div>
-              </div>
-              <button
-                type="button"
-                className="text-slate-500 hover:text-slate-800"
-                onClick={() => setEditEntry(null)}
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="p-5 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <div className="text-sm font-semibold text-slate-700 mb-1">Year</div>
-                  <input
-                    value={editForm.year}
-                    onChange={(e) => handleEditChange('year', e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
-                  />
-                </div>
-                <div>
-                  <div className="text-sm font-semibold text-slate-700 mb-1">Role title</div>
-                  <input
-                    value={editForm.roleTitle}
-                    onChange={(e) => handleEditChange('roleTitle', e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
-                    placeholder="e.g. CEO"
-                  />
-                </div>
-              </div>
-
-              {editEntry.entryType === 'custom' ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <div className="text-sm font-semibold text-slate-700 mb-1">Name</div>
-                    <input
-                      value={editForm.customName}
-                      onChange={(e) => handleEditChange('customName', e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200"
-                      placeholder="Full name"
-                    />
-                  </div>
-                  <div>
-                    <div className="text-sm font-semibold text-slate-700 mb-1">Membership ID</div>
-                    <input
-                      value={editForm.customMembershipId}
-                      onChange={(e) => handleEditChange('customMembershipId', e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200"
-                      placeholder="Optional"
-                    />
-                  </div>
-                  <div>
-                    <div className="text-sm font-semibold text-slate-700 mb-1">Email</div>
-                    <input
-                      value={editForm.customEmail}
-                      onChange={(e) => handleEditChange('customEmail', e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200"
-                      placeholder="Optional"
-                      type="email"
-                    />
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="space-y-2">
-                <div className="text-sm font-semibold text-slate-700 mb-1">Image</div>
-                <div className="flex flex-col md:flex-row gap-2">
-                  <input
-                    value={editForm.imageUrl}
-                    onChange={(e) => handleEditChange('imageUrl', e.target.value)}
-                    placeholder="Image URL"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
-                  />
-                  <label className="inline-flex items-center justify-center px-4 py-2 rounded-xl border border-slate-200 bg-white text-sm font-semibold cursor-pointer hover:bg-slate-50">
-                    <input
-                      type="file"
-                      accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
-                      capture="environment"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleImageFile(file);
-                        e.target.value = '';
-                      }}
-                    />
-                    {isUploading ? 'Uploading...' : 'Upload'}
-                  </label>
-                </div>
-                <div className="text-xs text-slate-500">
-                  Upload is proxied through the server (Cloudinary). No browser CORS issues.
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <div className="text-sm font-semibold text-slate-700 mb-1">LinkedIn</div>
-                  <input
-                    value={editForm.linkedin}
-                    onChange={(e) => handleEditChange('linkedin', e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
-                    placeholder="https://..."
-                  />
-                </div>
-                <div>
-                  <div className="text-sm font-semibold text-slate-700 mb-1">GitHub</div>
-                  <input
-                    value={editForm.github}
-                    onChange={(e) => handleEditChange('github', e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
-                    placeholder="https://..."
-                  />
-                </div>
-                <div>
-                  <div className="text-sm font-semibold text-slate-700 mb-1">Twitter</div>
-                  <input
-                    value={editForm.twitter}
-                    onChange={(e) => handleEditChange('twitter', e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
-                    placeholder="https://..."
-                  />
-                </div>
-                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(editForm.visible)}
-                    onChange={(e) => handleEditChange('visible', e.target.checked)}
-                  />
-                  Visible on website
-                </label>
-              </div>
-            </div>
-
-            <div className="p-5 border-t border-slate-100 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold"
-                onClick={() => setEditEntry(null)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={updateMutation.isPending || isUploading}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold disabled:opacity-50"
-                onClick={handleSaveEdit}
-              >
-                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : null}
-                Save
-              </button>
-            </div>
+      {editEntry && <RosterDialog title="Edit Execom entry" subtitle={editEntry.userRef?.name || editEntry.customName}
+        busy={updateMutation.isPending || isUploading} onClose={() => setEditEntry(null)} onSubmit={handleSaveEdit}
+        onInput={() => { if (formError) setFormError(''); if (updateMutation.isError) updateMutation.reset(); }}
+        submitLabel={updateMutation.isPending ? 'Saving…' : 'Save changes'}
+        error={formError || (updateMutation.isError && (updateMutation.error?.response?.data?.message || 'Could not save this entry. Try again.'))}>
+        <section><h3>Roster details</h3><div className="roster-field-grid">
+          <ProfileField label="Year" required data-required-label="the roster year" value={editForm.year} onChange={value => handleEditChange('year', value)} />
+          <ProfileField label="Role title" value={editForm.roleTitle} onChange={value => handleEditChange('roleTitle', value)} placeholder="e.g. Chief executive officer" />
+        </div></section>
+        {editEntry.entryType === 'custom' && <section><h3>Member details</h3>
+          <ProfileField label="Full name" required data-required-label="the member’s name" value={editForm.customName} onChange={value => handleEditChange('customName', value)} />
+          <div className="roster-field-grid">
+            <ProfileField label="Membership ID" value={editForm.customMembershipId} onChange={value => handleEditChange('customMembershipId', value)} />
+            <ProfileField label="Email" type="email" value={editForm.customEmail} onChange={value => handleEditChange('customEmail', value)} />
           </div>
-        </div>
-      ) : null}
+        </section>}
+        <section><h3>Public profile</h3>
+          <ProfilePhoto value={editForm.imageUrl} onChange={value => handleEditChange('imageUrl', value)} uploading={isUploading} onBusyChange={setIsUploading} />
+          <div className="roster-field-grid">{[['linkedin', 'LinkedIn'], ['github', 'GitHub'], ['twitter', 'X / Twitter']].map(([key, label]) =>
+            <ProfileField key={key} label={label} inputMode="url" placeholder="Profile URL" value={editForm[key]} onChange={value => handleEditChange(key, value)} />
+          )}</div>
+          <VisibilityField value={editForm.visible} onChange={value => handleEditChange('visible', value)} />
+        </section>
+      </RosterDialog>}
 
-      {cropper && cropSrc ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30">
-          <div className="w-full max-w-3xl bg-white rounded-2xl border border-slate-200 shadow-xl">
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-              <div>
-                <div className="font-bold text-slate-900">Crop Image</div>
-                <div className="text-sm text-slate-500">Adjust the square crop before uploading.</div>
-              </div>
-              <button
-                type="button"
-                className="text-slate-500 hover:text-slate-800"
-                onClick={() => {
-                  setCropper(null);
-                  setCropSrc(null);
-                  setCropImageEl(null);
-                }}
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="p-5 space-y-4">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-                <div className="space-y-3">
-                  <div className="text-sm font-semibold text-slate-700">Crop (square)</div>
-                  <div className="w-full max-w-md">
-                    <ReactCrop
-                      crop={cropState}
-                      onChange={(c) => setCropState(c)}
-                      aspect={1}
-                      keepSelection
-                      locked={false}
-                    >
-                      <img
-                        src={cropSrc}
-                        alt="Crop"
-                        onLoad={(e) => onCropImageLoaded(e.currentTarget)}
-                        style={{ maxWidth: '100%', maxHeight: '70vh' }}
-                      />
-                    </ReactCrop>
-                  </div>
-                </div>
-
-                <div className="space-y-2 text-sm text-slate-600">
-                  <div className="font-semibold text-slate-700">Tips</div>
-                  <ul className="list-disc list-inside space-y-1">
-                    <li>Drag the handles to set the square area.</li>
-                    <li>File size limit is ~3MB.</li>
-                    <li>Aspect ratio is fixed to 1:1.</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-5 border-t border-slate-100 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold"
-                onClick={() => {
-                  setCropper(null);
-                  setCropSrc(null);
-                  setCropImageEl(null);
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={isUploading}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold disabled:opacity-50"
-                onClick={applyCropAndUpload}
-              >
-                {isUploading ? <Loader2 className="animate-spin" size={16} /> : null}
-                Crop & Upload
-              </button>
-            </div>
+      {isAddOpen && <RosterDialog title="Add Execom entry" subtitle="Website roster" busy={createMutation.isPending}
+        onClose={() => setIsAddOpen(false)} onSubmit={handleAdd}
+        onInput={() => { if (formError) setFormError(''); if (createMutation.isError) createMutation.reset(); }} submitLabel={createMutation.isPending ? 'Adding…' : 'Add entry'}
+        error={formError || (createMutation.isError && (createMutation.error?.response?.data?.message || 'Could not add this entry. Try again.'))}>
+        <section><h3>Member</h3>
+          <div className="op-tabs" role="group" aria-label="Entry type">
+            {[['user', 'Portal member'], ['custom', 'Custom member']].map(([value, label]) =>
+              <button type="button" key={value} className="op-tab" aria-pressed={newEntryType === value}
+                onClick={() => { setNewEntryType(value); setFormError(''); createMutation.reset(); }}>{label}</button>)}
           </div>
-        </div>
-      ) : null}
-
-      {isAddOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30">
-          <div className="w-full max-w-lg bg-white rounded-2xl border border-slate-200 shadow-xl">
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-              <div className="font-bold text-slate-900">Add Execom Entry</div>
+          {newEntryType === 'user' ? <>
+            <ProfileField name="memberSearch" label="Find an Execom member" type="search" value={newUserSearch} onChange={setNewUserSearch} placeholder="Name, email or membership ID" />
+            <div className="roster-choices" role="radiogroup" aria-label="Execom members">
+              {filteredExecomUsers.map(user => <label key={user._id} className="roster-choice">
+                <input type="radio" name="roster-user" value={user._id} checked={newUserId === user._id} onChange={() => { setNewUserId(user._id); setFormError(''); }} />
+                <span><strong>{user.name || user.membershipId}</strong><small>{[user.membershipId, user.email].filter(Boolean).join(' · ')}</small></span>
+              </label>)}
+              {!filteredExecomUsers.length && <p>No matching Execom members.</p>}
             </div>
-
-            <div className="p-5 space-y-4">
-              <div>
-                <div className="text-sm font-semibold text-slate-700 mb-1">Year</div>
-                <input
-                  value={newYear}
-                  onChange={(e) => setNewYear(e.target.value)}
-                  placeholder="e.g. 2025-26"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200"
-                />
-              </div>
-
-              <div>
-                <div className="text-sm font-semibold text-slate-700 mb-2">Entry type</div>
-                <div className="flex flex-col gap-2">
-                  <label className="inline-flex items-center gap-2 text-sm text-slate-700">
-                    <input
-                      type="radio"
-                      name="entryType"
-                      value="user"
-                      checked={newEntryType === 'user'}
-                      onChange={() => setNewEntryType('user')}
-                    />
-                    Existing portal user (Execom role)
-                  </label>
-                  <label className="inline-flex items-center gap-2 text-sm text-slate-700">
-                    <input
-                      type="radio"
-                      name="entryType"
-                      value="custom"
-                      checked={newEntryType === 'custom'}
-                      onChange={() => setNewEntryType('custom')}
-                    />
-                    Custom (not registered)
-                  </label>
-                </div>
-              </div>
-
-              {newEntryType === 'user' ? (
-                <div className="space-y-2">
-                  <div className="text-sm font-semibold text-slate-700 mb-1">User</div>
-                  <div className="space-y-2">
-                    <input
-                      value={newUserSearch}
-                      onChange={(e) => setNewUserSearch(e.target.value)}
-                      placeholder="Search by name or membershipId"
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200"
-                    />
-                    <div className="max-h-40 overflow-y-auto rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
-                      {filteredExecomUsers.length === 0 ? (
-                        <div className="px-3 py-2 text-sm text-slate-500">No matches</div>
-                      ) : (
-                        filteredExecomUsers.map((u) => (
-                          <button
-                            type="button"
-                            key={String(u?._id)}
-                            onClick={() => {
-                              setNewUserId(String(u?._id));
-                              setNewUserSearch(`${u?.name || '—'} (${String(u?.membershipId || '').toUpperCase()})`);
-                            }}
-                            className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-50 ${
-                              String(newUserId) === String(u?._id)
-                                ? 'bg-blue-50 text-blue-700'
-                                : 'text-slate-800'
-                            }`}
-                          >
-                            <div className="font-semibold">{u?.name || '—'}</div>
-                            <div className="text-xs text-slate-600 flex items-center gap-2">
-                              <span>{String(u?.membershipId || '').toUpperCase()}</span>
-                              {u?.email ? <span className="text-slate-400">{u.email}</span> : null}
-                            </div>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-xs text-slate-500">
-                    Users shown are those with portal role “Execom”.
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="text-sm font-semibold text-slate-700">Custom member</div>
-                  <input
-                    value={customName}
-                    onChange={(e) => setCustomName(e.target.value)}
-                    placeholder="Full name"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
-                  />
-                  <input
-                    value={customMembershipId}
-                    onChange={(e) => setCustomMembershipId(e.target.value)}
-                    placeholder="Membership ID (optional)"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
-                  />
-                  <input
-                    type="email"
-                    value={customEmail}
-                    onChange={(e) => setCustomEmail(e.target.value)}
-                    placeholder="Email (optional)"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
-                  />
-                  <div className="text-xs text-slate-500">
-                    Use this when the person isn’t in the portal yet.
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <div className="text-sm font-semibold text-slate-700 mb-1">Role title (website)</div>
-                <input
-                  value={newRoleTitle}
-                  onChange={(e) => setNewRoleTitle(e.target.value)}
-                  placeholder="e.g. CEO, CTO"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200"
-                />
-              </div>
-
-              <label className="inline-flex items-center gap-2 text-sm text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={newVisible}
-                  onChange={(e) => setNewVisible(e.target.checked)}
-                />
-                Visible on website
-              </label>
+            {newUserId && !filteredExecomUsers.some(user => user._id === newUserId) && <p className="op-caption">Selected member · {execomUsers.find(user => user._id === newUserId)?.name}</p>}
+          </> : <>
+            <ProfileField label="Full name" required data-required-label="the member’s name" value={customName} onChange={setCustomName} />
+            <div className="roster-field-grid">
+              <ProfileField label="Membership ID" value={customMembershipId} onChange={setCustomMembershipId} />
+              <ProfileField label="Email" type="email" value={customEmail} onChange={setCustomEmail} />
             </div>
-
-            <div className="p-5 border-t border-slate-100 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold"
-                onClick={() => setIsAddOpen(false)}
-              >
-                Cancel
-              </button>
-                        <button
-                type="button"
-                disabled={createMutation.isPending}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold disabled:opacity-50"
-                onClick={() => {
-                  const trimmedYear = newYear.trim();
-                  if (!trimmedYear) {
-                    toast.error('Year is required');
-                    return;
-                  }
-                  if (newEntryType === 'user' && !newUserId) {
-                    toast.error('Select a user');
-                    return;
-                  }
-                  if (newEntryType === 'custom' && !customName.trim()) {
-                    toast.error('Name is required');
-                    return;
-                  }
-                  createMutation.mutate(
-                    {
-                      category: 'execom',
-                      year: trimmedYear,
-                      entryType: newEntryType,
-                      userId: newEntryType === 'user' ? newUserId : undefined,
-                      customName: newEntryType === 'custom' ? customName.trim() : undefined,
-                      customEmail: newEntryType === 'custom' ? customEmail.trim() : undefined,
-                      customMembershipId:
-                        newEntryType === 'custom' ? customMembershipId.trim() : undefined,
-                      roleTitle: newRoleTitle.trim(),
-                      visible: newVisible,
-                    },
-                    {
-                      onSuccess: () => {
-                        setIsAddOpen(false);
-                        setNewRoleTitle('');
-                        setNewUserId('');
-                        setNewUserSearch('');
-                        setCustomName('');
-                        setCustomEmail('');
-                        setCustomMembershipId('');
-                        setNewVisible(true);
-                        setYear(trimmedYear);
-                        setNewEntryType('user');
-                      },
-                    }
-                  );
-                }}
-              >
-                {createMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : null}
-                Add
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+          </>}
+        </section>
+        <section><h3>Roster details</h3><div className="roster-field-grid">
+          <ProfileField label="Year" required data-required-label="the roster year" value={newYear} onChange={setNewYear} placeholder="2026–27" />
+          <ProfileField label="Role title" value={newRoleTitle} onChange={setNewRoleTitle} placeholder="e.g. Chief executive officer" />
+        </div><VisibilityField value={newVisible} onChange={setNewVisible} /></section>
+      </RosterDialog>}
     </div>
   );
 }
-

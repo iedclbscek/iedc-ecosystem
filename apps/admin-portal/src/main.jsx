@@ -5,7 +5,9 @@ import App from './App.jsx'
 import './index.css'
 
 // 1. Create a client
-const queryClient = new QueryClient()
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { staleTime: 15_000, retry: false } },
+})
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

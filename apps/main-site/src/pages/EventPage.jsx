@@ -18,8 +18,9 @@ import {
   X
 } from 'lucide-react';
 import axios from 'axios';
-import Loader from '../components/ui/Loader';
+import { normalizePublicEvent, parseEventDate, publicEventRegistration } from '../utils/publicEvent';
 import EventRegistrationModal from '../components/ui/EventRegistrationModal';
+import { EventDetailSkeleton, PublicErrorState } from '../components/ui/PublicPageState';
 
 const EventPage = () => {
   const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:5000" : "");
@@ -31,26 +32,33 @@ const EventPage = () => {
   const [showRegistrationModal, setShowRegistrationModal] = useState(false);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(null);
   const [copyStatus, setCopyStatus] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [retryNonce, setRetryNonce] = useState(0);
 
   useEffect(() => {
-    fetchEvent();
-  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+    const controller = new AbortController();
+    fetchEvent(controller.signal);
+    return () => controller.abort();
+  }, [id, retryNonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const fetchEvent = async () => {
+  const fetchEvent = async (signal) => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_BASE_URL}/api/events/${id}`);
+      setLoadError('');
+      const response = await axios.get(`${API_BASE_URL}/api/events/${id}`, { signal });
       
       if (response.data.success) {
-        setEvent(response.data.event);
+        setEvent(normalizePublicEvent(response.data.event));
       } else {
         navigate('/404');
       }
     } catch (error) {
+      if (axios.isCancel(error)) return;
       console.error('Error fetching event:', error);
-      navigate('/404');
+      if (error.response?.status === 404) navigate('/404');
+      else setLoadError('We could not load this event. Check your connection and try again.');
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   };
 
@@ -70,19 +78,6 @@ const EventPage = () => {
       navigator.clipboard.writeText(window.location.href);
       alert('Event URL copied to clipboard!');
     }
-  };
-
-  const normalizeLink = (value) => {
-    const url = String(value || '').trim();
-    if (!url) return '';
-    if (/^https?:\/\//i.test(url) || /^mailto:/i.test(url)) return url;
-    return `https://${url}`;
-  };
-
-  const parseEventDate = (value) => {
-    if (!value) return null;
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
   };
 
   const copyEventLink = async () => {
@@ -114,18 +109,20 @@ const EventPage = () => {
 
   const getEventStatus = () => {
     const now = new Date();
-    const startDate = new Date(event.startDate);
-    const endDate = new Date(event.endDate);
+    const startDate = event.date;
+    const endDate = event.endDate || startDate;
 
     if (event.status === 'cancelled') return { status: 'Cancelled', color: 'bg-red-100 text-red-800' };
     if (event.status === 'completed') return { status: 'Completed', color: 'bg-blue-100 text-blue-800' };
-    if (endDate < now) return { status: 'Past', color: 'bg-gray-100 text-gray-800' };
-    if (startDate <= now && endDate >= now) return { status: 'Ongoing', color: 'bg-green-100 text-green-800' };
+    if (endDate && endDate < now) return { status: 'Past', color: 'bg-gray-100 text-gray-800' };
+    if (startDate && endDate && startDate <= now && endDate >= now) return { status: 'Ongoing', color: 'bg-green-100 text-green-800' };
     return { status: 'Upcoming', color: 'bg-yellow-100 text-yellow-800' };
   };
 
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
+    const date = parseEventDate(dateString);
+    if (!date) return 'To be announced';
+    return date.toLocaleDateString('en-US', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -134,29 +131,37 @@ const EventPage = () => {
   };
 
   const formatTime = (dateString) => {
-    return new Date(dateString).toLocaleTimeString('en-US', {
+    const date = parseEventDate(dateString);
+    if (!date) return 'To be announced';
+    return date.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit'
     });
   };
 
-  if (loading) return <Loader />;
+  if (loading) return <EventDetailSkeleton />;
+  if (loadError) return <PublicErrorState title="Event unavailable" message={loadError} onRetry={() => setRetryNonce((value) => value + 1)} />;
   if (!event) return <div>Event not found</div>;
 
   const eventStatus = getEventStatus();
-  const registrationHref = normalizeLink(event?.registrationLink || event?.registrationUrl || '');
-  const externalHref = normalizeLink(event?.externalLink || '');
+  const { registrationHref, externalHref, isOpen } = publicEventRegistration(event);
+  const coordinatorNames = [...new Set([
+    ...(event.coordinatorUsers || []),
+    event.coordinatorUser,
+    ...(event.coordinators || []),
+  ].map(person => person?.name).filter(name => typeof name === 'string' && name.trim()))];
 
-  const eventStartDate = parseEventDate(event.startAt || event.startDate);
-  const eventEndDateRaw = parseEventDate(event.endAt || event.endDate) || null;
+  const eventStartDate = event.date;
+  const parsedEventEndDate = event.endDate;
   const eventEndDate =
-    eventEndDateRaw && eventEndDateRaw.getTime() > eventStartDate?.getTime()
-      ? eventEndDateRaw
-      : eventStartDate
-      ? new Date(eventStartDate.getTime() + 60 * 60 * 1000)
+    parsedEventEndDate && parsedEventEndDate.getTime() > eventStartDate?.getTime()
+      ? parsedEventEndDate
       : null;
+  const calendarEndDate = eventEndDate || (eventStartDate
+      ? new Date(eventStartDate.getTime() + 60 * 60 * 1000)
+      : null);
 
-  const hasCalendarData = Boolean(eventStartDate && eventEndDate);
+  const hasCalendarData = Boolean(eventStartDate && calendarEndDate);
 
   const toGoogleDate = (date) =>
     date?.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
@@ -164,7 +169,7 @@ const EventPage = () => {
   const calendarHref = hasCalendarData
     ? `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(
         event.title || '',
-      )}&dates=${toGoogleDate(eventStartDate)}/${toGoogleDate(eventEndDate)}&details=${encodeURIComponent(
+        )}&dates=${toGoogleDate(eventStartDate)}/${toGoogleDate(calendarEndDate)}&details=${encodeURIComponent(
         event.description || event.shortDescription || '',
       )}&location=${encodeURIComponent(event.location || '')}&sf=true&output=xml`
     : '';
@@ -249,7 +254,7 @@ const EventPage = () => {
                   <Calendar className="text-blue-600" size={20} />
                   <div>
                     <p className="font-medium text-gray-900">Date</p>
-                    <p className="text-gray-600">{formatDate(event.startDate)}</p>
+                    <p className="text-gray-600">{formatDate(eventStartDate)}</p>
                   </div>
                 </div>
                 
@@ -258,7 +263,8 @@ const EventPage = () => {
                   <div>
                     <p className="font-medium text-gray-900">Time</p>
                     <p className="text-gray-600">
-                      {formatTime(event.startDate)} - {formatTime(event.endDate)}
+                      {event.time || formatTime(eventStartDate)}
+                      {eventEndDate ? ` - ${formatTime(eventEndDate)}` : ''}
                     </p>
                   </div>
                 </div>
@@ -268,7 +274,7 @@ const EventPage = () => {
                   <div>
                     <p className="font-medium text-gray-900">Location</p>
                     <p className="text-gray-600">{event.location}</p>
-                    {event.venue && <p className="text-gray-500 text-sm">{event.venue}</p>}
+                    {event.venue && event.venue !== event.location && <p className="text-gray-500 text-sm">{event.venue}</p>}
                   </div>
                 </div>
                 
@@ -296,7 +302,7 @@ const EventPage = () => {
               
               <div className="prose max-w-none">
                 <h3 className="text-lg font-semibold text-gray-900 mb-3">About This Event</h3>
-                <div className="text-gray-700 whitespace-pre-wrap">{event.description}</div>
+                <div className="text-gray-700 whitespace-pre-wrap">{event.fullDescription}</div>
               </div>
             </div>
 
@@ -364,11 +370,11 @@ const EventPage = () => {
                   {event.registrationFee > 0 ? `₹${event.registrationFee}` : 'Free'}
                 </div>
                 <div className="text-gray-600">
-                  Registration {event.isRegistrationOpen ? 'Open' : 'Closed'}
+                  Registration {event.isFull ? 'Full' : isOpen ? 'Open' : 'Closed'}
                 </div>
               </div>
 
-              {event.isRegistrationOpen && !event.isFull ? (
+              {isOpen ? (
                 registrationHref ? (
                   <a
                     href={registrationHref}
@@ -391,12 +397,6 @@ const EventPage = () => {
               {event.isFull && (
                 <div className="w-full bg-red-100 text-red-800 py-3 px-4 rounded-lg text-center font-medium mb-3">
                   Event Full
-                </div>
-              )}
-
-              {!event.isRegistrationOpen && !registrationHref && (
-                <div className="w-full bg-gray-100 text-gray-800 py-3 px-4 rounded-lg text-center font-medium mb-3">
-                  Registration Closed
                 </div>
               )}
 
@@ -433,14 +433,14 @@ const EventPage = () => {
                 </a>
               ) : null}
 
-              <div className="mt-6 pt-6 border-t">
+              {event.registrationDeadline ? <div className="mt-6 pt-6 border-t">
                 <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
                   <span>Registration Deadline</span>
                 </div>
                 <div className="text-gray-900 font-medium">
                   {formatDate(event.registrationDeadline)}
                 </div>
-              </div>
+              </div> : null}
 
               {event.maxParticipants > 0 && (
                 <div className="mt-4">
@@ -461,27 +461,16 @@ const EventPage = () => {
             </div>
 
             {/* Coordinators */}
-            {event.coordinators && event.coordinators.length > 0 && (
+            {coordinatorNames.length > 0 && (
               <div className="bg-white rounded-lg shadow-sm p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Event Coordinators</h3>
-                <div className="space-y-3">
-                  {event.coordinators.map(coordinator => (
-                    <div key={coordinator._id} className="flex items-center gap-3">
-                      <img
-                        src={coordinator.profilePicture 
-                          ? `${import.meta.env.VITE_API_URL}${coordinator.profilePicture}`
-                          : `https://ui-avatars.com/api/?name=${encodeURIComponent(coordinator.name)}&background=random&size=40`
-                        }
-                        alt={coordinator.name}
-                        className="w-10 h-10 rounded-full"
-                      />
-                      <div>
-                        <div className="font-medium text-gray-900">{coordinator.name}</div>
-                        <div className="text-sm text-gray-600">{coordinator.role}</div>
-                      </div>
-                    </div>
+                <ul className="space-y-3">
+                  {coordinatorNames.map(name => (
+                    <li key={name} className="flex items-center gap-3 text-gray-900">
+                      <User aria-hidden="true" className="text-gray-400" size={18} /> {name}
+                    </li>
                   ))}
-                </div>
+                </ul>
               </div>
             )}
 

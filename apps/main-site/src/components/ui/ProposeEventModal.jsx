@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { toast } from 'react-hot-toast';
 import { FaTimes, FaCalendarAlt, FaUsers, FaClock, FaMapMarkerAlt, FaDollarSign } from 'react-icons/fa';
 import axios from 'axios';
+import PublicSelect from './PublicSelect';
 
 const ProposeEventModal = ({ isOpen, onClose, onProposalSubmitted }) => {
   const [loading, setLoading] = useState(false);
@@ -180,39 +181,31 @@ const ProposeEventModal = ({ isOpen, onClose, onProposalSubmitted }) => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Category *
-                </label>
-                <select
+                <label htmlFor="proposal-category" className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
+                <PublicSelect
+                  id="proposal-category"
                   name="category"
                   value={formData.category}
                   onChange={handleInputChange}
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select category</option>
-                  {categories.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
+                  placeholder="Select category"
+                  requiredMessage="Choose an event category."
+                  options={categories}
+                />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Target Audience *
-                </label>
-                <select
+                <label htmlFor="proposal-target-audience" className="block text-sm font-medium text-gray-700 mb-1">Target Audience *</label>
+                <PublicSelect
+                  id="proposal-target-audience"
                   name="targetAudience"
                   value={formData.targetAudience}
                   onChange={handleInputChange}
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select target audience</option>
-                  {targetAudiences.map(audience => (
-                    <option key={audience} value={audience}>{audience}</option>
-                  ))}
-                </select>
+                  placeholder="Select target audience"
+                  requiredMessage="Choose who this event is for."
+                  options={targetAudiences}
+                />
               </div>
 
               <div className="md:col-span-2">

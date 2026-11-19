@@ -486,11 +486,14 @@ export const seedEmailTemplates = async () => {
     },
   ];
 
-  for (const t of templatesToSeed) {
-    // eslint-disable-next-line no-await-in-loop
-    const existing = await EmailTemplate.findOne({ key: t.key });
-    if (existing) continue; // never overwrite user-edited templates
-    // eslint-disable-next-line no-await-in-loop
-    await EmailTemplate.create(t);
-  }
+  await EmailTemplate.bulkWrite(
+    templatesToSeed.map((template) => ({
+      updateOne: {
+        filter: { key: template.key },
+        update: { $setOnInsert: template },
+        upsert: true,
+      },
+    })),
+    { ordered: false },
+  );
 };

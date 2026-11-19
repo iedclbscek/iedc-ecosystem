@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { X, User, Mail, Phone, Calendar, Upload, MapPin } from 'lucide-react';
+import PublicSelect from './PublicSelect';
 
 const EventRegistrationModal = ({ isOpen, onClose, event, onSuccess }) => {
   const [formData, setFormData] = useState({
@@ -180,17 +181,16 @@ const EventRegistrationModal = ({ isOpen, onClose, event, onSuccess }) => {
 
       case 'select':
         return (
-          <select
+          <PublicSelect
+            id={`event-registration-${field.fieldId}`}
+            name={field.fieldId}
             value={fieldValue}
             onChange={(e) => handleCustomFieldChange(field.fieldId, e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             required={field.required}
-          >
-            <option value="">{field.placeholder || 'Select an option'}</option>
-            {field.options?.map((option, index) => (
-              <option key={index} value={option}>{option}</option>
-            ))}
-          </select>
+            placeholder={field.placeholder || 'Select an option'}
+            requiredMessage={`Choose an option for ${field.label}.`}
+            options={field.options || []}
+          />
         );
 
       case 'radio':
@@ -356,7 +356,7 @@ const EventRegistrationModal = ({ isOpen, onClose, event, onSuccess }) => {
                   .sort((a, b) => (a.order || 0) - (b.order || 0))
                   .map((field) => (
                     <div key={field.fieldId}>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label htmlFor={field.fieldType === 'select' ? `event-registration-${field.fieldId}` : undefined} className="block text-sm font-medium text-gray-700 mb-2">
                         {field.label}
                         {field.required && <span className="text-red-500 ml-1">*</span>}
                       </label>

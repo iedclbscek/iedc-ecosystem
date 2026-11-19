@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import User from "../models/User.js";
 import crypto from "crypto";
@@ -9,8 +10,52 @@ import StaffGuestRegistration from "../models/StaffGuestRegistration.js";
 import { sendMail } from "../utils/mailer.js";
 import EmailTemplate from "../models/EmailTemplate.js";
 import { renderTemplate } from "../utils/templateRenderer.js";
+import ClubMembership from "../models/ClubMembership.js";
+
+import {
+  canUseIedcWorkspace,
+  isSuperAdmin,
+  getClubEventAccess,
+  normalizePortalRole,
+} from "../utils/authorization.js";
 
 const COOKIE_NAME = "token";
+
+const getAuthorizationContext = async (user) => {
+  const memberships = await ClubMembership.find({ userId: user._id }).select("clubId permissions role status").lean();
+  const grants = new Map(memberships.map(m => [String(m.clubId), m]));
+  const membershipClubIds = memberships.map((membership) => membership.clubId);
+  const clubs = await Club.find(
+    isSuperAdmin(user)
+      ? {}
+      : {
+          $or: [
+            { _id: { $in: membershipClubIds } },
+            { memberUsers: user._id },
+            { managerUsers: user._id },
+            { editorUsers: user._id },
+          ],
+        },
+  ).select("name memberUsers managerUsers editorUsers").sort({ name: 1 }).lean();
+  const authUser = {
+    id: user._id,
+    role: user.role,
+    permissions: Array.isArray(user.permissions) ? user.permissions : [],
+  };
+  const resolved = clubs.map(club => ({
+    id: club._id,
+    name: club.name,
+    access: getClubEventAccess({ club, user: authUser, membership: grants.get(String(club._id)) }),
+  }));
+  const portalRole = normalizePortalRole(user.role);
+  return {
+    portalRole,
+    isClubLead: clubs.some((club, index) => resolved[index].access.view &&
+      club.managerUsers?.some((id) => String(id) === String(user._id))),
+    canUseIedc: canUseIedcWorkspace(user),
+    workspaces: resolved.filter((workspace) => workspace.access.view),
+  };
+};
 
 const getCookieOptions = () => {
   const isProd = process.env.NODE_ENV === "production";
@@ -27,7 +72,7 @@ const getCookieOptions = () => {
   // If they're completely different domains, SameSite=none is required but may be blocked by Safari ITP.
   const useLaxForSameDomain = domain && isProd;
 
-  const cookieOpts = {
+  return {
     httpOnly: true,
     secure: isProd, // Required for SameSite=none
     sameSite: useLaxForSameDomain ? "lax" : isProd ? "none" : "lax",
@@ -36,18 +81,13 @@ const getCookieOptions = () => {
     path: "/",
   };
 
-  // Debug logging in development
-  if (!isProd) {
-    console.log("[Cookie Options]", cookieOpts);
-  }
-
-  return cookieOpts;
 };
 
 export const login = async (req, res) => {
-  const { membershipId, password } = req.body;
+  const { membershipId, password } = req.body || {};
 
-  if (!membershipId || !password) {
+  if (typeof membershipId !== "string" || membershipId.length > 256 || !membershipId.trim() ||
+      typeof password !== "string" || !password || password.length > 1024) {
     return res
       .status(400)
       .json({ message: "membershipId and password are required" });
@@ -60,8 +100,8 @@ export const login = async (req, res) => {
   try {
     const normalizedMembershipId = String(membershipId).trim().toLowerCase();
     const user = await User.findOne({ membershipId: normalizedMembershipId });
-    if (!user)
-      return res.status(401).json({ message: "Invalid Membership ID" });
+    if (!user || !(await bcrypt.compare(password, user.password)))
+      return res.status(401).json({ message: "Invalid membership ID or password" });
 
     if (user.portalAccessEnabled === false) {
       return res
@@ -69,22 +109,12 @@ export const login = async (req, res) => {
         .json({ message: "Access to the admin portal is disabled" });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(401).json({ message: "Invalid password" });
 
-    let isClubLead = false;
-    try {
-      const leadCount = await Club.countDocuments({ managerUsers: user._id });
-      isClubLead = leadCount > 0;
-    } catch {
-      isClubLead = false;
-    }
+    const authorization = await getAuthorizationContext(user);
 
     const token = jwt.sign(
       {
         id: user._id,
-        role: user.role,
-        permissions: Array.isArray(user.permissions) ? user.permissions : [],
       },
       process.env.JWT_SECRET,
       { expiresIn: "7d" },
@@ -104,10 +134,11 @@ export const login = async (req, res) => {
         permissions: user.permissions,
         portalAccessEnabled: user.portalAccessEnabled,
         websiteProfile: user.websiteProfile,
-        isClubLead,
+
+        ...authorization,
       });
   } catch (error) {
-    res.status(500).json({ message: "Login Error", error: error.message });
+    res.status(500).json({ message: "Unable to sign in" });
   }
 };
 
@@ -135,13 +166,7 @@ export const me = async (req, res) => {
         .json({ message: "Access to the admin portal is disabled" });
     }
 
-    let isClubLead = false;
-    try {
-      const leadCount = await Club.countDocuments({ managerUsers: user._id });
-      isClubLead = leadCount > 0;
-    } catch {
-      isClubLead = false;
-    }
+    const authorization = await getAuthorizationContext(user);
 
     res.json({
       id: user._id,
@@ -152,7 +177,8 @@ export const me = async (req, res) => {
       permissions: user.permissions,
       portalAccessEnabled: user.portalAccessEnabled,
       websiteProfile: user.websiteProfile,
-      isClubLead,
+
+      ...authorization,
     });
   } catch (error) {
     res.status(401).json({ message: "Not authenticated" });
@@ -160,45 +186,28 @@ export const me = async (req, res) => {
 };
 
 export const setPassword = async (req, res) => {
-  const { userId, token, password } = req.body;
+  const { userId, token, password } = req.body || {};
 
-  if (!userId || !token || !password) {
+  if (!mongoose.isObjectIdOrHexString(userId) || typeof token !== "string" || !token ||
+      typeof password !== "string" || !password || password.length > 1024) {
     return res
       .status(400)
       .json({ message: "userId, token and password are required" });
   }
 
   try {
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ message: "User not found" });
-
-    if (!user.passwordSetupTokenHash || !user.passwordSetupExpiresAt) {
-      return res
-        .status(400)
-        .json({ message: "Password setup link is invalid" });
-    }
-
-    if (user.passwordSetupExpiresAt.getTime() < Date.now()) {
-      return res
-        .status(400)
-        .json({ message: "Password setup link has expired" });
-    }
-
-    const incomingHash = crypto
-      .createHash("sha256")
-      .update(String(token))
-      .digest("hex");
-    if (incomingHash !== user.passwordSetupTokenHash) {
-      return res
-        .status(400)
-        .json({ message: "Password setup link is invalid" });
-    }
-
-    const hashed = await bcrypt.hash(String(password), 10);
-    user.password = hashed;
-    user.passwordSetupTokenHash = undefined;
-    user.passwordSetupExpiresAt = undefined;
-    await user.save();
+    const match = {
+      _id: userId,
+      passwordSetupTokenHash: crypto.createHash("sha256").update(token).digest("hex"),
+      passwordSetupExpiresAt: { $gt: new Date() },
+    };
+    if (!await User.exists(match)) return res.status(400).json({ message: "Password setup link is invalid or expired" });
+    const hash = await bcrypt.hash(password, 10);
+    const saved = await User.updateOne({ ...match, passwordSetupExpiresAt: { $gt: new Date() } }, {
+      $set: { password: hash },
+      $unset: { passwordSetupTokenHash: "", passwordSetupExpiresAt: "" },
+    });
+    if (!saved.modifiedCount) return res.status(400).json({ message: "Password setup link is invalid or expired" });
 
     res.json({ message: "Password set successfully" });
   } catch (error) {

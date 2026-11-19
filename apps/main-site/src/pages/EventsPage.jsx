@@ -1,103 +1,107 @@
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion as Motion, AnimatePresence } from 'framer-motion';
 import { FaCalendarAlt, FaMapMarkerAlt, FaFilter, FaArrowRight, FaHistory, FaPlus } from 'react-icons/fa';
-import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import Loader from '../components/ui/Loader'; // Assuming you have this
+import { normalizePublicEvent, publicEventRegistration } from '../utils/publicEvent';
+import { EventsSkeleton, PublicErrorState } from '../components/ui/PublicPageState';
 import EventDetailModal from '../components/ui/EventDetailModal'; // Assuming you have this
 import ProposeEventModal from '../components/ui/ProposeEventModal'; // Assuming you have this
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:5000" : "");
+if (import.meta.env.PROD && !import.meta.env.VITE_API_URL) throw new Error("VITE_API_URL is required in production");
+const PAGE_SIZE = 24;
+
 const EventsPage = () => {
-  const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:5000" : "");
-  if (import.meta.env.PROD && !import.meta.env.VITE_API_URL) throw new Error("VITE_API_URL is required in production");
-  const navigate = useNavigate();
   const [activeFilter, setActiveFilter] = useState('All');
-  const [events, setEvents] = useState([]);
   const [upcomingEvents, setUpcomingEvents] = useState([]);
   const [pastEvents, setPastEvents] = useState([]);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showProposeModal, setShowProposeModal] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(null);
+  const [error, setError] = useState('');
+  const [paginationError, setPaginationError] = useState(null);
+  const [retryNonce, setRetryNonce] = useState(0);
   const [categories, setCategories] = useState(['All']);
-
-  const normalizeEvent = (event) => {
-    const start = event?.startAt || event?.startDate || event?.date || event?.createdAt;
-    const end = event?.endAt || event?.endDate || start;
-
-    return {
-      ...event,
-      date: start,
-      endDate: end,
-      category: event?.category || event?.club?.name || 'IEDC',
-      location: event?.location || 'TBA',
-      image: event?.image || null,
-      fullDescription: event?.fullDescription || event?.description || '',
-    };
-  };
+  const [upcomingPage, setUpcomingPage] = useState(1);
+  const [pastPage, setPastPage] = useState(1);
+  const [hasMoreUpcoming, setHasMoreUpcoming] = useState(false);
+  const [hasMorePast, setHasMorePast] = useState(false);
 
   // --- 1. Data Fetching (Kept logic same, just structure) ---
   useEffect(() => {
+    const controller = new AbortController();
     const fetchEvents = async () => {
       try {
         setLoading(true);
-        // Using sample data fallback if API fails (for preview purposes)
-        // Replace with your actual API call in production
-        const response = await axios.get(`${API_BASE_URL}/api/events`, {
-          params: { status: 'published', limit: 100 }
-        }).catch(() => ({ data: { success: false } }));
-
-        let fetchedEvents = [];
-        if (response.data && response.data.success) {
-          fetchedEvents = Array.isArray(response.data.events)
-            ? response.data.events.map(normalizeEvent)
-            : [];
-        } else {
-            fetchedEvents = [];
+        setError('');
+        const category = activeFilter === 'All' ? undefined : activeFilter;
+        const [upcomingResponse, pastResponse] = await Promise.all([
+          axios.get(`${API_BASE_URL}/api/events`, {
+            params: { limit: PAGE_SIZE, page: 1, time: 'upcoming', category, includeCategories: true },
+            signal: controller.signal,
+          }),
+          axios.get(`${API_BASE_URL}/api/events`, {
+            params: { limit: PAGE_SIZE, page: 1, time: 'past', category },
+            signal: controller.signal,
+          }),
+        ]);
+        if (!upcomingResponse.data?.success || !pastResponse.data?.success) {
+          throw new Error('Invalid events response');
         }
-
-        setEvents(fetchedEvents);
-
-        // Extract Categories
-        const uniqueCategories = ['All', ...new Set(fetchedEvents
-          .map(event => event.category)
-          .filter(Boolean))];
-        setCategories(uniqueCategories);
+        setUpcomingEvents((upcomingResponse.data.events || []).map(normalizePublicEvent));
+        setPastEvents((pastResponse.data.events || []).map(normalizePublicEvent));
+        setUpcomingPage(1);
+        setPastPage(1);
+        setHasMoreUpcoming(Boolean(upcomingResponse.data.hasMore));
+        setHasMorePast(Boolean(pastResponse.data.hasMore));
+        setCategories(['All', ...(upcomingResponse.data.categories || [])]);
 
       } catch (error) {
+        if (axios.isCancel(error)) return;
         console.error('Error fetching events:', error);
+        setError('We could not load the event feed. Check your connection and try again.');
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     };
 
     fetchEvents();
-  }, []);
+    return () => controller.abort();
+  }, [activeFilter, retryNonce]);
 
-  // --- 2. Filtering Logic ---
-  useEffect(() => {
-    // If no events, stop
-    // if (!events.length) return; 
-
-    const now = new Date();
-    
-    // Filter by Category
-    let filtered = events;
-    if (activeFilter !== 'All') {
-      filtered = events.filter(event => event.category === activeFilter);
+  const loadMore = async (time) => {
+    const isUpcoming = time === 'upcoming';
+    const nextPage = (isUpcoming ? upcomingPage : pastPage) + 1;
+    try {
+      setLoadingMore(time);
+      setPaginationError(null);
+      const { data } = await axios.get(`${API_BASE_URL}/api/events`, {
+        params: {
+          limit: PAGE_SIZE,
+          page: nextPage,
+          time,
+          category: activeFilter === 'All' ? undefined : activeFilter,
+        },
+      });
+      const nextEvents = (data.events || []).map(normalizePublicEvent);
+      if (isUpcoming) {
+        setUpcomingEvents((current) => [...current, ...nextEvents]);
+        setUpcomingPage(nextPage);
+        setHasMoreUpcoming(Boolean(data.hasMore));
+      } else {
+        setPastEvents((current) => [...current, ...nextEvents]);
+        setPastPage(nextPage);
+        setHasMorePast(Boolean(data.hasMore));
+      }
+    } catch (requestError) {
+      console.error(`Error loading more ${time} events:`, requestError);
+      setPaginationError({ time, message: `We could not load more ${time} events.` });
+    } finally {
+      setLoadingMore(null);
     }
-    
-    // Split Time
-    setUpcomingEvents(filtered.filter(event => {
-      const date = event.endDate ? new Date(event.endDate) : new Date(event.date);
-      return date >= now;
-    }));
-    
-    setPastEvents(filtered.filter(event => {
-      const date = event.endDate ? new Date(event.endDate) : new Date(event.date);
-      return date < now;
-    }));
-  }, [events, activeFilter]);
+  };
 
   const openEventDetail = (event) => {
     setSelectedEvent(event);
@@ -109,7 +113,8 @@ const EventsPage = () => {
     // Add toast notification logic here
   };
 
-  if (loading) return <div className="min-h-screen bg-bg-main flex items-center justify-center"><div className="animate-spin w-8 h-8 border-2 border-accent border-t-transparent rounded-full"></div></div>;
+  if (loading) return <EventsSkeleton />;
+  if (error) return <PublicErrorState title="Events unavailable" message={error} onRetry={() => setRetryNonce((value) => value + 1)} />;
 
   return (
     <div className="min-h-screen bg-bg-main">
@@ -118,14 +123,14 @@ const EventsPage = () => {
       <section className="pt-32 pb-16 bg-white border-b border-gray-200">
         <div className="container mx-auto px-6">
           <div className="max-w-4xl">
-            <motion.span 
+            <Motion.span
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               className="text-accent font-mono font-bold tracking-widest text-sm uppercase mb-4 block"
             >
               01 // SYSTEM_LOGS
-            </motion.span>
-            <motion.h1 
+            </Motion.span>
+            <Motion.h1
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
@@ -133,8 +138,8 @@ const EventsPage = () => {
             >
               OPERATIONAL <br />
               <span className="text-gray-300">TIMELINE.</span>
-            </motion.h1>
-            <motion.p 
+            </Motion.h1>
+            <Motion.p
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
@@ -142,7 +147,7 @@ const EventsPage = () => {
             >
               Synchronize with upcoming workshops, hackathons, and venture drills. 
               Secure your slot in the deployment queue.
-            </motion.p>
+            </Motion.p>
           </div>
         </div>
       </section>
@@ -181,7 +186,6 @@ const EventsPage = () => {
           */}
         </div>
       </section>
-
       {/* --- UPCOMING DEPLOYMENTS --- */}
       <section className="py-20">
         <div className="container mx-auto px-6">
@@ -204,6 +208,7 @@ const EventsPage = () => {
               </p>
             </div>
           ) : (
+            <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               <AnimatePresence>
                 {upcomingEvents.map((event, index) => (
@@ -216,6 +221,15 @@ const EventsPage = () => {
                 ))}
               </AnimatePresence>
             </div>
+            {hasMoreUpcoming && (
+              <div className="mt-12 text-center">
+                <button type="button" disabled={loadingMore === 'upcoming'} onClick={() => loadMore('upcoming')} className="border border-text-dark bg-white px-7 py-3 font-mono text-xs font-bold uppercase tracking-widest disabled:opacity-50">
+                  {loadingMore === 'upcoming' ? 'Loading…' : 'Load more upcoming events'}
+                </button>
+              </div>
+            )}
+            {paginationError?.time === 'upcoming' && <p className="mt-4 text-center text-sm text-red-600" role="alert">{paginationError.message} Use the button to retry.</p>}
+            </>
           )}
         </div>
       </section>
@@ -240,10 +254,10 @@ const EventsPage = () => {
                 >
                   <div className="bg-gray-100 p-3 mr-4 font-mono text-xs text-center min-w-[60px]">
                      <span className="block font-bold text-gray-600">
-                       {new Date(event.date).getDate()}
+                       {event.date?.getDate() ?? 'TBA'}
                      </span>
                      <span className="block text-gray-400 uppercase">
-                       {new Date(event.date).toLocaleString('default', { month: 'short' })}
+                       {event.date?.toLocaleString('default', { month: 'short' })}
                      </span>
                   </div>
                   <div className="flex-grow">
@@ -258,6 +272,14 @@ const EventsPage = () => {
                 </div>
               ))}
             </div>
+            {hasMorePast && (
+              <div className="mt-10 text-center">
+                <button type="button" disabled={loadingMore === 'past'} onClick={() => loadMore('past')} className="border border-gray-400 bg-white px-7 py-3 font-mono text-xs font-bold uppercase tracking-widest disabled:opacity-50">
+                  {loadingMore === 'past' ? 'Loading…' : 'Load more archived events'}
+                </button>
+              </div>
+            )}
+            {paginationError?.time === 'past' && <p className="mt-4 text-center text-sm text-red-600" role="alert">{paginationError.message} Use the button to retry.</p>}
           </div>
         </section>
       )}
@@ -280,10 +302,11 @@ const EventsPage = () => {
 
 // --- SUB-COMPONENT: The "Dossier" Card ---
 const EventCard = ({ event, index, onClick }) => {
-  const dateObj = new Date(event.date);
+  const dateObj = event.date;
+  const { isOpen } = publicEventRegistration(event);
   
   return (
-    <motion.div
+    <Motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.9 }}
@@ -303,7 +326,7 @@ const EventCard = ({ event, index, onClick }) => {
              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
           </span>
           <span className="font-mono text-[10px] font-bold text-green-600 uppercase">
-            OPEN
+            {isOpen ? 'Open' : 'Upcoming'}
           </span>
         </div>
       </div>
@@ -326,10 +349,10 @@ const EventCard = ({ event, index, onClick }) => {
         {/* Date Ticket Stub */}
         <div className="absolute top-0 left-0 bg-white border-r border-b border-gray-200 p-3 text-center min-w-[70px]">
           <span className="block text-2xl font-black text-text-dark leading-none">
-            {dateObj.getDate()}
+            {dateObj?.getDate() ?? 'TBA'}
           </span>
           <span className="block text-[10px] font-bold text-gray-400 uppercase">
-            {dateObj.toLocaleString('default', { month: 'short' })}
+            {dateObj?.toLocaleString('default', { month: 'short' })}
           </span>
         </div>
       </div>
@@ -348,7 +371,7 @@ const EventCard = ({ event, index, onClick }) => {
           <div className="flex items-center text-sm text-text-light">
              <FaCalendarAlt className="mr-3 text-gray-400 text-xs" />
              <span>
-                {dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                {event.time || dateObj?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || 'Time to be announced'}
              </span>
           </div>
         </div>
@@ -363,7 +386,7 @@ const EventCard = ({ event, index, onClick }) => {
            </div>
         </div>
       </div>
-    </motion.div>
+    </Motion.div>
   );
 };
 

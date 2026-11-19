@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { motion, AnimatePresence, useReducedMotion, useScroll, useTransform } from 'framer-motion';
+import { motion as Motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { FaArrowRight, FaArrowLeft, FaCheckCircle, FaSpinner, FaPaperPlane, FaLock } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
@@ -7,7 +7,6 @@ import {
   getFirstYearRepStatus,
   requestVerification,
   verifyOtp,
-  getProfile,
   submitApplication,
 } from '../services/firstYearRepService';
 
@@ -31,7 +30,7 @@ const InputGroup = ({ label, name, value, onChange, placeholder, error, disabled
 const TextareaGroup = ({ label, description, value, onChange, placeholder, error, maxLength }) => {
   const shouldReduceMotion = useReducedMotion();
   return (
-    <motion.div 
+    <Motion.div
       className="mb-4"
       animate={error && !shouldReduceMotion ? { x: [-5, 5, -5, 5, 0] } : {}}
       transition={{ duration: 0.3 }}
@@ -58,7 +57,7 @@ const TextareaGroup = ({ label, description, value, onChange, placeholder, error
           {value.length} / {maxLength}
         </p>
       </div>
-    </motion.div>
+    </Motion.div>
   );
 };
 
@@ -96,6 +95,8 @@ const FirstYearRepresentativesPage = () => {
   // Status State
   const [isOpen, setIsOpen] = useState(true);
   const [isStatusLoading, setIsStatusLoading] = useState(true);
+  const [statusError, setStatusError] = useState('');
+  const [statusRetryNonce, setStatusRetryNonce] = useState(0);
 
   // Animation settings
   const shouldReduceMotion = useReducedMotion();
@@ -119,24 +120,25 @@ const FirstYearRepresentativesPage = () => {
   };
 
   // Scroll Timeline Setup
-  const { scrollYProgress } = useScroll();
 
   // Fetch Application Open/Closed Status
   useEffect(() => {
     const fetchStatus = async () => {
       try {
+        setStatusError('');
         const data = await getFirstYearRepStatus();
         if (data && typeof data.isOpen === 'boolean') {
           setIsOpen(data.isOpen);
         }
       } catch (e) {
         console.error("Failed to fetch application status:", e);
+        setStatusError('We could not confirm whether applications are open.');
       } finally {
         setIsStatusLoading(false);
       }
     };
     fetchStatus();
-  }, []);
+  }, [statusRetryNonce]);
 
   // Initialize from sessionStorage
   useEffect(() => {
@@ -148,7 +150,7 @@ const FirstYearRepresentativesPage = () => {
         if (parsed.profile) setProfile(parsed.profile);
         if (parsed.answers) setAnswers(parsed.answers);
         if (parsed.otpToken) setOtpToken(parsed.otpToken);
-      } catch (e) {
+      } catch {
         sessionStorage.removeItem('fyr_application_draft');
       }
     }
@@ -263,7 +265,7 @@ const FirstYearRepresentativesPage = () => {
                     isPast ? 'border-text-dark bg-text-dark' : 'border-gray-200 bg-white'
                   }`}></div>
                   {isActive && (
-                    <motion.div 
+                    <Motion.div
                       layoutId="activeStepDot"
                       className="absolute w-3 h-3 rounded-full border-2 border-accent bg-accent z-20"
                       transition={{ type: "spring", stiffness: 300, damping: 30 }}
@@ -295,44 +297,44 @@ const FirstYearRepresentativesPage = () => {
       {/* HERO SECTION */}
       <section className="bg-text-dark text-white pt-32 pb-16 px-6 relative overflow-hidden">
         {/* Subtle Ambient Background Motion */}
-        <motion.div 
+        <Motion.div
           animate={shouldReduceMotion ? {} : { y: [0, 5, 0] }}
           transition={{ duration: 8, ease: "easeInOut", repeat: Infinity }}
           className="absolute inset-0 opacity-10 [background-image:linear-gradient(to_right,#ffffff_1px,transparent_1px),linear-gradient(to_bottom,#ffffff_1px,transparent_1px)] [background-size:40px_40px]"
-        ></motion.div>
+        ></Motion.div>
         
-        <motion.div 
+        <Motion.div
           className="max-w-4xl mx-auto relative z-10"
           initial="hidden"
           animate="visible"
           variants={staggerContainer}
         >
           <div className="flex flex-wrap items-center gap-3 mb-4">
-            <motion.div variants={fadeUpVariant} className="inline-block px-3 py-1 border border-accent text-accent font-mono text-xs font-bold tracking-widest">
+            <Motion.div variants={fadeUpVariant} className="inline-block px-3 py-1 border border-accent text-accent font-mono text-xs font-bold tracking-widest">
               IEDC // 2026
-            </motion.div>
+            </Motion.div>
             {!isOpen && (
-              <motion.div variants={fadeUpVariant} className="inline-flex items-center gap-2 px-3 py-1 bg-red-500/10 border border-red-500/30 text-red-400 font-mono text-xs font-bold tracking-widest uppercase">
+              <Motion.div variants={fadeUpVariant} className="inline-flex items-center gap-2 px-3 py-1 bg-red-500/10 border border-red-500/30 text-red-400 font-mono text-xs font-bold tracking-widest uppercase">
                 <span className="w-2 h-2 rounded-full bg-red-500"></span>
                 Applications Closed
-              </motion.div>
+              </Motion.div>
             )}
           </div>
           
           {/* Line by line reveal */}
           <div className="text-4xl md:text-6xl font-black uppercase tracking-tighter leading-[0.9] mb-6 overflow-hidden">
-            <motion.div variants={fadeUpVariant}>CALL FOR</motion.div>
-            <motion.div variants={fadeUpVariant} className="text-accent">FIRST-YEAR</motion.div>
-            <motion.div variants={fadeUpVariant}>REPRESENTATIVES</motion.div>
+            <Motion.div variants={fadeUpVariant}>CALL FOR</Motion.div>
+            <Motion.div variants={fadeUpVariant} className="text-accent">FIRST-YEAR</Motion.div>
+            <Motion.div variants={fadeUpVariant}>REPRESENTATIVES</Motion.div>
           </div>
 
-          <motion.p variants={fadeUpVariant} className="text-gray-300 max-w-xl text-lg mb-8 leading-relaxed font-bold">
+          <Motion.p variants={fadeUpVariant} className="text-gray-300 max-w-xl text-lg mb-8 leading-relaxed font-bold">
             Be the voice of your batch.<br/>
             <span className="text-gray-400 font-normal mt-2 block">Represent. Connect. Lead.</span>
-          </motion.p>
+          </Motion.p>
           
-          <motion.div variants={fadeUpVariant} className="flex flex-col sm:flex-row gap-8 items-start sm:items-center">
-            <motion.button 
+          <Motion.div variants={fadeUpVariant} className="flex flex-col sm:flex-row gap-8 items-start sm:items-center">
+            <Motion.button
               whileHover={shouldReduceMotion ? {} : { scale: 1.02, y: -2 }}
               whileTap={shouldReduceMotion ? {} : { scale: 0.96 }}
               onClick={() => document.getElementById('application-flow').scrollIntoView({ behavior: 'smooth' })} 
@@ -343,31 +345,31 @@ const FirstYearRepresentativesPage = () => {
               } font-mono text-xs font-bold uppercase tracking-widest transition-colors flex items-center gap-3`}
             >
               {isOpen ? "Apply Now" : "Application Status"} <FaArrowRight />
-            </motion.button>
-          </motion.div>
-          <motion.div variants={fadeUpVariant} className="mt-12 font-mono text-xs font-bold tracking-widest text-gray-500 uppercase">
+            </Motion.button>
+          </Motion.div>
+          <Motion.div variants={fadeUpVariant} className="mt-12 font-mono text-xs font-bold tracking-widest text-gray-500 uppercase">
             FIRST-YEAR STUDENTS · LBSCEK
-          </motion.div>
-        </motion.div>
+          </Motion.div>
+        </Motion.div>
       </section>
 
       {/* INFORMATION BLOCKS */}
       <section className="py-16 px-6 border-b border-gray-200">
-        <motion.div 
+        <Motion.div
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true, margin: "-50px" }}
           variants={staggerContainer}
           className="max-w-4xl mx-auto"
         >
-          <motion.div variants={fadeUpVariant} className="mb-12">
+          <Motion.div variants={fadeUpVariant} className="mb-12">
             <h2 className="text-2xl md:text-3xl font-black uppercase tracking-tighter text-text-dark mb-4">
               Become the voice of your batch.
             </h2>
             <p className="text-text-light max-w-2xl">
               As a representative, you will connect your batch with IEDC activities, communities, and innovation programs. You don't need prior leadership experience—curiosity matters more than experience.
             </p>
-          </motion.div>
+          </Motion.div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
@@ -376,7 +378,7 @@ const FirstYearRepresentativesPage = () => {
               { title: 'Lead', desc: 'Build communication, coordination and leadership skills.' },
               { title: 'Grow', desc: 'Learn, contribute and grow with your community.' }
             ].map((benefit, i) => (
-              <motion.div 
+              <Motion.div
                 variants={fadeUpVariant}
                 whileHover={shouldReduceMotion ? {} : { y: -4, borderColor: '#16a34a' }}
                 key={i} 
@@ -385,18 +387,18 @@ const FirstYearRepresentativesPage = () => {
                 <span className="text-3xl font-black text-gray-100 group-hover:text-accent transition-colors">0{i+1}</span>
                 <h3 className="mt-4 font-mono text-xs font-bold tracking-widest uppercase text-text-dark mb-2">{benefit.title}</h3>
                 <p className="text-sm text-text-light leading-relaxed">{benefit.desc}</p>
-              </motion.div>
+              </Motion.div>
             ))}
           </div>
           
-          <motion.div variants={fadeUpVariant} className="mt-16 pt-16 border-t border-gray-100">
+          <Motion.div variants={fadeUpVariant} className="mt-16 pt-16 border-t border-gray-100">
             <h3 className="text-lg font-black uppercase tracking-tighter text-text-dark mb-12 text-center">
               WHAT DOES A REPRESENTATIVE DO?
             </h3>
             
             <div className="max-w-xl mx-auto relative pl-8 border-l-2 border-gray-100 space-y-12 pb-6">
               {/* Animated Progress Line */}
-              <motion.div 
+              <Motion.div
                 className="absolute left-[-2px] top-0 bottom-0 w-[2px] bg-accent origin-top"
                 initial={{ scaleY: 0 }}
                 whileInView={{ scaleY: 1 }}
@@ -410,7 +412,7 @@ const FirstYearRepresentativesPage = () => {
                 { title: 'LISTEN', desc: 'Understand what your batch needs.' },
                 { title: 'CONTRIBUTE', desc: 'Bring ideas and students into the IEDC ecosystem.' }
               ].map((role, i) => (
-                <motion.div 
+                <Motion.div
                   initial="hidden"
                   whileInView="visible"
                   viewport={{ once: true, margin: "-10%" }}
@@ -419,7 +421,7 @@ const FirstYearRepresentativesPage = () => {
                   className="relative"
                 >
                    {/* Node indicator */}
-                   <motion.div 
+                   <Motion.div
                      initial={{ scale: 0, backgroundColor: '#ffffff', borderColor: '#d1d5db' }}
                      whileInView={{ scale: 1, backgroundColor: '#eab308', borderColor: '#eab308' }}
                      viewport={{ once: true, margin: "-10%" }}
@@ -429,18 +431,31 @@ const FirstYearRepresentativesPage = () => {
                    <span className="text-accent font-mono text-xs font-bold mb-1 block">0{i+1}</span>
                    <h4 className="font-black uppercase text-text-dark mb-2 text-xl">{role.title}</h4>
                    <p className="text-base text-text-light">{role.desc}</p>
-                </motion.div>
+                </Motion.div>
               ))}
             </div>
-          </motion.div>
-        </motion.div>
+          </Motion.div>
+        </Motion.div>
       </section>
 
       {/* APPLICATION FLOW */}
       <section id="application-flow" className="py-16 px-6">
         <div className="max-w-2xl mx-auto">
           
-          {!isOpen ? (
+          {isStatusLoading ? (
+            <div className="bg-white p-8 md:p-12 border border-gray-200 shadow-sm" aria-busy="true" aria-label="Checking application status">
+              <div className="h-4 w-36 bg-gray-200 animate-pulse mb-5" />
+              <div className="h-9 w-4/5 bg-gray-200 animate-pulse mb-4" />
+              <div className="h-4 w-full bg-gray-100 animate-pulse mb-2" />
+              <div className="h-4 w-2/3 bg-gray-100 animate-pulse" />
+            </div>
+          ) : statusError ? (
+            <div className="bg-white p-8 md:p-12 border border-red-200 shadow-sm text-center" role="alert">
+              <h3 className="text-2xl font-black uppercase tracking-tighter text-text-dark mb-3">Status unavailable</h3>
+              <p className="text-text-light mb-6">{statusError}</p>
+              <button type="button" onClick={() => { setIsStatusLoading(true); setStatusRetryNonce((value) => value + 1); }} className="bg-text-dark text-white px-5 py-3 font-mono text-xs font-bold uppercase tracking-widest">Retry status check</button>
+            </div>
+          ) : !isOpen ? (
             <div className="bg-white p-8 md:p-12 border border-gray-200 shadow-sm text-center">
               <div className="w-16 h-16 bg-red-50 border border-red-200 rounded-full flex items-center justify-center mx-auto mb-6">
                 <FaLock className="text-red-500 text-2xl" />
@@ -478,7 +493,7 @@ const FirstYearRepresentativesPage = () => {
                   
                   {/* STEP 1: VERIFY */}
                   {currentStep === 1 && (
-                    <motion.div 
+                    <Motion.div
                       key="step1" 
                       initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 30 }} 
                       animate={{ opacity: 1, x: 0 }} 
@@ -554,12 +569,12 @@ const FirstYearRepresentativesPage = () => {
                       </button>
                     </form>
                   )}
-                </motion.div>
+                </Motion.div>
               )}
 
               {/* STEP 2: PROFILE */}
               {currentStep === 2 && (
-                <motion.div 
+                <Motion.div
                   key="step2" 
                   initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 30 }} 
                   animate={{ opacity: 1, x: 0 }} 
@@ -580,7 +595,7 @@ const FirstYearRepresentativesPage = () => {
                       <InputGroup label="Department" value={profile.department} disabled />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
-                      <InputGroup label="Semester" value={profile.semester} disabled />
+                      {profile.semester && <InputGroup label="Semester" value={profile.semester} disabled />}
                       <InputGroup label="Class (Optional)" value={profile.class} onChange={e => setProfile({...profile, class: e.target.value})} />
                     </div>
                     <InputGroup label="Email" value={profile.email} onChange={e => setProfile({...profile, email: e.target.value})} error={errors.email} />
@@ -590,12 +605,12 @@ const FirstYearRepresentativesPage = () => {
                   <button onClick={nextStep} className="w-full py-4 bg-text-dark text-white font-mono text-xs font-bold uppercase tracking-widest hover:bg-accent transition-colors flex justify-center items-center gap-2">
                     Looks Good, Continue <FaArrowRight />
                   </button>
-                </motion.div>
+                </Motion.div>
               )}
 
               {/* STEP 3: RESPOND */}
               {currentStep === 3 && (
-                <motion.div 
+                <Motion.div
                   key="step3" 
                   initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 30 }} 
                   animate={{ opacity: 1, x: 0 }} 
@@ -644,12 +659,12 @@ const FirstYearRepresentativesPage = () => {
                       Review Application <FaArrowRight />
                     </button>
                   </div>
-                </motion.div>
+                </Motion.div>
               )}
 
               {/* STEP 4: REVIEW */}
               {currentStep === 4 && (
-                <motion.div 
+                <Motion.div
                   key="step4" 
                   initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 30 }} 
                   animate={{ opacity: 1, x: 0 }} 
@@ -660,35 +675,35 @@ const FirstYearRepresentativesPage = () => {
                     04 // Review & Submit
                   </h3>
                   
-                  <motion.div 
+                  <Motion.div
                     className="mb-8 space-y-6"
                     initial="hidden"
                     animate="visible"
                     variants={staggerContainer}
                   >
-                    <motion.div variants={fadeUpVariant} className="p-4 bg-gray-50 border border-gray-200">
+                    <Motion.div variants={fadeUpVariant} className="p-4 bg-gray-50 border border-gray-200">
                       <h4 className="font-mono text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Profile</h4>
                       <p className="text-sm"><strong>Name:</strong> {profile.name}</p>
                       <p className="text-sm"><strong>ID:</strong> {profile.admissionNumber}</p>
-                      <p className="text-sm"><strong>Dept:</strong> {profile.department} - {profile.semester}</p>
+                      <p className="text-sm"><strong>Dept:</strong> {profile.department}{profile.semester && ` - ${profile.semester}`}</p>
                       <p className="text-sm"><strong>Contact:</strong> {profile.email} / {profile.phone}</p>
-                    </motion.div>
+                    </Motion.div>
 
-                    <motion.div variants={fadeUpVariant}>
+                    <Motion.div variants={fadeUpVariant}>
                       <h4 className="font-mono text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Q1. Why IEDC?</h4>
                       <p className="text-sm text-text-light whitespace-pre-wrap p-3 bg-gray-50 border border-gray-100">{answers.motivation}</p>
-                    </motion.div>
+                    </Motion.div>
 
-                    <motion.div variants={fadeUpVariant}>
+                    <Motion.div variants={fadeUpVariant}>
                       <h4 className="font-mono text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Q2. Teamwork</h4>
                       <p className="text-sm text-text-light whitespace-pre-wrap p-3 bg-gray-50 border border-gray-100">{answers.teamworkInitiative}</p>
-                    </motion.div>
+                    </Motion.div>
 
-                    <motion.div variants={fadeUpVariant}>
+                    <Motion.div variants={fadeUpVariant}>
                       <h4 className="font-mono text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Q3. Idea</h4>
                       <p className="text-sm text-text-light whitespace-pre-wrap p-3 bg-gray-50 border border-gray-100">{answers.representativeIdea}</p>
-                    </motion.div>
-                  </motion.div>
+                    </Motion.div>
+                  </Motion.div>
 
                   <div className="flex gap-4">
                     <button disabled={isSubmitting} onClick={prevStep} className="py-4 px-6 border border-gray-200 text-gray-500 font-mono text-xs font-bold uppercase tracking-widest hover:bg-gray-50 transition-colors flex justify-center items-center disabled:opacity-50">
@@ -701,32 +716,32 @@ const FirstYearRepresentativesPage = () => {
                     >
                       <AnimatePresence mode="wait">
                         {isSubmitting ? (
-                          <motion.div key="submitting" initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -20, opacity: 0 }} className="flex items-center gap-2">
+                          <Motion.div key="submitting" initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -20, opacity: 0 }} className="flex items-center gap-2">
                             <FaSpinner className="animate-spin" /> SUBMITTING...
-                          </motion.div>
+                          </Motion.div>
                         ) : (
-                          <motion.div key="submit" initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -20, opacity: 0 }} className="flex items-center gap-2">
+                          <Motion.div key="submit" initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -20, opacity: 0 }} className="flex items-center gap-2">
                             SUBMIT APPLICATION <FaPaperPlane />
-                          </motion.div>
+                          </Motion.div>
                         )}
                       </AnimatePresence>
                     </button>
                   </div>
-                </motion.div>
+                </Motion.div>
               )}
 
               {/* STEP 5: SUCCESS */}
               {currentStep === 5 && (
-                <motion.div 
+                <Motion.div
                   key="step5" 
                   initial="hidden" 
                   animate="visible" 
                   variants={staggerContainer} 
                   className="text-center py-10"
                 >
-                  <motion.div variants={fadeUpVariant} className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-6 relative">
+                  <Motion.div variants={fadeUpVariant} className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-6 relative">
                     <svg className="w-10 h-10 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
-                      <motion.path 
+                      <Motion.path
                         initial={{ pathLength: 0 }} 
                         animate={{ pathLength: 1 }} 
                         transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 }}
@@ -735,19 +750,19 @@ const FirstYearRepresentativesPage = () => {
                         d="M5 13l4 4L19 7" 
                       />
                     </svg>
-                  </motion.div>
-                  <motion.h3 variants={fadeUpVariant} className="text-2xl font-black uppercase tracking-tighter text-text-dark mb-4">
+                  </Motion.div>
+                  <Motion.h3 variants={fadeUpVariant} className="text-2xl font-black uppercase tracking-tighter text-text-dark mb-4">
                     Application Received
-                  </motion.h3>
-                  <motion.p variants={fadeUpVariant} className="text-text-light max-w-md mx-auto mb-8">
+                  </Motion.h3>
+                  <Motion.p variants={fadeUpVariant} className="text-text-light max-w-md mx-auto mb-8">
                     Thank you for putting yourself forward as an IEDC First-Year Representative. The IEDC team will review all applications and contact shortlisted students shortly.
-                  </motion.p>
-                  <motion.div variants={fadeUpVariant}>
+                  </Motion.p>
+                  <Motion.div variants={fadeUpVariant}>
                     <Link to="/" className="inline-flex py-3 px-8 border-2 border-text-dark text-text-dark font-mono text-xs font-bold uppercase tracking-widest hover:bg-text-dark hover:text-white transition-colors">
                       Back to IEDC Base
                     </Link>
-                  </motion.div>
-                </motion.div>
+                  </Motion.div>
+                </Motion.div>
               )}
 
             </AnimatePresence>

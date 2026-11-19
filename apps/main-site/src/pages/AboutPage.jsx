@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion as Motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { FaLightbulb, FaRocket, FaHandshake, FaGlobe, FaArrowRight } from 'react-icons/fa';
 
@@ -23,7 +23,7 @@ const AboutPage = () => {
       {/* 1. Hero: The Manifesto Header */}
       <section className="pt-40 pb-20 border-b border-gray-200 bg-white">
         <div className="container mx-auto px-6">
-          <motion.div
+          <Motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
@@ -43,7 +43,7 @@ const AboutPage = () => {
               It is the primary engine for transforming engineering students into the founders, 
               leaders, and disruptors of tomorrow's economy.
             </p>
-          </motion.div>
+          </Motion.div>
         </div>
       </section>
 
@@ -53,7 +53,7 @@ const AboutPage = () => {
           <div className="grid md:grid-cols-2 gap-16 lg:gap-24 items-start">
             
             {/* Mission Protocol */}
-            <motion.div 
+            <Motion.div
               initial={{ opacity: 0, x: -30 }}
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
@@ -80,10 +80,10 @@ const AboutPage = () => {
                   Foster Financial Independence
                 </li>
               </ul>
-            </motion.div>
+            </Motion.div>
 
             {/* Vision Protocol */}
-            <motion.div 
+            <Motion.div
               initial={{ opacity: 0, x: 30 }}
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
@@ -101,15 +101,15 @@ const AboutPage = () => {
                   <span className="font-mono text-xs text-accent font-bold">100%</span>
                 </div>
                 <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
-                  <motion.div 
+                  <Motion.div
                     initial={{ width: 0 }}
                     whileInView={{ width: "100%" }}
                     transition={{ duration: 1.5, delay: 0.5 }}
                     className="h-full bg-accent"
-                  ></motion.div>
+                  ></Motion.div>
                 </div>
               </div>
-            </motion.div>
+            </Motion.div>
 
           </div>
         </div>
@@ -129,7 +129,7 @@ const AboutPage = () => {
             </p>
           </div>
 
-          <motion.div 
+          <Motion.div
             variants={containerVariants}
             initial="hidden"
             whileInView="visible"
@@ -158,7 +158,7 @@ const AboutPage = () => {
                 desc: "We are local, but our standards are global. We benchmark against the best."
               }
             ].map((value, index) => (
-              <motion.div 
+              <Motion.div
                 key={index}
                 variants={itemVariants}
                 className="group p-8 border border-gray-100 hover:border-text-dark hover:bg-bg-secondary/30 transition-all duration-300"
@@ -172,9 +172,9 @@ const AboutPage = () => {
                 <p className="text-text-light text-sm leading-relaxed">
                   {value.desc}
                 </p>
-              </motion.div>
+              </Motion.div>
             ))}
-          </motion.div>
+          </Motion.div>
         </div>
       </section>
 

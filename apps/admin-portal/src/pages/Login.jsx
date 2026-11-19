@@ -1,91 +1,107 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import toast from 'react-hot-toast';
-import { Loader2, LogIn } from 'lucide-react';
-import { login as loginApi, me as meApi } from '../api/authService';
+import { ArrowRight, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { login, me } from '../api/authService';
+import FormAlert from '../components/FormAlert';
+import AccountPage from './AccountPage';
+
+function signInError(error) {
+  if (!error) return '';
+  if (error.code === 'SESSION_CHECK_FAILED') return error.message;
+  switch (error.response?.status) {
+    case 401: return 'The membership ID or password is incorrect. Check both and try again.';
+    case 403: return 'This account cannot access the workspace. Ask an administrator to check your access.';
+    case 429: return 'Too many sign-in attempts. Wait a moment before trying again.';
+    default: return error.response
+      ? 'The workspace could not sign you in. Try again in a moment.'
+      : 'Could not reach the workspace. Check your connection and try again.';
+  }
+}
 
 export default function Login() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-
+  const memberField = useRef(null);
+  const passwordField = useRef(null);
+  const shake = useRef(null);
   const [membershipId, setMembershipId] = useState('');
   const [password, setPassword] = useState('');
-
-  const loginMutation = useMutation({
-    mutationFn: loginApi,
-    onSuccess: async () => {
-      // Ensure the cookie-based session is actually established before leaving the login page.
-      // This avoids the "login succeeds but requires a second try" behavior.
+  const [showPassword, setShowPassword] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const session = useMutation({
+    mutationFn: async credentials => {
+      await login(credentials);
+      await queryClient.cancelQueries();
+      queryClient.removeQueries();
       try {
-        await queryClient.invalidateQueries({ queryKey: ['me'] });
-        await queryClient.fetchQuery({
-          queryKey: ['me'],
-          queryFn: meApi,
-          retry: false,
-        });
-        toast.success('Logged in');
-        navigate('/', { replace: true });
-      } catch {
-        toast.error('Login succeeded, but session was not established. Check cookies / CORS.');
+        await queryClient.fetchQuery({ queryKey: ['me'], queryFn: me, retry: false });
+      } catch (error) {
+        const message = error?.response?.status === 401
+          ? 'The workspace could not open your session. Allow cookies for this site and sign in again.'
+          : 'The workspace could not verify your session. Try signing in again.';
+        throw Object.assign(new Error(message), { code: 'SESSION_CHECK_FAILED' });
       }
     },
-    onError: (err) => {
-      toast.error(err?.response?.data?.message || 'Login failed');
+    onError: error => {
+      if (error.response?.status !== 401) return;
+      passwordField.current?.focus();
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      shake.current?.cancel();
+      shake.current = passwordField.current?.parentElement?.animate?.(
+        [0, -7, 6, -4, 3, 0].map(offset => ({ transform: 'translateX(' + offset + 'px)' })),
+        { duration: 300, easing: 'ease-out' },
+      );
     },
+    onSuccess: () => navigate('/', { replace: true }),
   });
+  const invalidCredentials = session.error?.response?.status === 401;
+  const memberMissing = submitted && !membershipId.trim();
+  const passwordMissing = submitted && !password;
+  const errorText = signInError(session.error);
 
-  const submit = (e) => {
-    e.preventDefault();
-    loginMutation.mutate({ membershipId: membershipId.trim(), password });
-  };
+  function submit(event) {
+    event.preventDefault();
+    if (session.isPending) return;
+    setSubmitted(true);
+    if (!membershipId.trim()) return memberField.current?.focus();
+    if (!password) return passwordField.current?.focus();
+    session.mutate({ membershipId: membershipId.trim(), password });
+  }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-      <div className="w-full max-w-md bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-slate-100">
-          <h1 className="text-xl font-bold text-slate-900">Admin Login</h1>
-          <p className="text-sm text-slate-500">Sign in with your Membership ID.</p>
+    <AccountPage title="Workspace sign in" description="Use your membership ID to open the IEDC workspace.">
+      <form noValidate onSubmit={submit} className="account-form" aria-busy={session.isPending}>
+        <div className="account-field">
+          <label htmlFor="sign-in-member">Membership ID</label>
+          <input ref={memberField} id="sign-in-member" required autoComplete="username" autoCapitalize="none" spellCheck={false}
+            value={membershipId} readOnly={session.isPending} placeholder="IEDC-XXXX"
+            aria-invalid={memberMissing || invalidCredentials}
+            aria-describedby={memberMissing ? 'sign-in-member-error' : invalidCredentials ? 'sign-in-error' : undefined}
+            onChange={event => { setMembershipId(event.target.value); session.reset(); }} />
+          {memberMissing && <p className="account-field-error" id="sign-in-member-error" role="alert">Enter your membership ID.</p>}
         </div>
-
-        <form onSubmit={submit} className="p-6 space-y-4">
-          <div className="space-y-2">
-            <label className="text-sm font-bold text-slate-700">Membership ID</label>
-            <input
-              value={membershipId}
-              onChange={(e) => setMembershipId(e.target.value)}
-              className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-              placeholder="e.g. IEDC-XXXX"
-              autoComplete="username"
-            />
+        <div className="account-field">
+          <label htmlFor="sign-in-password">Password</label>
+          <div className="account-password">
+            <input ref={passwordField} id="sign-in-password" type={showPassword ? 'text' : 'password'} required
+              autoComplete="current-password" value={password} readOnly={session.isPending}
+              aria-invalid={passwordMissing || invalidCredentials}
+              aria-describedby={passwordMissing ? 'sign-in-password-error' : invalidCredentials ? 'sign-in-error' : undefined}
+              onChange={event => { setPassword(event.target.value); session.reset(); }} />
+            <button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-controls="sign-in-password"
+              onClick={() => setShowPassword(visible => !visible)}>
+              {showPassword ? <EyeOff size={17} aria-hidden="true" /> : <Eye size={17} aria-hidden="true" />}
+            </button>
           </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-bold text-slate-700">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-              placeholder="••••••••"
-              autoComplete="current-password"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loginMutation.isPending}
-            className="w-full inline-flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-xl font-semibold disabled:opacity-50"
-          >
-            {loginMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : <LogIn size={16} />}
-            {loginMutation.isPending ? 'Signing in...' : 'Sign in'}
-          </button>
-
-          <p className="text-xs text-slate-400">
-            If you were just promoted, check your email for the password setup link.
-          </p>
-        </form>
-      </div>
-    </div>
+          {passwordMissing && <p className="account-field-error" id="sign-in-password-error" role="alert">Enter your password.</p>}
+        </div>
+        {errorText && <FormAlert id="sign-in-error">{errorText}</FormAlert>}
+        <button className="op-primary" disabled={session.isPending}>
+          {session.isPending ? <><Loader2 size={16} className="animate-spin" />Signing in…</> : <>Sign in <ArrowRight size={16} /></>}
+        </button>
+        <p className="account-help">New to the workspace? Check your email for your password setup link.</p>
+      </form>
+    </AccountPage>
   );
 }

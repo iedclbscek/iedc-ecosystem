@@ -22,6 +22,8 @@ const eventSchema = new mongoose.Schema(
       default: "public",
     },
     title: { type: String, required: true, trim: true },
+    // Retained for pre-club events; current events derive their public category from club.
+    category: { type: String, trim: true },
     description: { type: String, trim: true },
     shortDescription: { type: String, trim: true },
     venue: { type: String, trim: true },
@@ -45,5 +47,8 @@ const eventSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+eventSchema.index({ status: 1, visibility: 1, startAt: -1, createdAt: -1 });
+eventSchema.index({ club: 1, startAt: 1, _id: 1 });
 
 export default mongoose.model("Event", eventSchema, "events");

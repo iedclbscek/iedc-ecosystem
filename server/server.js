@@ -2,11 +2,11 @@ import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-import connectDB from "./config/db.js";
+import { createOriginPolicy } from "./utils/originPolicy.js";
+import connectDB, { isDatabaseReady } from "./config/db.js";
 import { seedAdminUser } from "./utils/seedAdmin.js";
 import { seedEmailTemplates } from "./utils/seedEmailTemplates.js";
 import { ensureRegistrationAdmissionNoIndex } from "./utils/ensureIndexes.js";
-import { buildOpenApiSpec } from "./config/swagger.js";
 
 // Route Imports
 import adminRoutes from "./routes/adminRoutes.js";
@@ -18,96 +18,20 @@ import eventsPublicRoutes from "./routes/eventsPublicRoutes.js";
 import firstYearRepRoutes from "./routes/firstYearRepRoutes.js";
 
 dotenv.config();
-console.log("Cloudinary env check:", {
-  cloudName: Boolean(process.env.CLOUDINARY_CLOUD_NAME),
-  apiKey: Boolean(process.env.CLOUDINARY_API_KEY),
-  apiSecret: Boolean(process.env.CLOUDINARY_API_SECRET),
-});
 await connectDB();
 await ensureRegistrationAdmissionNoIndex();
-await seedAdminUser();
-await seedEmailTemplates();
+await Promise.all([seedAdminUser(), seedEmailTemplates()]);
 
 const app = express();
 
-// 1. Advanced CORS Configuration
-const configuredCookieDomain = String(process.env.COOKIE_DOMAIN || "").trim();
-const baseDomain = configuredCookieDomain
-  ? configuredCookieDomain.replace(/^[.]/, "")
-  : "iedclbscek.in"; // legacy default for existing prod domain
-const allowVercelPreview =
-  String(process.env.ALLOW_VERCEL_PREVIEW || "true")
-    .toLowerCase()
-    .trim() !== "false";
-const extraAllowedOrigins = (process.env.ALLOWED_ORIGINS || "")
-  .split(",")
-  .map((o) => o.trim())
-  .filter(Boolean);
-
-const isAllowedDevLocalhost = (origin) => {
-  const o = String(origin || "");
-  return (
-    /^http:\/\/localhost:\d+$/.test(o) || /^http:\/\/127\.0\.0\.1:\d+$/.test(o)
-  );
-};
-
-const isAllowedProdOrigin = (origin) => {
-  const o = String(origin || "");
-  try {
-    const { hostname } = new URL(o);
-    if (extraAllowedOrigins.includes(o)) return true;
-
-    // Check if it matches base domain (production subdomains only)
-    const matchesBaseDomain = baseDomain
-      ? hostname === baseDomain ||
-        hostname === `www.${baseDomain}` ||
-        hostname.endsWith(`.${baseDomain}`)
-      : false;
-
-    // Check for Vercel preview deployments
-    const matchesVercelPreview = allowVercelPreview
-      ? hostname.endsWith(".vercel.app")
-      : false;
-
-    return matchesBaseDomain || matchesVercelPreview;
-  } catch {
-    return false;
-  }
-};
-
-console.log(
-  `[CORS] Base domain: ${baseDomain}, NODE_ENV: ${process.env.NODE_ENV}`,
-);
-
+const allowOrigin = createOriginPolicy(process.env);
 app.use(
   cors({
     origin: (origin, callback) => {
-      const isProd = process.env.NODE_ENV === "production";
-      const isAllowed =
-        !origin ||
-        isAllowedProdOrigin(origin) ||
-        (!isProd && isAllowedDevLocalhost(origin));
-
-      const hostname = (() => {
-        try {
-          return new URL(origin || "").hostname;
-        } catch {
-          return "N/A";
-        }
-      })();
-
-      console.log(
-        `[CORS] origin=${origin || "(none)"} | hostname=${hostname} | isProd=${isProd} | isAllowed=${isAllowed}`,
-      );
-
-      if (isAllowed) {
-        callback(null, true);
-      } else {
-        console.warn(`[CORS] ❌ BLOCKED`);
-        callback(new Error("Not allowed by CORS"));
-      }
+      if (allowOrigin(origin)) return callback(null, true);
+      callback(Object.assign(new Error("Origin is not allowed"), { status: 403 }));
     },
-    credentials: true, // Allow credentials
+    credentials: true,
     allowedHeaders: [
       "Content-Type",
       "Authorization",
@@ -119,14 +43,23 @@ app.use(
   }),
 );
 
-// Ensure OPTIONS requests always succeed for CORS preflight
-app.options("*", cors());
-
+app.use("/api/admin/auth", express.json({ limit: "16kb" }));
 app.use(express.json({ limit: "50mb" }));
 app.use(cookieParser());
+app.disable("x-powered-by");
+app.use((req, res, next) => {
+  res.set("X-Content-Type-Options", "nosniff");
+  res.set("X-Frame-Options", "DENY");
+  res.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  if (process.env.NODE_ENV === "production") {
+    res.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+  next();
+});
 
 // Swagger (OpenAPI)
-const openApiSpec = buildOpenApiSpec();
+let openApiSpec;
 
 const SWAGGER_UI_DIST_VERSION = "5.31.0";
 const SWAGGER_CSS_URL = `https://cdn.jsdelivr.net/npm/swagger-ui-dist@${SWAGGER_UI_DIST_VERSION}/swagger-ui.css`;
@@ -162,11 +95,16 @@ const renderSwaggerUiHtml = ({ basePath, specUrl, title }) => `<!DOCTYPE html>
   </body>
 </html>`;
 
-app.get("/api-docs.json", (req, res) => {
-  res.set("Cache-Control", "no-store");
-  res.json(openApiSpec);
+app.get(["/api-docs.json", "/api/api-docs.json"], async (req, res, next) => {
+  try {
+    const { buildOpenApiSpec } = await import("./config/swagger.js");
+    openApiSpec ??= buildOpenApiSpec();
+    res.set("Cache-Control", "no-store").json(openApiSpec);
+  } catch (error) {
+    next(error);
+  }
 });
-app.get(["/api-docs", "/api-docs/"], (req, res) => {
+app.get(["/docs", "/api-docs"], (req, res) => {
   res.set("Cache-Control", "no-store");
   res.type("html").send(
     renderSwaggerUiHtml({
@@ -178,10 +116,6 @@ app.get(["/api-docs", "/api-docs/"], (req, res) => {
 });
 
 // Aliases (useful when deploying behind a proxy that forwards only /api/*)
-app.get("/api/api-docs.json", (req, res) => {
-  res.set("Cache-Control", "no-store");
-  res.json(openApiSpec);
-});
 app.get(["/api/api-docs", "/api/api-docs/"], (req, res) => {
   res.set("Cache-Control", "no-store");
   res.type("html").send(
@@ -194,7 +128,10 @@ app.get(["/api/api-docs", "/api/api-docs/"], (req, res) => {
 });
 
 // 2. Routes
-app.use("/api/admin", adminRoutes);
+app.use("/api/admin", (req, res, next) => {
+  res.set("Cache-Control", "private, no-store");
+  next();
+}, adminRoutes);
 app.use("/api/public", publicRoutes);
 app.use("/api/users", usersPublicRoutes);
 app.use("/api/registrations", registrationRoutes);
@@ -222,10 +159,16 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+app.get("/api/ready", (req, res) => {
+  const ready = isDatabaseReady();
+  res.status(ready ? 200 : 503).json({ status: ready ? "ready" : "not_ready" });
+});
+
 // 3. Global Error Handler
 app.use((err, req, res, next) => {
-  const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
-  res.status(statusCode).json({ message: err.message });
+  if (res.headersSent) return next(err);
+  const status = Number(err.status) || 500;
+  res.status(status).json({ message: status >= 500 ? "Server error" : err.message });
 });
 
 const PORT = process.env.PORT || 5000;

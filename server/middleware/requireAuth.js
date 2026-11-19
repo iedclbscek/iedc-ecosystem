@@ -1,5 +1,11 @@
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
+import {
+  hasWorkspacePermission,
+  isSuperAdmin,
+} from "../utils/authorization.js";
+import Club from "../models/Club.js";
+import { resolveClubAccess } from "../utils/clubAccess.js";
 
 const COOKIE_NAME = "token";
 
@@ -7,12 +13,6 @@ export const requireAuth = async (req, res, next) => {
   try {
     const token = req.cookies?.[COOKIE_NAME];
     if (!token) {
-      // Debug logging in development
-      if (process.env.NODE_ENV !== "production") {
-        console.log("[requireAuth] No token found in cookies:", req.cookies);
-        console.log("[requireAuth] Request origin:", req.headers.origin);
-        console.log("[requireAuth] Request host:", req.headers.host);
-      }
       return res.status(401).json({ message: "Not authenticated" });
     }
 
@@ -21,7 +21,7 @@ export const requireAuth = async (req, res, next) => {
     }
 
     const payload = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(payload.id).select("-password");
+    const user = await User.findById(payload.id).select("name email membershipId role permissions portalAccessEnabled").lean();
     if (!user) return res.status(401).json({ message: "Not authenticated" });
 
     if (user.portalAccessEnabled === false) {
@@ -48,19 +48,29 @@ export const requireAuth = async (req, res, next) => {
   }
 };
 
-const normalize = (v) =>
-  String(v ?? "")
-    .trim()
-    .toLowerCase();
+export const isAdmin = (user) => isSuperAdmin(user);
 
-export const isAdmin = (user) => normalize(user?.role) === "admin";
+export const hasPermission = (user, permission) =>
+  hasWorkspacePermission(user, permission);
 
-export const hasPermission = (user, permission) => {
-  if (isAdmin(user)) return true;
-  const required = normalize(permission);
-  if (!required) return true;
-  const perms = Array.isArray(user?.permissions)
-    ? user.permissions.map((p) => normalize(p)).filter(Boolean)
-    : [];
-  return perms.includes(required);
+export const requirePermission = (permission) => (req, res, next) => {
+  if (!hasWorkspacePermission(req.user, permission)) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+  return next();
+};
+
+export const requirePermissionOrClubManager = (permission) => async (req, res, next) => {
+  try {
+    if (hasWorkspacePermission(req.user, permission)) return next();
+    const clubId = req.params?.clubId || req.query?.clubId || req.body?.clubId;
+    if (!clubId) return res.status(403).json({ message: "Forbidden" });
+    const club = await Club.findById(clubId);
+    if (!club) return res.status(404).json({ message: "Club not found" });
+    const access = await resolveClubAccess({ club, user: req.user });
+    if (!access.managePermissions) return res.status(403).json({ message: "Forbidden" });
+    return next();
+  } catch (error) {
+    return next(error);
+  }
 };

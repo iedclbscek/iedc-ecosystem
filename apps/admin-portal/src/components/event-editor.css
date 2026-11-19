@@ -1,0 +1,104 @@
+.event-editor {
+  --dialog-width: 60rem;
+  overflow: hidden;
+}
+.event-editor-form {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 42px);
+}
+.event-editor-head, .event-editor-actions {
+  flex: none;
+  background: #fff;
+}
+.event-editor-head {padding-block: 15px;}
+.event-editor-head .op-caption {margin-top: 2px;}
+.event-editor-scroll {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #b4c1db transparent;
+}
+.event-editor-scroll ::-webkit-scrollbar, .event-editor-scroll::-webkit-scrollbar {width: 8px;}
+.event-editor-scroll ::-webkit-scrollbar-thumb, .event-editor-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid #fff;
+  border-radius: 8px;
+  background: #b4c1db;
+}
+.event-editor-sections {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  gap: 17px;
+  padding: 20px;
+  min-width: 0;
+}
+.event-editor-main, .event-editor-sidebar, .event-editor-panel, .event-editor-poster {
+  display: grid;
+  align-content: start;
+  gap: 13px;
+  min-width: 0;
+}
+.event-editor-poster {gap: 7px;}
+.event-editor-poster .op-section-title, .event-editor-coordinators .op-section-title {font-size: 13px;}
+.event-editor-panel {
+  padding: 14px;
+  border: 1px solid var(--op-line);
+  border-radius: 12px;
+  background: #f8f9fd;
+  gap: 11px;
+}
+.event-editor-panel h3 {display: flex;align-items: center;gap: 7px;}
+.event-editor-panel h3 svg {color: var(--op-blue);}
+.event-editor-panel .op-caption {font-size: 12px;}
+.event-editor .op-field > :is(input, textarea) {min-height: 38px;}
+.event-editor .op-field > textarea {resize: vertical;}
+.event-editor .op-field > input[type="datetime-local"] {display: block;min-width: 0;}
+.event-editor .op-field > input[type="datetime-local"]::-webkit-calendar-picker-indicator {opacity: .65;cursor: pointer;}
+.event-optional {display: inline;color: var(--op-muted);font-size: 11px;font-weight: 450;}
+.event-field-heading {display: flex;justify-content: space-between;gap: 8px;}
+.event-field-heading span {font-size: 11px;font-variant-numeric: tabular-nums;}
+.event-field-error {font-size: 12px;line-height: 1.4;font-weight: 550;color: #9c3244;}
+.event-editor .op-field [aria-invalid="true"] {border-color: #c44457;background: #fff8f9;}
+.event-editor .op-field [aria-invalid="true"]:focus-visible {outline-color: #b33348;}
+.event-input-with-icon {display: block;position: relative;}
+.event-input-with-icon svg {position: absolute;top: 12px;left: 10px;color: #64728d;pointer-events: none;}
+.event-input-with-icon input {padding-inline-start: 32px;}
+.event-publishing-fields, .event-editor-extra-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.event-editor-extras {grid-column: 1 / -1;border: 1px solid var(--op-line);border-radius: 12px;}
+.event-editor-extras summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 11px 14px;
+  border-radius: inherit;
+  cursor: pointer;
+}
+.event-editor-extras summary:hover {background: #f5f7fc;}
+.event-editor-extras summary::-webkit-details-marker {display: none;}
+.event-editor-extras summary svg {color: #65718a;transition: transform .16s;}
+.event-editor-extras[open] summary svg {transform: rotate(180deg);}
+.event-editor-extra-fields {padding: 14px;border-top: 1px solid var(--op-line);}
+.event-editor-coordinators {grid-column: 1 / -1;display: grid;gap: 8px;min-width: 0;}
+.event-coordinator-chips {display: flex;flex-wrap: wrap;gap: 6px;list-style: none;}
+.event-coordinator-chips li {display: inline-flex;align-items: center;gap: 7px;border-radius: 6px;padding: 3px 6px 3px 8px;background: var(--op-tint);color: #294bb5;font-size: 12px;}
+.event-coordinator-chips button {border-radius: 4px;padding: 3px;}
+.event-coordinator-chips button:hover {background: #dce5ff;}
+.event-editor-alert {flex: none;margin: 0 20px 9px;}
+.event-editor-actions {justify-content: space-between;}
+.event-editor-actions > div {display: flex;gap: 7px;margin-left: auto;}
+@media (max-width: 700px) {
+  .event-editor-sections {grid-template-columns: minmax(0, 1fr);padding: 15px;gap: 14px;}
+  .event-editor-main, .event-editor-sidebar {gap: 12px;}
+  .event-editor-alert {margin-inline: 15px;}
+}
+@media (max-width: 390px) {
+  .event-editor-actions :is(.op-primary, .op-secondary) {padding-inline: 10px;}
+  .event-editor-extra-fields {grid-template-columns: minmax(0, 1fr);}
+}

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion as Motion } from 'framer-motion';
 import { FaLinkedin, FaGithub, FaEnvelope } from 'react-icons/fa';
 
 const TeamCard = ({ member, selectedYear }) => {
@@ -36,7 +36,7 @@ const imageSrc = member.image
   : defaultImage;
 
   return (
-    <motion.div
+    <Motion.div
       className="text-center"
       whileHover={{ y: -5 }}
       onMouseEnter={() => setIsHovered(true)}
@@ -62,7 +62,7 @@ const imageSrc = member.image
         
         {/* Social links overlay on hover */}
         {isHovered && member && (member.linkedin || member.github || member.email) && (
-          <motion.div 
+          <Motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             className="absolute inset-0 flex items-center justify-center bg-accent/20 rounded-lg"
@@ -100,14 +100,14 @@ const imageSrc = member.image
                 </a>
               )}
             </div>
-          </motion.div>
+          </Motion.div>
         )}
       </div>
       
       {/* Member name and role */}
       <h3 className="font-bold text-text-dark text-sm">{member.name || 'Name Unavailable'}</h3>
       <p className="text-accent text-xs font-medium">{teamRole || role || 'Team Member'}</p>
-    </motion.div>
+    </Motion.div>
   );
 };
 

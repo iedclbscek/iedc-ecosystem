@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Event from "../models/Event.js";
 import Club from "../models/Club.js";
 import {
@@ -6,6 +7,23 @@ import {
 } from "../utils/permissionHelpers.js";
 import { isAdmin } from "../middleware/requireAuth.js";
 import { v2 as cloudinary } from "cloudinary";
+import { resolveClubAccess } from "../utils/clubAccess.js";
+import ClubMembership from "../models/ClubMembership.js";
+import {
+  canApplyClubEventPatch,
+  getClubEventAccess,
+} from "../utils/authorization.js";
+import { buildAuthorizedEventFilter } from "../utils/eventAuthorization.js";
+import {
+  normalizeOptionalString,
+  resolveOptionalRegistrationLink,
+} from "../utils/eventPatch.js";
+import { setPublicRevalidation } from "../utils/httpCache.js";
+import { paginationMeta, parsePagination } from "../utils/pagination.js";
+import {
+  buildPublicEventsPipeline,
+  PUBLIC_EVENT_FILTER,
+} from "../utils/publicEventQuery.js";
 
 const EVENT_STATUSES = new Set(["draft", "published", "completed", "cancelled"]);
 const EVENT_VISIBILITIES = new Set(["public", "private"]);
@@ -42,28 +60,17 @@ const normalizeId = (value) => {
   return text || undefined;
 };
 
-const canAccessClub = (club, userId) => {
-  const id = String(userId);
-  const members = Array.isArray(club?.memberUsers) ? club.memberUsers : [];
-  const managers = Array.isArray(club?.managerUsers) ? club.managerUsers : [];
-  const editors = Array.isArray(club?.editorUsers) ? club.editorUsers : [];
-  return (
-    members.some((m) => String(m) === id) ||
-    managers.some((m) => String(m) === id) ||
-    editors.some((e) => String(e) === id)
-  );
-};
-
-const ensureClubAccess = async ({ clubId, user }) => {
+const ensureClubAccess = async ({ clubId, user, action = "view" }) => {
   const club = await Club.findById(clubId);
   if (!club) {
     return { status: 404, body: { message: "Club not found" } };
   }
-  if (isAdmin(user) || isSuperAdmin(user)) return { club };
-  if (!canAccessClub(club, user.id)) {
+  if (isAdmin(user) || isSuperAdmin(user)) return { club, access: await resolveClubAccess({ club, user }) };
+  const access = await resolveClubAccess({ club, user });
+  if (!access[action]) {
     return { status: 403, body: { message: "Forbidden" } };
   }
-  return { club };
+  return { club, access };
 };
 
 const populateEvent = (query) =>
@@ -87,12 +94,15 @@ const buildSearchQuery = (search) => {
   };
 };
 
-const publicEventFilter = {
-  $and: [
-    { $or: [{ status: { $exists: false } }, { status: "published" }] },
-    { $or: [{ visibility: { $exists: false } }, { visibility: "public" }] },
-  ],
-};
+const publicEventFilter = PUBLIC_EVENT_FILTER;
+
+function publicEventResponse(event) {
+  if (!Array.isArray(event.coordinators)) return event;
+  const coordinators = event.coordinators
+    .filter(person => typeof person?.name === "string" && person.name.trim())
+    .map(person => ({ name: person.name }));
+  return { ...event, coordinators };
+}
 
 const toCoordinatorIds = (value) => {
   if (value === undefined) return undefined;
@@ -105,20 +115,18 @@ const toCoordinatorIds = (value) => {
 
 const parseEventWorkflow = (body) => {
   const payload = body || {};
-  const legacyRegistrationLink = normalize(payload.registrationUrl);
-  const registrationLink = normalize(payload.registrationLink);
   return {
     scope: normalizeScope(payload.scope),
     status: normalizeStatus(payload.status),
     visibility: normalizeVisibility(payload.visibility),
-    shortDescription: normalize(payload.shortDescription),
-    location: normalize(payload.location),
-    venue: normalize(payload.venue),
-    mode: normalize(payload.mode),
-    posterUrl: normalize(payload.posterUrl),
-    posterPublicId: normalize(payload.posterPublicId),
-    registrationLink: registrationLink || legacyRegistrationLink,
-    externalLink: normalize(payload.externalLink),
+    shortDescription: normalizeOptionalString(payload.shortDescription),
+    location: normalizeOptionalString(payload.location),
+    venue: normalizeOptionalString(payload.venue),
+    mode: normalizeOptionalString(payload.mode),
+    posterUrl: normalizeOptionalString(payload.posterUrl),
+    posterPublicId: normalizeOptionalString(payload.posterPublicId),
+    registrationLink: resolveOptionalRegistrationLink(payload),
+    externalLink: normalizeOptionalString(payload.externalLink),
     assignedTo: normalizeId(payload.assignedTo),
     startAt: toDateOrUndefined(payload.startAt ?? payload.startDate),
     endAt: toDateOrUndefined(payload.endAt ?? payload.endDate),
@@ -139,40 +147,79 @@ export const listEvents = async (req, res) => {
   try {
     const search = String(req.query.search ?? "");
     const clubId = normalize(req.query.clubId);
+    const scope = normalize(req.query.scope);
 
     const searchQuery = buildSearchQuery(search);
 
+    const paginated = req.query.page !== undefined || req.query.limit !== undefined;
+    const { page, limit } = parsePagination(req.query, { defaultLimit: 20 });
     if (isAdmin(req.user) || isSuperAdmin(req.user)) {
       const query = {
         ...(clubId ? { club: clubId } : {}),
+        ...(scope === "iedc" || scope === "club" ? { scope } : {}),
         ...searchQuery,
       };
 
-      const events = await populateEvent(Event.find(query)).sort({
+      const total = paginated ? await Event.countDocuments(query) : 0;
+      const meta = paginated ? paginationMeta({ page, limit, total }) : null;
+      let eventQuery = populateEvent(Event.find(query)).sort({
         startAt: -1,
         createdAt: -1,
+        _id: -1,
       });
-      return res.json({ events });
+      if (meta) eventQuery = eventQuery.skip((meta.page - 1) * limit).limit(limit);
+      const events = await eventQuery;
+      return res.json({ events, ...(meta || {}) });
     }
 
+    const memberships = await ClubMembership.find({ userId: req.user.id })
+      .select("clubId status permissions role")
+      .lean();
+    const membershipByClubId = new Map(
+      memberships.map((membership) => [String(membership.clubId), membership]),
+    );
     const clubs = await Club.find({
-      $or: [{ memberUsers: req.user.id }, { managerUsers: req.user.id }],
-    }).select("_id");
+      $or: [
+        { _id: { $in: memberships.map((membership) => membership.clubId) } },
+        { memberUsers: req.user.id },
+        { managerUsers: req.user.id },
+        { editorUsers: req.user.id },
+      ],
+    }).select("memberUsers managerUsers editorUsers").lean();
+    const clubIds = clubs
+      .filter((club) =>
+        getClubEventAccess({
+          club,
+          user: req.user,
+          membership: membershipByClubId.get(String(club._id)),
+        }).view,
+      )
+      .map((club) => club._id);
+    const authorization = buildAuthorizedEventFilter({
+      clubIds,
+      requestedClubId: clubId,
+      canUseIedc: hasIedcScopePermission(req.user, "events"),
+    });
+    if (!authorization.allowed) {
+      const emptyMeta = paginated ? paginationMeta({ page, limit, total: 0 }) : null;
+      return res.json({ events: [], ...(emptyMeta || {}) });
+    }
 
-    const clubIds = clubs.map((c) => c._id);
-    if (clubIds.length === 0) return res.json({ events: [] });
+    const constraints = [authorization.filter];
+    if (scope === "iedc" || scope === "club") constraints.push({ scope });
+    if (Object.keys(searchQuery).length > 0) constraints.push(searchQuery);
+    const query = constraints.length === 1 ? constraints[0] : { $and: constraints };
 
-    const query = {
-      club: { $in: clubIds },
-      ...(clubId ? { club: clubId } : {}),
-      ...searchQuery,
-    };
-
-    const events = await populateEvent(Event.find(query)).sort({
+    const total = paginated ? await Event.countDocuments(query) : 0;
+    const meta = paginated ? paginationMeta({ page, limit, total }) : null;
+    let eventQuery = populateEvent(Event.find(query)).sort({
       startAt: -1,
       createdAt: -1,
+      _id: -1,
     });
-    return res.json({ events });
+    if (meta) eventQuery = eventQuery.skip((meta.page - 1) * limit).limit(limit);
+    const events = await eventQuery;
+    return res.json({ events, ...(meta || {}) });
   } catch (error) {
     res
       .status(500)
@@ -184,18 +231,23 @@ export const listEvents = async (req, res) => {
 export const listClubEvents = async (req, res) => {
   try {
     const clubId = req.params.clubId;
-    const access = await ensureClubAccess({ clubId, user: req.user });
+    const access = await ensureClubAccess({ clubId, user: req.user, action: "view" });
     if (access.status) return res.status(access.status).json(access.body);
 
     const searchQuery = buildSearchQuery(req.query.search);
-    const events = await populateEvent(
-      Event.find({ club: clubId, ...searchQuery })
-    ).sort({
+    const query = { club: clubId, ...searchQuery };
+    const paginated = req.query.page !== undefined || req.query.limit !== undefined;
+    const { page, limit } = parsePagination(req.query, { defaultLimit: 20 });
+    const total = paginated ? await Event.countDocuments(query) : 0;
+    const meta = paginated ? paginationMeta({ page, limit, total }) : null;
+    let eventQuery = populateEvent(Event.find(query)).sort({
       startAt: -1,
       createdAt: -1,
+      _id: -1,
     });
-
-    res.json({ events });
+    if (meta) eventQuery = eventQuery.skip((meta.page - 1) * limit).limit(limit);
+    const events = await eventQuery;
+    res.json({ events, ...(meta || {}) });
   } catch (error) {
     res
       .status(500)
@@ -284,10 +336,13 @@ export const createClubEvent = async (req, res) => {
     const clubId = normalize(req.params.clubId || req.body?.clubId);
     if (!clubId) return res.status(400).json({ message: "clubId is required" });
 
-    const access = await ensureClubAccess({ clubId, user: req.user });
+    const access = await ensureClubAccess({ clubId, user: req.user, action: "edit" });
     if (access.status) return res.status(access.status).json(access.body);
 
     const workflow = parseEventWorkflow(req.body);
+    if (workflow.status === "published" && !access.access.publish) {
+      return res.status(403).json({ message: "Publishing events is not permitted" });
+    }
     const { title, description, coordinatorUserIds = req.body?.coordinatorUserIds } =
       req.body;
 
@@ -351,8 +406,16 @@ export const updateEvent = async (req, res) => {
 
     const clubId = String(event.club?._id || event.club || "");
     if (clubId) {
-      const access = await ensureClubAccess({ clubId, user: req.user });
+      const access = await ensureClubAccess({ clubId, user: req.user, action: "view" });
       if (access.status) return res.status(access.status).json(access.body);
+      if (!canApplyClubEventPatch({
+        access: access.access,
+        currentStatus: event.status,
+        currentVisibility: event.visibility,
+        patch: req.body,
+      })) {
+        return res.status(403).json({ message: "Event update is not permitted" });
+      }
     } else if (!hasIedcScopePermission(req.user, "events")) {
       return res.status(403).json({ message: "Forbidden" });
     }
@@ -368,13 +431,20 @@ export const updateEvent = async (req, res) => {
 export const updateClubEvent = async (req, res) => {
   try {
     const clubId = req.params.clubId;
-    const access = await ensureClubAccess({ clubId, user: req.user });
+    const access = await ensureClubAccess({ clubId, user: req.user, action: "view" });
     if (access.status) return res.status(access.status).json(access.body);
-
     const event = await populateEvent(
       Event.findOne({ _id: req.params.eventId, club: clubId })
     );
     if (!event) return res.status(404).json({ message: "Event not found" });
+    if (!canApplyClubEventPatch({
+      access: access.access,
+      currentStatus: event.status,
+      currentVisibility: event.visibility,
+      patch: req.body,
+    })) {
+      return res.status(403).json({ message: "Event update is not permitted" });
+    }
 
     return updateEventCommon(req, res, event);
   } catch (error) {
@@ -466,6 +536,8 @@ const updateEventCommon = async (req, res, event) => {
 
   if (req.body?.coordinatorUserId !== undefined) {
     event.coordinatorUser = normalize(req.body.coordinatorUserId) || undefined;
+  } else if (coordinatorUserIds !== undefined) {
+    event.coordinatorUser = coordinatorUserIds[0] || undefined;
   }
 
   await event.save();
@@ -499,6 +571,7 @@ export const deleteEvent = async (req, res) => {
       const access = await ensureClubAccess({
         clubId: event.club,
         user: req.user,
+        action: "delete",
       });
       if (access.status) return res.status(access.status).json(access.body);
     } else if (!hasIedcScopePermission(req.user, "events")) {
@@ -517,7 +590,7 @@ export const deleteEvent = async (req, res) => {
 export const deleteClubEvent = async (req, res) => {
   try {
     const clubId = req.params.clubId;
-    const access = await ensureClubAccess({ clubId, user: req.user });
+    const access = await ensureClubAccess({ clubId, user: req.user, action: "delete" });
     if (access.status) return res.status(access.status).json(access.body);
 
     const deleted = await Event.findOneAndDelete({
@@ -537,12 +610,84 @@ export const deleteClubEvent = async (req, res) => {
 // Public: list all events for main website
 export const listPublicEvents = async (req, res) => {
   try {
-    const events = await Event.find(publicEventFilter)
-      .populate("club", "name")
-      .sort({ startAt: -1, createdAt: -1 })
-      .lean();
+    const requestedLimit = Number.parseInt(String(req.query.limit || "50"), 10);
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.min(Math.max(requestedLimit, 1), 100)
+      : 50;
+    const requestedPage = Number.parseInt(String(req.query.page || "1"), 10);
+    const page = Number.isFinite(requestedPage) ? Math.max(requestedPage, 1) : 1;
+    const now = new Date();
+    if (req.query.clubId !== undefined && (typeof req.query.clubId !== "string" || !mongoose.isValidObjectId(req.query.clubId))) {
+      return res.status(400).json({ success: false, message: "Choose a valid club." });
+    }
+    const clubFilter = req.query.clubId ? { club: new mongoose.Types.ObjectId(req.query.clubId) } : {};
+    const time = normalize(req.query.time);
+    const category = normalize(req.query.category);
+    let categoryFilter = {};
+    if (category && category.toLowerCase() !== "all") {
+      const escapedCategory = category.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const exactCategory = new RegExp(`^${escapedCategory}$`, "i");
+      const matchingClubs = await Club.find({ name: exactCategory }).select("_id").lean();
+      const categoryOptions = [
+        { category: exactCategory },
+        { club: { $in: matchingClubs.map((club) => club._id) } },
+      ];
+      if (category.toLowerCase() === "iedc") {
+        categoryOptions.push({
+          $and: [
+            { category: { $exists: false } },
+            { $or: [{ club: { $exists: false } }, { club: null }] },
+          ],
+        });
+      }
+      categoryFilter = { $or: categoryOptions };
+    }
+    const eventsWithSentinel = await Event.aggregate(buildPublicEventsPipeline({
+      now,
+      time,
+      page,
+      limit,
+      categoryFilter,
+      extraMatch: clubFilter,
+    }));
+    const hasMore = eventsWithSentinel.length > limit;
+    const events = hasMore ? eventsWithSentinel.slice(0, limit) : eventsWithSentinel;
+    let categories;
+    if (req.query.includeCategories === "true") {
+      const categoryRows = await Event.aggregate([
+        { $match: publicEventFilter },
+        {
+          $lookup: {
+            from: "clubs",
+            localField: "club",
+            foreignField: "_id",
+            as: "clubData",
+          },
+        },
+        {
+          $project: {
+            category: {
+              $ifNull: [
+                "$category",
+                {
+                  $ifNull: [
+                    { $arrayElemAt: ["$clubData.name", 0] },
+                    "IEDC",
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        { $match: { category: { $type: "string", $ne: "" } } },
+        { $group: { _id: "$category" } },
+        { $sort: { _id: 1 } },
+      ]);
+      categories = categoryRows.map((row) => row._id);
+    }
 
-    return res.json({ success: true, events });
+    setPublicRevalidation(res);
+    return res.json({ success: true, events: events.map(publicEventResponse), page, limit, hasMore, categories });
   } catch (error) {
     return res
       .status(500)
@@ -556,6 +701,8 @@ export const getPublicEventById = async (req, res) => {
     const event = await Event.findById(req.params.id)
       .where(publicEventFilter)
       .populate("club", "name")
+      .populate("coordinatorUsers", "name -_id")
+      .populate("coordinatorUser", "name -_id")
       .lean();
 
     if (!event) {
@@ -564,7 +711,8 @@ export const getPublicEventById = async (req, res) => {
         .json({ success: false, message: "Event not found" });
     }
 
-    return res.json({ success: true, event });
+    setPublicRevalidation(res);
+    return res.json({ success: true, event: publicEventResponse(event) });
   } catch (error) {
     return res
       .status(500)

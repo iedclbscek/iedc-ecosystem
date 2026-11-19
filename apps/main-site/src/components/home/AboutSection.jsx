@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion as Motion } from 'framer-motion';
 
 const AboutSection = () => {
   // Stagger animation for the values grid
@@ -87,7 +87,7 @@ const AboutSection = () => {
               <h4 className="text-xs font-mono font-bold text-gray-400 uppercase tracking-[0.3em] mb-8">
                 System_Operational_Values
               </h4>
-              <motion.div 
+              <Motion.div
                 variants={containerVariants}
                 initial="hidden"
                 whileInView="visible"
@@ -95,7 +95,7 @@ const AboutSection = () => {
                 className="grid grid-cols-2 md:grid-cols-3 gap-0"
               >
                 {["Innovation", "Collaboration", "Excellence", "Integrity", "Impact", "Growth"].map((value) => (
-                  <motion.div 
+                  <Motion.div
                     key={value}
                     variants={itemVariants}
                     className="border border-gray-100 p-6 group hover:bg-text-dark transition-colors duration-300"
@@ -106,9 +106,9 @@ const AboutSection = () => {
                     <p className="text-text-dark font-black uppercase tracking-tighter group-hover:text-white">
                       {value}
                     </p>
-                  </motion.div>
+                  </Motion.div>
                 ))}
-              </motion.div>
+              </Motion.div>
             </div>
 
           </div>

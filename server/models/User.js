@@ -36,10 +36,12 @@ const userSchema = new mongoose.Schema(
       ref: "Registration",
     },
 
-    passwordSetupTokenHash: { type: String },
-    passwordSetupExpiresAt: { type: Date },
+    passwordSetupTokenHash: { type: String, select: false },
+    passwordSetupExpiresAt: { type: Date, select: false },
   },
   { timestamps: true }
 );
+
+userSchema.index({ "websiteProfile.visible": 1, "websiteProfile.order": 1, createdAt: 1 });
 
 export default mongoose.model("User", userSchema, "users");

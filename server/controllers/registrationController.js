@@ -82,8 +82,6 @@ const normalizeDepartment = (value) => {
   return raw;
 };
 
-const normalizeSemester = (value) => String(value ?? "").trim();
-
 const normalizeString = (value) => String(value ?? "").trim();
 
 const normalizeUrlOrEmpty = (value) => {
@@ -142,7 +140,7 @@ export const createStudentRegistration = async (req, res) => {
 
     const department = normalizeDepartment(req.body?.department);
     const yearOfJoining = normalizeString(req.body?.yearOfJoining);
-    const semester = normalizeSemester(req.body?.semester);
+    const semester = normalizeString(req.body?.semester);
     const referralCode = normalizeString(req.body?.referralCode);
     const admissionNo = normalizeString(req.body?.admissionNo);
 
@@ -166,14 +164,13 @@ export const createStudentRegistration = async (req, res) => {
     if (
       !department ||
       !yearOfJoining ||
-      !semester ||
       !referralCode ||
       !motivation
     ) {
       return res.status(400).json({
         success: false,
         message:
-          "department, yearOfJoining, semester, referralCode and motivation are required",
+          "department, yearOfJoining, referralCode and motivation are required",
       });
     }
 
@@ -186,7 +183,7 @@ export const createStudentRegistration = async (req, res) => {
       referralCode,
       department,
       yearOfJoining,
-      semester,
+      semester: semester || undefined,
       isLateralEntry,
       interests,
       nonTechInterests: nonTechInterests || undefined,

@@ -5,7 +5,7 @@ const memberSnapshotSchema = new mongoose.Schema(
     name: { type: String, trim: true, required: true },
     admissionNumber: { type: String, trim: true, required: true },
     department: { type: String, trim: true, required: true },
-    semester: { type: String, trim: true, required: true },
+    semester: { type: String, trim: true },
     class: { type: String, trim: true },
     email: { type: String, trim: true, required: true, lowercase: true },
     phone: { type: String, trim: true, required: true },

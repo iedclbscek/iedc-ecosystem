@@ -17,7 +17,7 @@
 
 ---
 
-**[🌐 Main Site](https://iedclbscek.in)** · **[🔧 Admin Portal](https://admin.iedclbscek.in)** · **[📡 API](https://api.iedclbscek.in/api)** · **[📖 Swagger Docs](https://api.iedclbscek.in/api-docs)**
+**[🌐 Main Site](https://iedclbscek.in)** · **[🔧 Admin Portal](https://admin.iedclbscek.in)** · **[📡 API](https://api.iedclbscek.in/api)** · **[📖 Swagger Docs](https://api.iedclbscek.in/docs)**
 
 </div>
 
@@ -179,7 +179,7 @@ iedc-ecosystem/                     ← pnpm Workspace Root
 ## 📡 API Reference
 
 **Base URL:** `https://api.iedclbscek.in/api`
-**Swagger UI:** `https://api.iedclbscek.in/api-docs`
+**Swagger UI:** `https://api.iedclbscek.in/docs`
 **OpenAPI JSON:** `https://api.iedclbscek.in/api-docs.json`
 
 ### Route Groups
@@ -305,7 +305,7 @@ cd apps/admin-portal && pnpm dev
 | 🌐 Main Site | http://localhost:5173 |
 | 🔧 Admin Portal | http://localhost:5174 |
 | 📡 API Server | http://localhost:5000 |
-| 📖 Swagger Docs | http://localhost:5000/api-docs |
+| 📖 Swagger Docs | http://localhost:5000/docs |
 | ❤️ Health Check | http://localhost:5000/api/health |
 
 > **Note:** On first boot, the server auto-seeds the admin user and email templates from `ADMIN_*` env vars.
@@ -439,3 +439,18 @@ Made with ❤️ by the **IEDC LBSCEK Tech Team**
 [iedclbscek.in](https://iedclbscek.in) · [Instagram](https://instagram.com/iedc_lbscek) · [LinkedIn](https://linkedin.com/company/iedc-lbscek)
 
 </div>
+
+### Release verification
+
+Use the pinned pnpm version and committed workspace lockfile:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm lint
+TEST_MONGO_URI=mongodb://127.0.0.1:28473 pnpm test
+TEST_MONGO_URI=mongodb://127.0.0.1:28473 pnpm --dir server test:release
+VITE_API_URL=https://api.iedclbscek.in/api pnpm --dir apps/admin-portal build
+VITE_API_URL=https://api.iedclbscek.in pnpm --dir apps/main-site build
+```
+
+The integration and release scripts create and remove disposable databases on the specified local Mongo instance. The production-mode smoke test never sends external email or uploads media. See [deployment readiness](docs/release-readiness.md) for verified Vercel targets, migration order and remaining live checks.

@@ -1,25 +1,25 @@
-import { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, useLocation, Link } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
+import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AlertTriangle, ArrowLeft, Construction } from 'lucide-react';
 
 // Components
 import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
-import Loader from './components/ui/Loader';
 import ScrollToTop from './components/ui/ScrollToTop';
+import { RouteSkeleton } from './components/ui/PublicPageState';
 
 // Pages
-import HomePage from './pages/HomePage';
-import AboutPage from './pages/AboutPage';
-import EventsPage from './pages/EventsPage';
-import EventPage from './pages/EventPage';
-import TeamPage from './pages/TeamPage';
-import CommunitiesPage from './pages/CommunitiesPage';
-import CommunityPage from './pages/CommunityPage';
-import RegistrationPage from './pages/RegistrationPage';
-import ExecomProfilePage from './pages/ExecomProfilePage';
-import FirstYearRepresentativesPage from './pages/FirstYearRepresentativesPage';
+const HomePage = lazy(() => import('./pages/HomePage'));
+const AboutPage = lazy(() => import('./pages/AboutPage'));
+const EventsPage = lazy(() => import('./pages/EventsPage'));
+const EventPage = lazy(() => import('./pages/EventPage'));
+const TeamPage = lazy(() => import('./pages/TeamPage'));
+const CommunitiesPage = lazy(() => import('./pages/CommunitiesPage'));
+const CommunityPage = lazy(() => import('./pages/CommunityPage'));
+const RegistrationPage = lazy(() => import('./pages/RegistrationPage'));
+const ExecomProfilePage = lazy(() => import('./pages/ExecomProfilePage'));
+const FirstYearRepresentativesPage = lazy(() => import('./pages/FirstYearRepresentativesPage'));
 
 // --- UPDATED PLACEHOLDER COMPONENT ---
 const PlaceholderPage = ({ title, type = "404" }) => {
@@ -65,29 +65,11 @@ const PlaceholderPage = ({ title, type = "404" }) => {
 
 // App router wrapper to access location
 const AppContent = () => {
-  const [loading, setLoading] = useState(true);
-  const location = useLocation();
-
-  const handleLoadComplete = () => {
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    // Reset loading state when navigating away from home
-    if (location.pathname !== '/') {
-      setLoading(false);
-    }
-  }, [location.pathname]);
-
-  // Only show loader on home page
-  if (loading && location.pathname === '/') {
-    return <Loader onComplete={handleLoadComplete} />;
-  }
-
   return (
     <div className="flex flex-col min-h-screen">
       <Navbar />
       <main className="flex-grow">
+        <Suspense fallback={<RouteSkeleton />}>
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/about" element={<AboutPage />} />
@@ -103,6 +85,7 @@ const AppContent = () => {
           {/* Use the new placeholder style for 404 */}
           <Route path="*" element={<PlaceholderPage title="Signal Lost" type="404" />} />
         </Routes>
+        </Suspense>
       </main>
       <Footer />
     </div>

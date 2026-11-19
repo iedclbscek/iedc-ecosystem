@@ -1,350 +1,88 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  CalendarDays,
-  Users, 
-  Mail, 
-  Settings, 
-  LogOut, 
-  Bell,
-  ShieldCheck,
-  Menu,
-  X,
-  Wrench,
-  UserPlus
-} from 'lucide-react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { LayoutDashboard, CalendarDays, Users, Mail, Settings, LogOut, ShieldCheck, Menu, X, Wrench, UserPlus, Search, PanelsTopLeft } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { logout as logoutApi, me as meApi } from '../api/authService';
-import { fetchClubs } from '../api/adminService';
+import { logout, me } from '../api/authService';
 import { useViewMode } from '../context/ViewModeContext';
+import PageSkeleton from '../components/PageSkeleton';
+import { hasWorkspacePermission, normalizePortalRole } from '../utils/authorization';
+import './AdminShell.css';
 
-const normalize = (v) => String(v ?? '').trim().toLowerCase();
+const links = [
+  ['/', 'Overview', 'dashboard', LayoutDashboard], ['/events', 'Events', 'events', CalendarDays],
+  ['/registrations', 'Members', 'registrations', Users], ['/users', 'Team & access', 'users', ShieldCheck],
+  ['/first-year-reps', 'First-year reps', 'firstYearReps', UserPlus], ['/makerspace', 'Makerspace', 'makerspace', Wrench],
+  ['/mailer', 'Email center', 'mailer', Mail], ['/settings', 'Settings', 'settings', Settings],
+];
 
-const CLUB_VIEW_PAGES = new Set(['dashboard', 'events', 'users']);
-
-const isAllowed = (user, permission) => {
-  const role = normalize(user?.role);
-  if (role === 'admin') return true;
-
-  const required = normalize(permission);
-  if (CLUB_VIEW_PAGES.has(required) && user?.isClubLead) return true;
-
-  const perms = Array.isArray(user?.permissions)
-    ? user.permissions.map((p) => normalize(p)).filter(Boolean)
-    : [];
-  return perms.includes(required);
-};
-
-const getInitials = (name) => {
-  const text = String(name ?? '').trim();
-  if (!text) return 'U';
-  const parts = text.split(/\s+/).filter(Boolean);
-  const first = parts[0]?.[0] || '';
-  const last = (parts.length > 1 ? parts[parts.length - 1]?.[0] : parts[0]?.[1]) || '';
-  return (first + last).toUpperCase();
-};
+function Brand() {
+  return <div className="shell-brand"><img src="/iedc-mark.webp" width="34" height="34" alt=""/><div><strong>IEDC</strong><span>LBSCEK</span></div></div>;
+}
 
 export default function AdminLayout() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const profileRef = useRef(null);
-
+  const client = useQueryClient();
+  const { pathname } = useLocation();
+  const drawer = useRef(null);
+  const searchInput = useRef(null);
+  const [pageSearch, setPageSearch] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
   const { mode, clubId, setIedcMode, setClubMode } = useViewMode();
-
-  const { data: meData } = useQuery({
-    queryKey: ['me'],
-    queryFn: meApi,
-    retry: false,
-  });
-
-  const { data: clubsData } = useQuery({
-    queryKey: ['clubs'],
-    queryFn: fetchClubs,
-    enabled: Boolean(meData?.id),
-    retry: false,
-  });
-  const myClubs = useMemo(() => {
-    const myId = String(meData?.id ?? '');
-    if (!myId) return [];
-    const clubs = Array.isArray(clubsData?.clubs) ? clubsData.clubs : [];
-    return clubs.filter((c) => {
-      const managers = Array.isArray(c?.managerUsers) ? c.managerUsers : [];
-      const editors = Array.isArray(c?.editorUsers) ? c.editorUsers : [];
-      const members = Array.isArray(c?.memberUsers) ? c.memberUsers : [];
-      return (
-        managers.some((u) => String(u?._id) === myId) ||
-        editors.some((u) => String(u?._id) === myId) ||
-        members.some((u) => String(u?._id) === myId)
-      );
-    });
-  }, [clubsData, meData?.id]);
-
-  const activeClubName = useMemo(() => {
-    if (mode !== 'club' || !clubId) return '';
-    const c = myClubs.find((x) => String(x?._id) === String(clubId));
-    return String(c?.name ?? '').trim();
-  }, [clubId, mode, myClubs]);
-
-  const isAdmin = normalize(meData?.role) === 'admin';
-
-  const canUseIedcMode = useMemo(() => {
-    if (isAdmin) return true;
-    const isClubLead = Boolean(meData?.isClubLead);
-    const perms = Array.isArray(meData?.permissions)
-      ? meData.permissions.map((p) => normalize(p)).filter(Boolean)
-      : [];
-    // If the user has any permission outside the club-only pages,
-    // allow them to switch back to IEDC mode.
-    // Also allow club leads with any execom permissions to see IEDC mode.
-    return perms.some((p) => !CLUB_VIEW_PAGES.has(p)) || (isClubLead && perms.length > 0);
-  }, [isAdmin, meData]);
+  const { data: user } = useQuery({ queryKey: ['me'], queryFn: me, retry: false });
+  const clubs = user?.workspaces || [];
+  const active = mode === 'club' && clubs.find((club) => club.id === clubId);
+  const canUseIedc = Boolean(user?.canUseIedc);
+  const needsScope = user && ((mode === 'club' && !active) || (mode === 'iedc' && !canUseIedc));
+  const firstClub = clubs[0]?.id;
 
   useEffect(() => {
-    if (!meData?.id) return;
-    if (canUseIedcMode) return;
-    if (myClubs.length === 0) return;
+    if (!needsScope) return;
+    if (canUseIedc) setIedcMode();
+    else if (firstClub) setClubMode(firstClub);
+  }, [needsScope, canUseIedc, firstClub, setIedcMode, setClubMode]);
 
-    // Club-only users should always operate in club view.
-    if (mode === 'iedc') {
-      setClubMode(String(myClubs[0]?._id));
-    } else if (mode === 'club' && !clubId) {
-      setClubMode(String(myClubs[0]?._id));
-    }
-  }, [canUseIedcMode, clubId, meData?.id, mode, myClubs, setClubMode]);
+  const signout = useMutation({ mutationFn: logout, onSuccess: async () => {
+    await client.cancelQueries(); client.clear(); setIedcMode(); navigate('/login', { replace: true });
+  }, onError: () => toast.error('Could not sign out. Please try again.') });
 
-  const logoutMutation = useMutation({
-    mutationFn: logoutApi,
-    onSuccess: async () => {
-      await queryClient.cancelQueries({ queryKey: ['me'] });
-      queryClient.removeQueries({ queryKey: ['me'] });
-      toast.success('Logged out');
-      navigate('/login', { replace: true });
-    },
-    onError: () => {
-      toast.error('Logout failed');
-    },
-  });
+  const visible = useMemo(() => links.filter(([, , permission]) => active
+    ? (['dashboard', 'events'].includes(permission) || (permission === 'users' && active.access?.managePermissions))
+    : (canUseIedc && hasWorkspacePermission(user, permission))), [active, canUseIedc, user]);
+  const searchResults = pageSearch.trim() ? visible.filter(([, title]) => title.toLowerCase().includes(pageSearch.trim().toLowerCase())) : visible;
 
-  const menuItems = [
-    { name: 'Dashboard', icon: <LayoutDashboard size={20} />, path: '/', permission: 'dashboard' },
-    { name: 'Members', icon: <Users size={20} />, path: '/registrations', permission: 'registrations' },
-    { name: 'Events', icon: <CalendarDays size={20} />, path: '/events', permission: 'events' },
-    { name: 'Team Members', icon: <ShieldCheck size={20} />, path: '/users', permission: 'users' },
-    { name: 'First-Year Reps', icon: <UserPlus size={20} />, path: '/first-year-reps', permission: 'firstYearReps' },
-    { name: 'Makerspace', icon: <Wrench size={20} />, path: '/makerspace', permission: 'makerspace' },
-    { name: 'Email Center', icon: <Mail size={20} />, path: '/mailer', permission: 'mailer' },
-    { name: 'API Settings', icon: <Settings size={20} />, path: '/settings', permission: 'settings' },
-  ];
+  useEffect(() => {
+    const onShortcut = (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault(); searchInput.current?.focus(); setSearchOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onShortcut);
+    return () => window.removeEventListener('keydown', onShortcut);
+  }, []);
 
-  const visibleMenuItems = meData?.id
-    ? menuItems
-        .filter((m) => {
-          // Always check permissions, even in club view mode
-          return isAllowed(meData, m.permission);
-        })
-    : menuItems;
+  const requestNavigation = (action) => { const event = new CustomEvent('iedc:navigate', { cancelable: true, detail: action }); if (window.dispatchEvent(event)) action(); };
+  const choosePage = (path) => { requestNavigation(() => navigate(path)); setPageSearch(''); setSearchOpen(false); drawer.current?.close(); };
+  const sidebar = (mobile = false) => <>
+    <div className="shell-rail-head"><Brand/>{mobile && <button className="shell-icon-button" aria-label="Close navigation" onClick={() => drawer.current?.close()}><X size={19}/></button>}</div>
+    <p className="shell-nav-label">Workspace</p>
+    <nav className="shell-nav" aria-label="Workspace navigation">{visible.map((entry) => { const [path, title] = entry; const PageIcon = entry[3]; return <NavLink end={path === '/'} key={path} to={path} onClick={() => drawer.current?.close()}><PageIcon size={17}/><span>{title}</span></NavLink>; })}</nav>
+    {active && normalizePortalRole(user?.role) !== 'super_admin' && (active.access?.pageEdit || active.access?.pagePublish) && <nav className="shell-nav"><NavLink to={`/clubs/${active.id}/nexus`}><PanelsTopLeft size={17}/><span>Nexus page</span></NavLink></nav>}
+    {normalizePortalRole(user?.role) === 'super_admin' && <nav className="shell-nav"><NavLink to="/nexus"><PanelsTopLeft size={17}/><span>Nexus directory</span></NavLink></nav>}
+    <div className="shell-identity-card"><div className="shell-identity-top"><span className="shell-avatar">{(user?.name || user?.membershipId || 'U').slice(0, 1).toUpperCase()}</span><div><strong>{user?.name || user?.membershipId || 'User'}</strong><small>{active?.name || 'IEDC workspace'}</small></div></div><button type="button" onClick={() => signout.mutate()} disabled={signout.isPending}><LogOut size={15}/>{signout.isPending ? 'Signing out…' : 'Sign out'}</button></div>
+  </>;
 
-  const displayName = String(meData?.name || meData?.membershipId || '').trim() || 'Account';
-  const roleLabel = String(meData?.role || '').trim() || 'Member';
-  const initials = getInitials(meData?.name || meData?.membershipId);
-
-  const isClubLead = Boolean(meData?.isClubLead);
-  const hasBothRoles = canUseIedcMode && (isClubLead || myClubs.length > 0);
-  
-  const viewLabel = mode === 'club' && activeClubName 
-    ? (hasBothRoles ? `Club View: ${activeClubName}` : `Viewing: ${activeClubName}`)
-    : (hasBothRoles ? 'Execom View' : 'Viewing: IEDC');
-
-  return (
-    <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden">
-      {/* Sidebar */}
-      <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} bg-white border-r border-slate-200 flex flex-col shrink-0 transition-all duration-300`}>
-        <div className={`p-6 border-b border-slate-100 flex items-center ${sidebarOpen ? 'gap-3' : 'justify-center'}`}>
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">I</div>
-          {sidebarOpen && <h1 className="text-xl font-bold tracking-tight">IEDC Admin</h1>}
-        </div>
-        
-        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-          {sidebarOpen && <p className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Main Menu</p>}
-          {visibleMenuItems.map((item) => (
-            <NavLink 
-              key={item.name} 
-              to={item.path} 
-              className={({ isActive }) => `
-                flex items-center ${sidebarOpen ? 'gap-3 px-4' : 'justify-center px-0'} py-3 rounded-xl transition-all duration-200
-                ${isActive 
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' 
-                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'}
-              `}
-              title={!sidebarOpen ? item.name : undefined}
-            >
-              {item.icon}
-              {sidebarOpen && <span className="font-medium text-sm">{item.name}</span>}
-            </NavLink>
-          ))}
-        </nav>
-
-        {/* Sidebar Footer */}
-        <div className="p-4 border-t border-slate-100 space-y-2">
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className={`flex items-center ${sidebarOpen ? 'gap-3 px-4' : 'justify-center px-0'} py-3 w-full text-slate-500 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-colors`}
-            title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
-          >
-            {sidebarOpen ? <X size={20}/> : <Menu size={20}/>}
-            {sidebarOpen && <span className="font-medium text-sm">Collapse</span>}
-          </button>
-          <button
-            onClick={() => logoutMutation.mutate()}
-            disabled={logoutMutation.isPending}
-            className={`flex items-center ${sidebarOpen ? 'gap-3 px-4' : 'justify-center px-0'} py-3 w-full text-red-500 hover:bg-red-50 rounded-xl transition-colors disabled:opacity-50`}
-            title={!sidebarOpen ? "Logout" : undefined}
-          >
-            <LogOut size={20}/>
-            {sidebarOpen && <span className="font-medium text-sm">Logout</span>}
-          </button>
-        </div>
-      </aside>
-
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Top Header */}
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shrink-0">
-          <div className="text-sm text-slate-500 font-medium italic">
-            admin.iedclbscek.in
-          </div>
-          
-          <div className="flex items-center gap-6">
-            <button className="relative text-slate-400 hover:text-slate-600">
-              <Bell size={20}/>
-              <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-            </button>
-            <div className="h-8 w-px bg-slate-200"></div>
-            <div
-              ref={profileRef}
-              className="relative"
-              onBlur={(e) => {
-                if (!profileRef.current) return;
-                if (profileRef.current.contains(e.relatedTarget)) return;
-                setProfileOpen(false);
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => setProfileOpen((v) => !v)}
-                className="flex items-center gap-3 cursor-pointer rounded-xl hover:bg-slate-50 px-2 py-1"
-              >
-              <div className="text-right">
-                <p className="text-xs font-bold leading-none">{displayName}</p>
-                <p className="text-[10px] text-slate-400 font-medium">{roleLabel}</p>
-              </div>
-              <div className="w-9 h-9 rounded-full bg-linear-to-tr from-blue-600 to-indigo-500 border-2 border-white shadow-sm flex items-center justify-center text-white text-xs font-bold">
-                {initials}
-              </div>
-              </button>
-
-              {profileOpen ? (
-                <div className="absolute right-0 mt-2 w-72 rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden z-50">
-                  <div className="px-4 py-3 border-b border-slate-100">
-                    <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                      {hasBothRoles ? 'Switch View' : 'View Mode'}
-                    </div>
-                    <div className="mt-1 text-sm font-semibold text-slate-900">{viewLabel}</div>
-                  </div>
-
-                  <div className="p-2">
-                    {hasBothRoles && (
-                      <div className="mb-2 px-3 py-1">
-                        <p className="text-xs text-slate-500">You have access to multiple views</p>
-                      </div>
-                    )}
-
-                    {canUseIedcMode ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIedcMode();
-                          setProfileOpen(false);
-                        }}
-                        className={`w-full text-left px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
-                          mode === 'iedc'
-                            ? 'bg-blue-600 text-white shadow-lg'
-                            : 'hover:bg-slate-50 text-slate-700'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span>{hasBothRoles ? '🏛️ Execom View' : 'IEDC'}</span>
-                          {mode === 'iedc' && (
-                            <span className="text-xs opacity-75">✓ Active</span>
-                          )}
-                        </div>
-                        {hasBothRoles && (
-                          <p className="text-xs opacity-75 mt-1">Full admin access</p>
-                        )}
-                      </button>
-                    ) : null}
-
-                    {myClubs.length > 0 ? (
-                      <div className={canUseIedcMode ? 'mt-2' : ''}>
-                        {hasBothRoles && (
-                          <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                            Club Views
-                          </div>
-                        )}
-                        {myClubs.map((c) => {
-                          const cid = String(c?._id);
-                          const active = mode === 'club' && String(clubId) === cid;
-                          const isManager = Array.isArray(c?.managerUsers) && 
-                            c.managerUsers.some(u => String(u?._id) === String(meData?.id));
-                          
-                          return (
-                            <button
-                              key={cid}
-                              type="button"
-                              onClick={() => {
-                                setClubMode(cid);
-                                setProfileOpen(false);
-                              }}
-                              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
-                                active
-                                  ? 'bg-blue-600 text-white shadow-lg'
-                                  : 'hover:bg-slate-50 text-slate-700'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between">
-                                <span>{hasBothRoles ? '👥 ' : ''}{c?.name || 'Club'}</span>
-                                {active && (
-                                  <span className="text-xs opacity-75">✓ Active</span>
-                                )}
-                              </div>
-                              {hasBothRoles && (
-                                <p className="text-xs opacity-75 mt-1">
-                                  {isManager ? 'Club Lead' : 'Club Member'}
-                                </p>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </header>
-
-        {/* Page Content Rendered Here */}
-        <main className="flex-1 p-8 overflow-y-auto bg-slate-50/50">
-          <div className="max-w-7xl mx-auto">
-            <Outlet />
-          </div>
-        </main>
-      </div>
+  return <div className="admin-shell">
+    <a className="skip-link" href="#workspace-content">Skip to content</a>
+    <aside className="shell-rail shell-desktop-rail">{sidebar()}</aside>
+    <dialog ref={drawer} className="shell-rail shell-mobile-rail" aria-label="Navigation" onClick={(event) => { if (event.target === drawer.current) drawer.current.close(); }}>{sidebar(true)}</dialog>
+    <div className="shell-workspace">
+      <header className="shell-topbar">
+        <button className="shell-menu-trigger" aria-label="Open navigation" onClick={() => { drawer.current?.showModal(); requestAnimationFrame(() => drawer.current?.querySelector('a')?.focus()); }}><Menu size={20}/></button>
+        <div className="shell-page-search"><Search size={16}/><input ref={searchInput} value={pageSearch} onFocus={() => setSearchOpen(true)} onBlur={() => setTimeout(() => setSearchOpen(false), 100)} onChange={(event) => { setPageSearch(event.target.value); setSearchOpen(true); }} onKeyDown={(event) => { if (event.key === 'Escape') { setSearchOpen(false); event.currentTarget.blur(); } if (event.key === 'Enter' && searchResults[0]) choosePage(searchResults[0][0]); }} placeholder="Find a page…" aria-label="Find a page" aria-expanded={searchOpen}/><kbd>⌘K</kbd>{searchOpen && pageSearch && <div className="shell-search-results" role="listbox">{searchResults.length ? searchResults.map((entry) => { const [path, title] = entry; const PageIcon = entry[3]; return <button key={path} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => choosePage(path)}><PageIcon size={15}/><span>{title}</span></button>; }) : <p>No authorized pages found</p>}</div>}</div>
+        <div className="shell-top-actions"><label className="shell-scope-picker"><span className="sr-only">Active workspace</span><span className="shell-scope-value" aria-hidden="true">{active?.name || 'IEDC workspace'}</span><select aria-label="Active workspace" value={active?.id || ''} onChange={(event) => { const id=event.target.value; requestNavigation(() => { if (id) setClubMode(id); else setIedcMode(); navigate('/'); }); }}>{canUseIedc && <option value="">IEDC workspace</option>}{clubs.map((club) => <option key={club.id} value={club.id}>{club.name}</option>)}</select></label><span className="shell-top-avatar" title={user?.name || user?.membershipId}>{(user?.name || user?.membershipId || 'U').slice(0, 1).toUpperCase()}</span></div>
+      </header>
+      <main id="workspace-content" tabIndex="-1" className="shell-content"><div className="page-enter" key={pathname + (active?.id || '')}>{!user || (needsScope && (canUseIedc || firstClub)) ? <PageSkeleton/> : needsScope ? <section className="surface feedback"><h1>No workspace assigned</h1><p>Ask your administrator for access.</p></section> : <Suspense fallback={<PageSkeleton/>}><Outlet/></Suspense>}</div></main>
     </div>
-  );
+  </div>;
 }

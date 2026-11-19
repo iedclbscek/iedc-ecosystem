@@ -1,9 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import FormAlert from '../components/FormAlert';
+import PortalDialog from '../components/PortalDialog';
+import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { CalendarDays, Loader2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Loader2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { MultiSelectUsers } from '../components/MultiSelectUsers';
 import EventForm from '../components/EventForm';
 import PreviewEventModal from '../components/PreviewEventModal';
+import { RowsSkeleton, TableSkeleton } from '../components/InlineSkeleton';
 import {
   createClub,
   createClubEvent,
@@ -22,6 +27,7 @@ import {
 } from '../api/adminService';
 import { me } from '../api/authService';
 import { useViewMode } from '../context/ViewModeContext';
+import { getWorkspaceAccess, hasWorkspacePermission, normalizePortalRole } from '../utils/authorization';
 
 const toDatetimeLocalValue = (value) => {
   if (!value) return '';
@@ -31,13 +37,6 @@ const toDatetimeLocalValue = (value) => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
     date.getHours()
   )}:${pad(date.getMinutes())}`;
-};
-
-const toIsoOrEmpty = (value) => {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toISOString();
 };
 
 const displayDate = (value) => {
@@ -56,104 +55,19 @@ const pluralizeCount = (count, singular, plural) => {
 
 const separator = ' · ';
 
-const EVENT_STATUSES = ["draft", "published", "completed", "cancelled"];
-const EVENT_VISIBILITIES = ["public", "private"];
-
-const userLabel = (user) => {
-  const name = user?.name || user?.membershipId || 'Member';
-  const meta = [user?.membershipId, user?.email].filter(Boolean).join(separator);
-  return { name, meta };
-};
-
 const toggleFromArray = (arr, value) => {
   const list = Array.isArray(arr) ? arr : [];
   const id = String(value);
   return list.includes(id) ? list.filter((v) => v !== id) : [...list, id];
 };
 
-const matchesUserSearch = (user, query) => {
-  const search = normalize(query).toLowerCase();
-  if (!search) return true;
-
-  return [user?.name, user?.email, user?.membershipId]
-    .filter(Boolean)
-    .some((value) => String(value).toLowerCase().includes(search));
-};
-
-function MultiSelectUsers({
-  users,
-  selectedIds,
-  onToggle,
-  disabled,
-  searchEnabled = false,
-  searchPlaceholder = 'Search users...',
-  emptyMessage = 'No users found',
-}) {
-  const [searchQuery, setSearchQuery] = useState('');
-
-  const options = (Array.isArray(users) ? users : [])
-    .map((u) => ({
-      id: u?._id,
-      ...userLabel(u),
-    }))
-    .filter((u) => Boolean(u.id));
-
-  const filteredOptions = options.filter((u) => matchesUserSearch(u, searchQuery));
-
-  if (options.length === 0) {
-    return <div className="text-sm text-slate-500">No users found.</div>;
-  }
-
-  return (
-    <div className={`max-h-56 overflow-auto rounded-xl border border-slate-200 bg-white ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>
-      {searchEnabled ? (
-        <div className="border-b border-slate-200 p-2">
-          <div className="relative">
-            <Search className="absolute left-3 top-3 text-slate-400" size={16} />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={searchPlaceholder}
-              className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg bg-white text-sm outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-            />
-          </div>
-        </div>
-      ) : null}
-
-      {filteredOptions.length === 0 ? (
-        <div className="p-3 text-sm text-slate-500">{emptyMessage}</div>
-      ) : (
-        filteredOptions.map((u) => (
-          <label
-            key={u.id}
-            className="flex items-start gap-3 px-4 py-2 hover:bg-slate-50 cursor-pointer"
-          >
-            <input
-              type="checkbox"
-              className="mt-1"
-              checked={Array.isArray(selectedIds) && selectedIds.includes(u.id)}
-              disabled={Boolean(disabled)}
-              onChange={() => onToggle(u.id)}
-            />
-            <div>
-              <div className="text-sm font-semibold text-slate-900">{u.name}</div>
-              {u.meta ? <div className="text-xs text-slate-500">{u.meta}</div> : null}
-            </div>
-          </label>
-        ))
-      )}
-    </div>
-  );
-}
-
-function RegistrationSearch({ query, onQueryChange, selectedIds, onToggleId, disabled }) {
+function RegistrationSearch({ clubId, query, onQueryChange, selectedIds, onToggleId, disabled }) {
   const normalizedQuery = normalize(query);
   const enabled = !disabled && normalizedQuery.length >= 2;
 
   const { data, isFetching } = useQuery({
-    queryKey: ['club-member-search', normalizedQuery],
-    queryFn: () => searchStudents(normalizedQuery),
+    queryKey: ['club-member-search', clubId, normalizedQuery],
+    queryFn: () => searchStudents(normalizedQuery, 'student', { clubId }),
     enabled,
     retry: false,
   });
@@ -213,14 +127,16 @@ function RegistrationSearch({ query, onQueryChange, selectedIds, onToggleId, dis
   );
 }
 
-function ClubsEvents() {
+function ClubsEvents({ tabs }) {
   const queryClient = useQueryClient();
 
   const { mode, clubId: activeClubId } = useViewMode();
 
   const [clubSearch, setClubSearch] = useState('');
-  const [selectedClubId, setSelectedClubId] = useState('');
+  const [selectedClubChoice, setSelectedClubId] = useState('');
+  const selectedClubId = mode === 'club' ? activeClubId : selectedClubChoice;
   const [eventSearch, setEventSearch] = useState('');
+  const [eventPage, setEventPage] = useState(1);
 
   const [isCreateClubOpen, setIsCreateClubOpen] = useState(false);
   const [isEditClubOpen, setIsEditClubOpen] = useState(false);
@@ -289,23 +205,20 @@ function ClubsEvents() {
 
   const { data: usersData } = useQuery({
     queryKey: ['users'],
-    queryFn: fetchUsers,
+    queryFn: () => fetchUsers(),
+    enabled: hasWorkspacePermission(meData, 'users') && (isCreateClubOpen || isEditClubOpen || isCreateEventOpen || isEditEventOpen),
     retry: false,
   });
 
-  const { data: clubsData, isLoading: clubsLoading, isError: clubsError } = useQuery({
+  const { data: clubsData, isLoading: clubsLoading, isError: clubsError, refetch: retryClubs } = useQuery({
     queryKey: ['clubs'],
     queryFn: fetchClubs,
     retry: false,
   });
 
   const clubs = Array.isArray(clubsData?.clubs) ? clubsData.clubs : [];
-  const users = Array.isArray(usersData?.users) ? usersData.users : [];
 
-  const scopedClubs = useMemo(() => {
-    if (mode !== 'club' || !activeClubId) return clubs;
-    return clubs.filter((c) => String(c?._id) === String(activeClubId));
-  }, [activeClubId, clubs, mode]);
+  const scopedClubs = mode === 'club' ? clubs.filter((club) => String(club._id) === String(activeClubId)) : clubs;
 
   const filteredClubs = scopedClubs.filter((c) => {
     const text = normalize(clubSearch).toLowerCase();
@@ -314,33 +227,24 @@ function ClubsEvents() {
   });
 
   const selectedClub = scopedClubs.find((c) => String(c?._id) === String(selectedClubId)) || null;
-  const isAdmin = normalize(meData?.role).toLowerCase() === 'admin';
+  const clubUsers = [...(selectedClub?.managerUsers || []), ...(selectedClub?.editorUsers || []), ...(selectedClub?.memberUsers || []), ...(eventEditing?.coordinatorUsers || [])];
+  const users = hasWorkspacePermission(meData, 'users') ? (usersData?.users || []) :
+    [...new Map(clubUsers.filter(user => user?._id).map(user => [String(user._id), user])).values()];
+  const isAdmin = normalizePortalRole(meData?.role) === 'super_admin';
+  const selectedAccess = getWorkspaceAccess(meData, selectedClubId);
+  const canEditEvents = isAdmin || selectedAccess.edit;
+  const canPublishEvents = isAdmin || selectedAccess.publish;
+  const canDeleteEvents = isAdmin || selectedAccess.delete;
 
-  useEffect(() => {
-    if (mode !== 'club' || !activeClubId) return;
-    setSelectedClubId(String(activeClubId));
-  }, [activeClubId, mode]);
-  const isClubLead = selectedClub
-    ? (Array.isArray(selectedClub?.managerUsers) ? selectedClub.managerUsers : []).some(
-        (u) => String(u?._id || u) === String(meData?.id)
-      )
-    : false;
-  const isClubEditor = selectedClub
-    ? (Array.isArray(selectedClub?.editorUsers) ? selectedClub.editorUsers : []).some(
-        (u) => String(u?._id || u) === String(meData?.id)
-      )
-    : false;
-
-  const canEditClub = Boolean(selectedClub) && (isAdmin || isClubLead || isClubEditor);
-  const canManageMembers = Boolean(selectedClub) && (isAdmin || isClubLead);
+  const canManageMembers = Boolean(selectedClub) && (isAdmin || selectedAccess.managePermissions);
 
   const {
     data: eventsData,
     isLoading: eventsLoading,
-    isError: eventsError,
+    isError: eventsError, refetch: retryEvents,
   } = useQuery({
-    queryKey: ['clubEvents', selectedClubId, eventSearch],
-    queryFn: () => fetchClubEvents({ clubId: selectedClubId, search: eventSearch }),
+    queryKey: ['clubEvents', selectedClubId, eventSearch, eventPage],
+    queryFn: () => fetchClubEvents({ clubId: selectedClubId, search: eventSearch, page: eventPage, limit: 20 }),
     enabled: Boolean(selectedClubId),
     retry: false,
   });
@@ -352,6 +256,7 @@ function ClubsEvents() {
     onSuccess: () => {
       toast.success('Club created');
       queryClient.invalidateQueries({ queryKey: ['clubs'] });
+      queryClient.invalidateQueries({ queryKey: ['me'] });
       setIsCreateClubOpen(false);
       setCreateClubForm({ name: '', description: '', managerUserIds: [] });
     },
@@ -363,6 +268,7 @@ function ClubsEvents() {
     onSuccess: () => {
       toast.success('Club updated');
       queryClient.invalidateQueries({ queryKey: ['clubs'] });
+      queryClient.invalidateQueries({ queryKey: ['me'] });
       setIsEditClubOpen(false);
       setClubEditing(null);
     },
@@ -374,6 +280,7 @@ function ClubsEvents() {
     onSuccess: () => {
       toast.success('Club deleted');
       queryClient.invalidateQueries({ queryKey: ['clubs'] });
+      queryClient.invalidateQueries({ queryKey: ['me'] });
       if (selectedClubId && String(selectedClubId) === String(clubEditing?._id)) {
         setSelectedClubId('');
       }
@@ -387,6 +294,7 @@ function ClubsEvents() {
     onSuccess: () => {
       toast.success('Event created');
       queryClient.invalidateQueries({ queryKey: ['clubEvents', selectedClubId] });
+      queryClient.invalidateQueries({ queryKey: ['overview'] });
       setIsCreateEventOpen(false);
       setCreateEventForm({
         title: '',
@@ -405,7 +313,6 @@ function ClubsEvents() {
         coordinatorUserIds: [],
       });
     },
-    onError: (err) => toast.error(err?.response?.data?.message || 'Failed to create event'),
   });
 
   const updateEventMutation = useMutation({
@@ -413,10 +320,11 @@ function ClubsEvents() {
     onSuccess: () => {
       toast.success('Event updated');
       queryClient.invalidateQueries({ queryKey: ['clubEvents', selectedClubId] });
+      queryClient.invalidateQueries({ queryKey: ['overview'] });
       setIsEditEventOpen(false);
       setEventEditing(null);
     },
-    onError: (err) => toast.error(err?.response?.data?.message || 'Failed to update event'),
+    onError: err => { if (!isEditEventOpen) toast.error(err?.response?.data?.message || 'Could not update this event.'); },
   });
 
   const deleteEventMutation = useMutation({
@@ -424,6 +332,7 @@ function ClubsEvents() {
     onSuccess: () => {
       toast.success('Event deleted');
       queryClient.invalidateQueries({ queryKey: ['clubEvents', selectedClubId] });
+      queryClient.invalidateQueries({ queryKey: ['overview'] });
     },
     onError: (err) => toast.error(err?.response?.data?.message || 'Failed to delete event'),
   });
@@ -461,7 +370,7 @@ function ClubsEvents() {
               <button
                 type="button"
                 onClick={() => toast.dismiss(t.id)}
-                className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold hover:bg-slate-50"
+                className="op-secondary"
               >
                 Cancel
               </button>
@@ -493,6 +402,8 @@ function ClubsEvents() {
       title: event?.title || '',
       description: event?.description || '',
       shortDescription: event?.shortDescription || '',
+      posterUrl: event?.posterUrl || '',
+      posterPublicId: event?.posterPublicId || '',
       registrationLink: event?.registrationLink || event?.registrationUrl || '',
       externalLink: event?.externalLink || '',
       scope: event?.scope || 'club',
@@ -503,15 +414,16 @@ function ClubsEvents() {
       mode: event?.mode || '',
       startAt: toDatetimeLocalValue(event?.startAt),
       endAt: toDatetimeLocalValue(event?.endAt),
-      coordinatorUserIds: (Array.isArray(event?.coordinatorUsers) ? event.coordinatorUsers : [])
+      coordinatorUserIds: (event.coordinatorUsers?.length ? event.coordinatorUsers : [event.coordinatorUser].filter(Boolean))
         .map((u) => String(u?._id || u))
         .filter(Boolean),
     });
+    updateEventMutation.reset();
     setIsEditEventOpen(true);
   };
 
   const confirmDeleteEvent = (event) => {
-    if (!event?._id || !selectedClubId) return;
+    if (!canDeleteEvents || !event?._id || !selectedClubId) return;
     const title = event?.title || 'this event';
     toast.custom(
       (t) => (
@@ -523,7 +435,7 @@ function ClubsEvents() {
               <button
                 type="button"
                 onClick={() => toast.dismiss(t.id)}
-                className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold hover:bg-slate-50"
+                className="op-secondary"
               >
                 Cancel
               </button>
@@ -547,9 +459,6 @@ function ClubsEvents() {
 
   const canCreateClub = isAdmin && normalize(createClubForm.name);
   const canUpdateClub = normalize(editClubForm.name);
-  const canCreateEvent = Boolean(selectedClubId) && normalize(createEventForm.title);
-  const canUpdateEvent = Boolean(selectedClubId) && normalize(editEventForm.title);
-
   const submitCreateClub = () => {
     if (!canCreateClub || createClubMutation.isPending) return;
     createClubMutation.mutate({
@@ -573,54 +482,11 @@ function ClubsEvents() {
     });
   };
 
-  const submitCreateEvent = () => {
-    if (!canCreateEvent || createEventMutation.isPending) return;
-    createEventMutation.mutate({
-      clubId: selectedClubId,
-      title: createEventForm.title.trim(),
-      description: createEventForm.description,
-      shortDescription: createEventForm.shortDescription,
-      registrationLink: createEventForm.registrationLink,
-      externalLink: createEventForm.externalLink,
-      scope: createEventForm.scope || 'club',
-      status: createEventForm.status || 'draft',
-      visibility: createEventForm.visibility || 'public',
-      location: createEventForm.location,
-      venue: createEventForm.venue,
-      mode: createEventForm.mode,
-      startAt: toIsoOrEmpty(createEventForm.startAt),
-      endAt: toIsoOrEmpty(createEventForm.endAt),
-      coordinatorUserIds: createEventForm.coordinatorUserIds,
-    });
-  };
-
-  const submitUpdateEvent = () => {
-    if (!eventEditing?._id || !canUpdateEvent || updateEventMutation.isPending) return;
-    updateEventMutation.mutate({
-      clubId: selectedClubId,
-      eventId: eventEditing._id,
-      title: editEventForm.title.trim(),
-      description: editEventForm.description,
-      shortDescription: editEventForm.shortDescription,
-      registrationLink: editEventForm.registrationLink,
-      externalLink: editEventForm.externalLink,
-      scope: editEventForm.scope,
-      status: editEventForm.status || 'draft',
-      visibility: editEventForm.visibility || 'public',
-      location: editEventForm.location,
-      venue: editEventForm.venue,
-      mode: editEventForm.mode,
-      startAt: toIsoOrEmpty(editEventForm.startAt),
-      endAt: toIsoOrEmpty(editEventForm.endAt),
-      coordinatorUserIds: editEventForm.coordinatorUserIds,
-    });
-  };
-
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+    <div className="op-page">
+      <div className="op-header op-event-header">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">{mode === 'club' ? 'Events' : 'Clubs'}</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Events</h1>
           <p className="text-slate-500 text-sm">
             {mode === 'club'
               ? 'Manage your club events and coordinators.'
@@ -628,22 +494,26 @@ function ClubsEvents() {
           </p>
         </div>
 
+        {mode === 'club' && canEditEvents && (
+          <button type="button" className="op-primary" onClick={() => { createEventMutation.reset(); setIsCreateEventOpen(true); }}><Plus size={17} /> New event</button>
+        )}
         {isAdmin && mode !== 'club' ? (
           <button
             onClick={() => setIsCreateClubOpen(true)}
-            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-semibold shadow-lg shadow-blue-200 transition-all"
+            className="op-primary"
           >
             <Plus size={18} />
-            New Club
+            New club
           </button>
         ) : null}
       </div>
 
+      {tabs}
       <div
-        className={`grid grid-cols-1 gap-6 ${mode === 'club' ? '' : 'lg:grid-cols-3'}`}
+        className={`grid grid-cols-1 gap-6 ${mode === 'club' ? '' : 'xl:grid-cols-[minmax(13rem,1fr)_minmax(0,3fr)]'}`}
       >
         {mode !== 'club' ? (
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="op-card overflow-hidden min-w-0">
             <div className="p-4 border-b border-slate-100">
               <div className="relative">
                 <Search className="absolute left-4 top-3 text-slate-400" size={18} />
@@ -651,19 +521,16 @@ function ClubsEvents() {
                   type="text"
                   value={clubSearch}
                   onChange={(e) => setClubSearch(e.target.value)}
-                  placeholder="Search clubs..."
+                  aria-label="Search clubs" placeholder="Search clubs"
                   className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all shadow-sm"
                 />
               </div>
             </div>
 
             {clubsLoading ? (
-              <div className="p-6 flex items-center gap-3 text-slate-500">
-                <Loader2 className="animate-spin" size={18} />
-                Loading clubs...
-              </div>
+              <RowsSkeleton rows={6} columns={2} compact label="Loading clubs" />
             ) : clubsError ? (
-              <div className="p-6 text-slate-500">Failed to load clubs.</div>
+              <FormAlert className="m-4">Could not load clubs. <button type="button" onClick={() => retryClubs()}>Try again</button></FormAlert>
             ) : filteredClubs.length === 0 ? (
               <div className="p-6 text-slate-500">No clubs.</div>
             ) : (
@@ -680,52 +547,40 @@ function ClubsEvents() {
                     : 0;
                   const editorCount = Array.isArray(club?.editorUsers) ? club.editorUsers.length : 0;
                   return (
-                    <button
-                      key={club?._id}
-                      type="button"
-                      onClick={() => setSelectedClubId(String(club?._id))}
-                      className={`w-full text-left p-4 hover:bg-slate-50 transition-colors ${
-                        active ? 'bg-blue-50/60' : ''
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="font-bold text-slate-900">{club?.name || '—'}</div>
-                          <div className="text-xs text-slate-500 mt-1">
-                            {pluralizeCount(managerCount, 'lead', 'leads')} · {pluralizeCount(editorCount, 'editor')}
-                            · {pluralizeCount(memberCount, 'member')}
-                          </div>
-                        </div>
-
-                        {active && canEditClub ? (
+                    <div key={club._id} className={`flex items-center gap-1 px-3 py-1.5 ${active ? 'bg-blue-50' : ''}`}>
+                      <button type="button" aria-pressed={active} className="min-w-0 flex-1 rounded-lg px-2 py-2 text-left hover:bg-slate-50"
+                        onClick={() => { setSelectedClubId(String(club._id)); setEventPage(1); setEventSearch(''); }}>
+                        <span className="block font-semibold text-slate-900">{club.name}</span>
+                        <span className="text-xs text-slate-500">{pluralizeCount(managerCount, 'lead')} · {pluralizeCount(editorCount, 'editor')} · {pluralizeCount(memberCount, 'member')}</span>
+                      </button>
+                        {active && canManageMembers ? (
                           <div className="flex gap-1">
                             <button
                               type="button"
-                              onClick={(e) => {
+                              aria-label={`Edit ${club.name}`} onClick={(e) => {
                                 e.stopPropagation();
                                 openEditClub(club);
                               }}
-                              className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
+                              className="op-icon"
                             >
                               <Pencil size={18} />
                             </button>
                             {isAdmin ? (
                               <button
                                 type="button"
-                                onClick={(e) => {
+                                aria-label={`Delete ${club.name}`} onClick={(e) => {
                                   e.stopPropagation();
                                   confirmDeleteClub(club);
                                 }}
                                 disabled={deleteClubMutation.isPending}
-                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all disabled:opacity-30"
+                                className="op-icon danger"
                               >
                                 <Trash2 size={18} />
                               </button>
                             ) : null}
                           </div>
                         ) : null}
-                      </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -733,62 +588,60 @@ function ClubsEvents() {
           </div>
         ) : null}
 
-        <div className={`${mode === 'club' ? '' : 'lg:col-span-2'} space-y-4`}>
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="min-w-0 space-y-4">
+          <div className="op-card overflow-hidden min-w-0">
+            <div className="op-card-head">
               <div className="flex items-center gap-2">
                 <CalendarDays size={18} className="text-slate-400" />
                 <h2 className="font-bold">{selectedClub?.name ? `${selectedClub.name} Events` : 'Events'}</h2>
               </div>
 
-              <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-end w-full md:w-auto">
-                <div className="relative w-full md:w-80">
+              <div className="op-actions">
+                <div className="relative w-full md:w-60">
                   <Search className="absolute left-4 top-3 text-slate-400" size={18} />
                   <input
                     type="text"
                     value={eventSearch}
-                    onChange={(e) => setEventSearch(e.target.value)}
-                    placeholder="Search title or location..."
+                    onChange={(e) => {
+                      setEventSearch(e.target.value);
+                      setEventPage(1);
+                    }}
+                    aria-label="Search events" placeholder="Search title or location"
                     disabled={!selectedClubId}
                     className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all shadow-sm disabled:opacity-50"
                   />
                 </div>
 
-                <button
-                  onClick={() => setIsCreateEventOpen(true)}
-                  disabled={!selectedClubId}
-                  className="inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-semibold shadow-lg shadow-blue-200 transition-all disabled:opacity-50"
+                {mode !== 'club' && canEditEvents && <button
+                  onClick={() => { createEventMutation.reset(); setIsCreateEventOpen(true); }}
+                  disabled={!selectedClubId || !canEditEvents}
+                  className="op-primary"
                 >
                   <Plus size={18} />
-                  New Event
-                </button>
+                  New event
+                </button>}
               </div>
             </div>
 
             {!selectedClubId ? (
-              <div className="p-8 text-slate-500">
+              <div className="op-empty">
                 {mode === 'club' ? 'Loading club...' : 'Select a club to view its events.'}
               </div>
             ) : eventsLoading ? (
-              <div className="p-8 flex items-center gap-3 text-slate-500">
-                <Loader2 className="animate-spin" size={18} />
-                Loading events...
-              </div>
+              <TableSkeleton rows={7} columns={6} label="Loading club events" />
             ) : eventsError ? (
-              <div className="p-8 text-slate-500">Failed to load events.</div>
+              <FormAlert className="m-4">Could not load events. <button type="button" onClick={() => retryEvents()}>Try again</button></FormAlert>
             ) : events.length === 0 ? (
-              <div className="p-8 text-slate-500">No events yet.</div>
+              <div className="op-empty">{eventSearch.trim() ? 'No events match your search.' : 'No events scheduled yet.'}</div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
+              <div className="op-scroll">
+                <table className="op-table">
                   <thead className="bg-slate-50 border-b border-slate-100">
                     <tr className="text-left text-slate-500">
-                      <th className="px-6 py-3 font-semibold">Title</th>
-                      <th className="px-6 py-3 font-semibold">Location</th>
+                      <th className="px-6 py-3 font-semibold">Event</th>
                       <th className="px-6 py-3 font-semibold">Status</th>
                       <th className="px-6 py-3 font-semibold">Visibility</th>
-                      <th className="px-6 py-3 font-semibold">Start</th>
-                      <th className="px-6 py-3 font-semibold">End</th>
+                      <th className="px-6 py-3 font-semibold">Schedule</th>
                       <th className="px-6 py-3 font-semibold">Coordinators</th>
                       <th className="px-6 py-3 font-semibold text-right">Actions</th>
                     </tr>
@@ -809,30 +662,45 @@ function ClubsEvents() {
                         <tr key={e?._id} className="hover:bg-slate-50/50 transition-colors">
                           <td className="px-6 py-4 font-semibold text-slate-900 whitespace-nowrap">
                             {e?.title || '—'}
-                          </td>
-                          <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{e?.location || '—'}</td>
-                          <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{e?.status || 'draft'}</td>
+                      {e.location && <span className="block mt-1 text-xs font-normal text-slate-500">{e.location}</span>}</td>
+                          <td className="px-6 py-4 text-slate-600 whitespace-nowrap"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${e.status === 'published' ? 'bg-emerald-50 text-emerald-700' : e.status === 'cancelled' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-700'}`}>{e.status || 'draft'}</span></td>
                           <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{e?.visibility || 'public'}</td>
-                          <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{displayDate(e?.startAt)}</td>
-                          <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{displayDate(e?.endAt)}</td>
+                          <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{displayDate(e.startAt)}
+                      {e.endAt && <span className="block text-xs text-slate-500">Until {displayDate(e.endAt)}</span>}</td>
                           <td className="px-6 py-4 text-slate-600">{displayCoordinators}</td>
                           <td className="px-6 py-4">
                             <div className="flex justify-end gap-1">
-                              <button
+                              {canPublishEvents ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateEventMutation.mutate({
+                                      clubId: selectedClubId,
+                                      eventId: e._id,
+                                      status: e?.status === 'published' ? 'draft' : 'published',
+                                    })
+                                  }
+                                  disabled={updateEventMutation.isPending}
+                                  className="px-2.5 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 rounded-lg transition-all disabled:opacity-30"
+                                >
+                                  {e?.status === 'published' ? 'Unpublish' : 'Publish'}
+                                </button>
+                              ) : null}
+                              {canEditEvents ? <button
                                 type="button"
-                                onClick={() => openEditEvent(e)}
-                                className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
+                                aria-label={`Edit event ${e.title}`} onClick={() => openEditEvent(e)}
+                                className="op-icon"
                               >
                                 <Pencil size={18} />
-                              </button>
-                              <button
+                              </button> : null}
+                              {canDeleteEvents ? <button
                                 type="button"
-                                onClick={() => confirmDeleteEvent(e)}
+                                aria-label={`Delete event ${e.title}`} onClick={() => confirmDeleteEvent(e)}
                                 disabled={deleteEventMutation.isPending}
-                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all disabled:opacity-30"
+                                className="op-icon danger"
                               >
                                 <Trash2 size={18} />
-                              </button>
+                              </button> : null}
                             </div>
                           </td>
                         </tr>
@@ -840,6 +708,13 @@ function ClubsEvents() {
                     })}
                   </tbody>
                 </table>
+                <div className="op-footer">
+                  <span>Page {eventsData?.page || 1} of {eventsData?.totalPages || 1} ({eventsData?.total || 0} events)</span>
+                  <div className="flex gap-2">
+                    <button type="button" aria-label="Previous events page" onClick={() => setEventPage(Math.max(1, (eventsData?.page || 1) - 1))} disabled={(eventsData?.page || 1) <= 1} className="op-icon"><ChevronLeft size={16} /></button>
+                    <button type="button" aria-label="Next events page" onClick={() => setEventPage(Math.min(eventsData?.totalPages || 1, (eventsData?.page || 1) + 1))} disabled={(eventsData?.page || 1) >= (eventsData?.totalPages || 1)} className="op-icon"><ChevronRight size={16} /></button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -848,13 +723,12 @@ function ClubsEvents() {
 
       {/* Create Club modal */}
       {isCreateClubOpen && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+        <PortalDialog label="Create club" onClose={() => setIsCreateClubOpen(false)} busy={createClubMutation.isPending} className="[--dialog-width:42rem]">
             <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-              <div className="font-bold">Create Club</div>
+              <h2 className="font-semibold text-lg">Create club</h2>
               <button
                 type="button"
-                onClick={() => setIsCreateClubOpen(false)}
+                aria-label="Close club editor" onClick={() => setIsCreateClubOpen(false)}
                 className="p-2 rounded-xl hover:bg-slate-50 text-slate-500"
               >
                 <X size={18} />
@@ -913,7 +787,7 @@ function ClubsEvents() {
                 <button
                   type="button"
                   onClick={() => setIsCreateClubOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold hover:bg-slate-50"
+                  className="op-secondary"
                 >
                   Cancel
                 </button>
@@ -921,25 +795,23 @@ function ClubsEvents() {
                   type="button"
                   onClick={submitCreateClub}
                   disabled={!canCreateClub || createClubMutation.isPending}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold disabled:opacity-50"
+                  className="op-primary"
                 >
                   {createClubMutation.isPending && <Loader2 className="animate-spin" size={16} />}
                   Create
                 </button>
               </div>
             </div>
-          </div>
-        </div>
+        </PortalDialog>
       )}
 
       {/* Edit Club modal */}
       {isEditClubOpen && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+        <PortalDialog label="Edit club" onClose={() => setIsEditClubOpen(false)} busy={updateClubMutation.isPending} className="[--dialog-width:42rem]">
             <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-              <div className="font-bold">Edit Club</div>
+              <h2 className="font-semibold text-lg">Edit club</h2>
               <button
-                type="button"
+                type="button" aria-label="Close club editor"
                 onClick={() => {
                   setIsEditClubOpen(false);
                   setClubEditing(null);
@@ -1026,6 +898,7 @@ function ClubsEvents() {
                 <div className="space-y-2 sm:col-span-2">
                   <label className="text-xs font-bold text-slate-500">Members</label>
                   <RegistrationSearch
+                    clubId={selectedClubId}
                     query={memberSearch}
                     onQueryChange={setMemberSearch}
                     selectedIds={editClubForm.memberRegistrationIds}
@@ -1096,7 +969,7 @@ function ClubsEvents() {
                     setIsEditClubOpen(false);
                     setClubEditing(null);
                   }}
-                  className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold hover:bg-slate-50"
+                  className="op-secondary"
                 >
                   Cancel
                 </button>
@@ -1104,107 +977,119 @@ function ClubsEvents() {
                   type="button"
                   onClick={submitUpdateClub}
                   disabled={!canUpdateClub || updateClubMutation.isPending}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold disabled:opacity-50"
+                  className="op-primary"
                 >
                   {updateClubMutation.isPending && <Loader2 className="animate-spin" size={16} />}
                   Save
                 </button>
               </div>
             </div>
-          </div>
-        </div>
+        </PortalDialog>
       )}
 
       {/* Create Event modal */}
       {isCreateEventOpen && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="w-full max-w-3xl">
-            <EventForm 
-              mode="create"
-              eventType="club"
-              initialData={createEventForm}
-              coordinators={users}
-              isSubmitting={createEventMutation.isPending}
-              onSubmit={(data) => {
-                setCreateEventForm(data);
-                createEventMutation.mutate({
-                  clubId: selectedClubId,
-                  title: data.title.trim(),
-                  description: data.description,
-                  shortDescription: data.shortDescription,
-                  registrationLink: data.registrationLink,
-                  externalLink: data.externalLink,
-                  scope: data.scope || 'club',
-                  status: data.status || 'draft',
-                  visibility: data.visibility || 'public',
-                  location: data.location,
-                  venue: data.venue,
-                  mode: data.mode,
-                  startAt: data.startAt ? new Date(data.startAt).toISOString() : '',
-                  endAt: data.endAt ? new Date(data.endAt).toISOString() : '',
-                  coordinatorUserIds: data.coordinatorUserIds,
-                  posterUrl: data.posterUrl,
-                  posterPublicId: data.posterPublicId,
-                });
-              }}
-              onCancel={() => setIsCreateEventOpen(false)}
-              onPreview={(data) => setPreviewData(data)}
-            />
-          </div>
-        </div>
+        <EventForm
+          mode="create"
+          eventType="club"
+          workspaceName={selectedClub?.name}
+          clubId={selectedClubId}
+          initialData={createEventForm}
+          coordinators={users}
+          isSubmitting={createEventMutation.isPending}
+          saveError={createEventMutation.error}
+          canPublish={canPublishEvents}
+          onSubmit={(data) => {
+            if (!canEditEvents || (data.status === 'published' && !canPublishEvents)) {
+              toast.error('You do not have permission to save this event status');
+              return;
+            }
+
+            createEventMutation.mutate({
+              clubId: selectedClubId,
+              title: data.title.trim(),
+              description: data.description,
+              shortDescription: data.shortDescription,
+              registrationLink: data.registrationLink,
+              externalLink: data.externalLink,
+              scope: 'club',
+              status: data.status || 'draft',
+              visibility: data.visibility || 'public',
+              location: data.location,
+              venue: data.venue,
+              mode: data.mode,
+              startAt: data.startAt ? new Date(data.startAt).toISOString() : '',
+              endAt: data.endAt ? new Date(data.endAt).toISOString() : '',
+              coordinatorUserIds: data.coordinatorUserIds,
+              posterUrl: data.posterUrl,
+              posterPublicId: data.posterPublicId,
+            });
+          }}
+          onCancel={() => setIsCreateEventOpen(false)}
+          onPreview={(data) => setPreviewData(data)}
+        />
       )}
 
       {/* Edit Event modal */}
       {isEditEventOpen && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="w-full max-w-3xl">
-            <EventForm 
-              mode="edit"
-              eventType="club"
-              initialData={editEventForm}
-              coordinators={users}
-              isSubmitting={updateEventMutation.isPending}
-              onSubmit={(data) => {
-                setEditEventForm(data);
-                updateEventMutation.mutate({
-                  clubId: selectedClubId,
-                  eventId: eventEditing._id,
-                  title: data.title.trim(),
-                  description: data.description,
-                  shortDescription: data.shortDescription,
-                  registrationLink: data.registrationLink,
-                  externalLink: data.externalLink,
-                  scope: data.scope || 'club',
-                  status: data.status || 'draft',
-                  visibility: data.visibility || 'public',
-                  location: data.location,
-                  venue: data.venue,
-                  mode: data.mode,
-                  startAt: data.startAt ? new Date(data.startAt).toISOString() : '',
-                  endAt: data.endAt ? new Date(data.endAt).toISOString() : '',
-                  coordinatorUserIds: data.coordinatorUserIds,
-                  posterUrl: data.posterUrl,
-                  posterPublicId: data.posterPublicId,
-                });
-              }}
-              onCancel={() => {
-                setIsEditEventOpen(false);
-                setEventEditing(null);
-              }}
-              onPreview={(data) => setPreviewData(data)}
-            />
-          </div>
-        </div>
+        <EventForm
+          mode="edit"
+          eventType="club"
+          workspaceName={selectedClub?.name}
+          clubId={selectedClubId}
+          initialData={editEventForm}
+          coordinators={users}
+          isSubmitting={updateEventMutation.isPending}
+          saveError={updateEventMutation.error}
+          canPublish={canPublishEvents}
+          onSubmit={(data) => {
+            if (
+              !canEditEvents ||
+              (data.status === 'published' && eventEditing?.status !== 'published' && !canPublishEvents)
+            ) {
+              toast.error('You do not have permission to save this event status');
+              return;
+            }
+
+            updateEventMutation.mutate({
+              clubId: selectedClubId,
+              eventId: eventEditing._id,
+              title: data.title.trim(),
+              description: data.description,
+              shortDescription: data.shortDescription,
+              registrationLink: data.registrationLink,
+              externalLink: data.externalLink,
+              scope: 'club',
+              status: data.status || 'draft',
+              visibility: data.visibility || 'public',
+              location: data.location,
+              venue: data.venue,
+              mode: data.mode,
+              startAt: data.startAt ? new Date(data.startAt).toISOString() : '',
+              endAt: data.endAt ? new Date(data.endAt).toISOString() : '',
+              coordinatorUserIds: data.coordinatorUserIds,
+              posterUrl: data.posterUrl,
+              posterPublicId: data.posterPublicId,
+            });
+          }}
+          onCancel={() => {
+            setIsEditEventOpen(false);
+            setEventEditing(null);
+          }}
+          onPreview={(data) => setPreviewData(data)}
+        />
       )}
       {previewData && <PreviewEventModal event={previewData} onClose={() => setPreviewData(null)} />}
     </div>
   );
 }
 
-function LegacyEvents() {
+function LegacyEvents({ tabs }) {
   const queryClient = useQueryClient();
 
+  const { data: meData } = useQuery({ queryKey: ['me'], queryFn: me });
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [selected, setSelected] = useState(null);
@@ -1221,7 +1106,7 @@ function LegacyEvents() {
     visibility: 'public',
     startAt: '',
     endAt: '',
-    coordinatorUserId: '',
+    coordinatorUserIds: [],
   });
 
   const [editForm, setEditForm] = useState({
@@ -1235,36 +1120,35 @@ function LegacyEvents() {
     visibility: 'public',
     startAt: '',
     endAt: '',
-    coordinatorUserId: '',
+    coordinatorUserIds: [],
   });
 
-  const { data: eventsData, isLoading: eventsLoading, isError: eventsError } = useQuery({
-    queryKey: ['events', search],
-    queryFn: () => fetchEvents(search),
+  const { data: eventsData, isLoading: eventsLoading, isError: eventsError, refetch: retryEvents } = useQuery({
+    queryKey: ['events', search, page],
+    queryFn: () => fetchEvents(search, { page, limit: 20, scope: 'iedc' }),
     retry: false,
   });
 
   const { data: usersData } = useQuery({
     queryKey: ['users'],
-    queryFn: fetchUsers,
+    queryFn: () => fetchUsers(),
+    enabled: hasWorkspacePermission(meData, 'users') && (isCreateOpen || isEditOpen),
     retry: false,
   });
 
   const events = Array.isArray(eventsData?.events) ? eventsData.events : [];
 
-  const coordinatorOptions = (Array.isArray(usersData?.users) ? usersData.users : [])
-      .map((u) => ({
-        id: u?._id,
-        name: u?.name || u?.membershipId || 'Member',
-        meta: [u?.membershipId, u?.email].filter(Boolean).join(separator),
-      }))
-    .filter((u) => Boolean(u.id));
+
+  const coordinatorOptions = hasWorkspacePermission(meData, 'users')
+    ? usersData?.users || []
+    : selected?.coordinatorUsers?.length ? selected.coordinatorUsers : [selected?.coordinatorUser].filter(Boolean);
 
   const createMutation = useMutation({
     mutationFn: createEvent,
     onSuccess: () => {
       toast.success('Event created');
       queryClient.invalidateQueries({ queryKey: ['events'] });
+      queryClient.invalidateQueries({ queryKey: ['overview'] });
       setIsCreateOpen(false);
       setCreateForm({
         title: '',
@@ -1277,10 +1161,9 @@ function LegacyEvents() {
         visibility: 'public',
         startAt: '',
         endAt: '',
-        coordinatorUserId: '',
+        coordinatorUserIds: [],
       });
     },
-    onError: (err) => toast.error(err?.response?.data?.message || 'Failed to create event'),
   });
 
   const updateMutation = useMutation({
@@ -1288,10 +1171,10 @@ function LegacyEvents() {
     onSuccess: () => {
       toast.success('Event updated');
       queryClient.invalidateQueries({ queryKey: ['events'] });
+      queryClient.invalidateQueries({ queryKey: ['overview'] });
       setIsEditOpen(false);
       setSelected(null);
     },
-    onError: (err) => toast.error(err?.response?.data?.message || 'Failed to update event'),
   });
 
   const deleteMutation = useMutation({
@@ -1299,6 +1182,7 @@ function LegacyEvents() {
     onSuccess: () => {
       toast.success('Event deleted');
       queryClient.invalidateQueries({ queryKey: ['events'] });
+      queryClient.invalidateQueries({ queryKey: ['overview'] });
     },
     onError: (err) => toast.error(err?.response?.data?.message || 'Failed to delete event'),
   });
@@ -1310,6 +1194,8 @@ function LegacyEvents() {
       title: event?.title || '',
       description: event?.description || '',
       shortDescription: event?.shortDescription || '',
+      posterUrl: event?.posterUrl || '',
+      posterPublicId: event?.posterPublicId || '',
       registrationLink: event?.registrationLink || event?.registrationUrl || '',
       externalLink: event?.externalLink || '',
       location: event?.location || '',
@@ -1317,8 +1203,10 @@ function LegacyEvents() {
       visibility: event?.visibility || 'public',
       startAt: toDatetimeLocalValue(event?.startAt),
       endAt: toDatetimeLocalValue(event?.endAt),
-      coordinatorUserId: event?.coordinatorUser?._id || '',
+      coordinatorUserIds: (event.coordinatorUsers?.length ? event.coordinatorUsers : [event.coordinatorUser].filter(Boolean))
+        .map(user => String(user._id || user)),
     });
+    updateMutation.reset();
     setIsEditOpen(true);
   };
 
@@ -1335,7 +1223,7 @@ function LegacyEvents() {
               <button
                 type="button"
                 onClick={() => toast.dismiss(t.id)}
-                className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold hover:bg-slate-50"
+                className="op-secondary"
               >
                 Cancel
               </button>
@@ -1357,66 +1245,29 @@ function LegacyEvents() {
     );
   };
 
-  const canCreate = Boolean(createForm.title.trim()) && !createMutation.isPending;
-  const canUpdate = Boolean(editForm.title.trim()) && !updateMutation.isPending;
-
-  const submitCreate = () => {
-    if (!canCreate) return;
-    createMutation.mutate({
-      title: createForm.title.trim(),
-      description: createForm.description,
-      shortDescription: createForm.shortDescription,
-      registrationLink: createForm.registrationLink,
-      externalLink: createForm.externalLink,
-      location: createForm.location,
-      status: createForm.status,
-      visibility: createForm.visibility,
-      startAt: toIsoOrEmpty(createForm.startAt),
-      endAt: toIsoOrEmpty(createForm.endAt),
-      coordinatorUserId: createForm.coordinatorUserId || undefined,
-    });
-  };
-
-  const submitUpdate = () => {
-    if (!selected?._id || !canUpdate) return;
-    updateMutation.mutate({
-      id: selected._id,
-      title: editForm.title.trim(),
-      description: editForm.description,
-      shortDescription: editForm.shortDescription,
-      registrationLink: editForm.registrationLink,
-      externalLink: editForm.externalLink,
-      location: editForm.location,
-      status: editForm.status || 'draft',
-      visibility: editForm.visibility || 'public',
-      startAt: toIsoOrEmpty(editForm.startAt),
-      endAt: toIsoOrEmpty(editForm.endAt),
-      coordinatorUserId: editForm.coordinatorUserId || '',
-    });
-  };
-
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+    <div className="op-page">
+      <div className="op-header op-event-header">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Events</h1>
           <p className="text-slate-500 text-sm">Create, update, and assign coordinators.</p>
         </div>
 
         <button
-          onClick={() => setIsCreateOpen(true)}
-          className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-semibold shadow-lg shadow-blue-200 transition-all"
+          onClick={() => { createMutation.reset(); setIsCreateOpen(true); }}
+          className="op-primary"
         >
           <Plus size={18} />
-          New Event
+          New event
         </button>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
+      {tabs}
+      <div className="op-card overflow-hidden min-w-0">
+        <div className="op-card-head">
           <div className="flex items-center gap-2">
             <CalendarDays size={18} className="text-slate-400" />
-            <h2 className="font-bold">All Events</h2>
+            <h2 className="font-bold">Organization events</h2>
           </div>
 
           <div className="relative w-full md:w-96">
@@ -1424,33 +1275,31 @@ function LegacyEvents() {
             <input
               type="text"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search title or location..."
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              aria-label="Search events" placeholder="Search title or location"
               className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all shadow-sm"
             />
           </div>
         </div>
 
         {eventsLoading ? (
-          <div className="p-8 flex items-center gap-3 text-slate-500">
-            <Loader2 className="animate-spin" size={18} />
-            Loading events...
-          </div>
+          <TableSkeleton rows={7} columns={6} label="Loading organization events" />
         ) : eventsError ? (
-          <div className="p-8 text-slate-500">Failed to load events.</div>
+          <FormAlert className="m-4">Could not load events. <button type="button" onClick={() => retryEvents()}>Try again</button></FormAlert>
         ) : events.length === 0 ? (
-          <div className="p-8 text-slate-500">No events yet.</div>
+          <div className="op-empty">{search.trim() ? 'No events match your search.' : 'No events scheduled yet.'}</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
+          <div className="op-scroll">
+            <table className="op-table">
               <thead className="bg-slate-50 border-b border-slate-100">
                   <tr className="text-left text-slate-500">
-                    <th className="px-6 py-3 font-semibold">Title</th>
-                    <th className="px-6 py-3 font-semibold">Location</th>
+                    <th className="px-6 py-3 font-semibold">Event</th>
                     <th className="px-6 py-3 font-semibold">Status</th>
                     <th className="px-6 py-3 font-semibold">Visibility</th>
-                    <th className="px-6 py-3 font-semibold">Start</th>
-                    <th className="px-6 py-3 font-semibold">End</th>
+                    <th className="px-6 py-3 font-semibold">Schedule</th>
                     <th className="px-6 py-3 font-semibold">Coordinator</th>
                     <th className="px-6 py-3 font-semibold text-right">Actions</th>
                   </tr>
@@ -1460,29 +1309,28 @@ function LegacyEvents() {
                   <tr key={e?._id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-6 py-4 font-semibold text-slate-900 whitespace-nowrap">
                       {e?.title || '—'}
-                    </td>
-                    <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{e?.location || '—'}</td>
-                    <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{e?.status || 'draft'}</td>
+                      {e.location && <span className="block mt-1 text-xs font-normal text-slate-500">{e.location}</span>}</td>
+                    <td className="px-6 py-4 text-slate-600 whitespace-nowrap"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${e.status === 'published' ? 'bg-emerald-50 text-emerald-700' : e.status === 'cancelled' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-700'}`}>{e.status || 'draft'}</span></td>
                     <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{e?.visibility || 'public'}</td>
-                    <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{displayDate(e?.startAt)}</td>
-                    <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{displayDate(e?.endAt)}</td>
+                    <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{displayDate(e.startAt)}
+                      {e.endAt && <span className="block text-xs text-slate-500">Until {displayDate(e.endAt)}</span>}</td>
                     <td className="px-6 py-4 text-slate-600 whitespace-nowrap">
-                      {e?.coordinatorUser?.name || e?.coordinatorUser?.membershipId || '—'}
+                      {(e.coordinatorUsers || []).map(u => u.name || u.membershipId).filter(Boolean).join(', ') || e.coordinatorUser?.name || e.coordinatorUser?.membershipId || '—'}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex justify-end gap-1">
                         <button
                           type="button"
-                          onClick={() => openEdit(e)}
-                          className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
+                          aria-label={`Edit event ${e.title}`} onClick={() => openEdit(e)}
+                          className="op-icon"
                         >
                           <Pencil size={18} />
                         </button>
                         <button
                           type="button"
-                          onClick={() => confirmDelete(e)}
+                          aria-label={`Delete event ${e.title}`} onClick={() => confirmDelete(e)}
                           disabled={deleteMutation.isPending}
-                          className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all disabled:opacity-30"
+                          className="op-icon danger"
                         >
                           <Trash2 size={18} />
                         </button>
@@ -1492,82 +1340,83 @@ function LegacyEvents() {
                 ))}
               </tbody>
             </table>
+            <div className="op-footer">
+              <span>Page {eventsData?.page || 1} of {eventsData?.totalPages || 1} ({eventsData?.total || 0} events)</span>
+              <div className="flex gap-2">
+                <button type="button" aria-label="Previous organization events page" onClick={() => setPage(Math.max(1, (eventsData?.page || 1) - 1))} disabled={(eventsData?.page || 1) <= 1} className="op-icon"><ChevronLeft size={16} /></button>
+                <button type="button" aria-label="Next organization events page" onClick={() => setPage(Math.min(eventsData?.totalPages || 1, (eventsData?.page || 1) + 1))} disabled={(eventsData?.page || 1) >= (eventsData?.totalPages || 1)} className="op-icon"><ChevronRight size={16} /></button>
+              </div>
+            </div>
           </div>
         )}
       </div>
 
       {/* Create modal */}
       {isCreateOpen && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="w-full max-w-3xl">
-            <EventForm 
-              mode="create"
-              eventType="iedc"
-              initialData={createForm}
-              coordinators={coordinatorOptions}
-              isSubmitting={createMutation.isPending}
-              onSubmit={(data) => {
-                setCreateForm(data);
-                createMutation.mutate({
-                  title: data.title.trim(),
-                  description: data.description,
-                  shortDescription: data.shortDescription,
-                  registrationLink: data.registrationLink,
-                  externalLink: data.externalLink,
-                  location: data.location,
-                  status: data.status,
-                  visibility: data.visibility,
-                  startAt: data.startAt ? new Date(data.startAt).toISOString() : '',
-                  endAt: data.endAt ? new Date(data.endAt).toISOString() : '',
-                  coordinatorUserId: data.coordinatorUserId || undefined,
-                  posterUrl: data.posterUrl,
-                  posterPublicId: data.posterPublicId,
-                });
-              }}
-              onCancel={() => setIsCreateOpen(false)}
-              onPreview={(data) => setPreviewData(data)}
-            />
-          </div>
-        </div>
+        <EventForm
+          mode="create"
+          eventType="iedc"
+          initialData={createForm}
+          coordinators={coordinatorOptions}
+          isSubmitting={createMutation.isPending}
+          saveError={createMutation.error}
+          onSubmit={(data) => {
+            createMutation.mutate({
+              title: data.title.trim(),
+              description: data.description,
+              shortDescription: data.shortDescription,
+              registrationLink: data.registrationLink,
+              externalLink: data.externalLink,
+              location: data.location,
+              status: data.status,
+              visibility: data.visibility,
+              startAt: data.startAt ? new Date(data.startAt).toISOString() : '',
+              endAt: data.endAt ? new Date(data.endAt).toISOString() : '',
+              coordinatorUserIds: data.coordinatorUserIds,
+              coordinatorUserId: data.coordinatorUserIds[0] || '',
+              posterUrl: data.posterUrl,
+              posterPublicId: data.posterPublicId,
+            });
+          }}
+          onCancel={() => setIsCreateOpen(false)}
+          onPreview={(data) => setPreviewData(data)}
+        />
       )}
 
       {/* Edit modal */}
       {isEditOpen && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="w-full max-w-3xl">
-            <EventForm 
-              mode="edit"
-              eventType="iedc"
-              initialData={editForm}
-              coordinators={coordinatorOptions}
-              isSubmitting={updateMutation.isPending}
-              onSubmit={(data) => {
-                setEditForm(data);
-                updateMutation.mutate({
-                  id: selected._id,
-                  title: data.title.trim(),
-                  description: data.description,
-                  shortDescription: data.shortDescription,
-                  registrationLink: data.registrationLink,
-                  externalLink: data.externalLink,
-                  location: data.location,
-                  status: data.status || 'draft',
-                  visibility: data.visibility || 'public',
-                  startAt: data.startAt ? new Date(data.startAt).toISOString() : '',
-                  endAt: data.endAt ? new Date(data.endAt).toISOString() : '',
-                  coordinatorUserId: data.coordinatorUserId || undefined,
-                  posterUrl: data.posterUrl,
-                  posterPublicId: data.posterPublicId,
-                });
-              }}
-              onCancel={() => {
-                setIsEditOpen(false);
-                setSelected(null);
-              }}
-              onPreview={(data) => setPreviewData(data)}
-            />
-          </div>
-        </div>
+        <EventForm
+          mode="edit"
+          eventType="iedc"
+          initialData={editForm}
+          coordinators={coordinatorOptions}
+          isSubmitting={updateMutation.isPending}
+          saveError={updateMutation.error}
+          onSubmit={(data) => {
+            updateMutation.mutate({
+              id: selected._id,
+              title: data.title.trim(),
+              description: data.description,
+              shortDescription: data.shortDescription,
+              registrationLink: data.registrationLink,
+              externalLink: data.externalLink,
+              location: data.location,
+              status: data.status || 'draft',
+              visibility: data.visibility || 'public',
+              startAt: data.startAt ? new Date(data.startAt).toISOString() : '',
+              endAt: data.endAt ? new Date(data.endAt).toISOString() : '',
+              coordinatorUserIds: data.coordinatorUserIds,
+              coordinatorUserId: data.coordinatorUserIds[0] || '',
+              posterUrl: data.posterUrl,
+              posterPublicId: data.posterPublicId,
+            });
+          }}
+          onCancel={() => {
+            setIsEditOpen(false);
+            setSelected(null);
+          }}
+          onPreview={(data) => setPreviewData(data)}
+        />
       )}
       {previewData && <PreviewEventModal event={previewData} onClose={() => setPreviewData(null)} />}
     </div>
@@ -1575,5 +1424,20 @@ function LegacyEvents() {
 }
 
 export default function Events() {
-  return <ClubsEvents />;
+  const { mode, clubId } = useViewMode();
+  const [params, setParams] = useSearchParams();
+  const scope = params.get('scope') === 'club' ? 'club' : 'iedc';
+  if (mode === 'club') return <ClubsEvents key={clubId} />;
+
+  const tabs = (
+    <div className="op-tabs" role="group" aria-label="Event scope">
+      {[['iedc', 'Organization'], ['club', 'Clubs']].map(([value, label]) => (
+        <button type="button" key={value} className="op-tab" aria-pressed={scope === value}
+          onClick={() => setParams(previous => { const next = new URLSearchParams(previous); next.set('scope', value); return next; })}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+  return scope === 'iedc' ? <LegacyEvents tabs={tabs} /> : <ClubsEvents tabs={tabs} />;
 }

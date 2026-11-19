@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion as Motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { FaLinkedinIn, FaTwitter, FaArrowRight } from 'react-icons/fa';
 import { getTeamForYear } from '../../data/teamData'; // Ensure this path matches your project structure
@@ -96,9 +96,9 @@ const TeamPreviewSection = () => {
 };
 
 // Sub-component: The "Executive" Card
-const TeamCard = ({ member, index, isHovered, setHovered, clearHover }) => {
+const TeamCard = ({ member, index, setHovered, clearHover }) => {
   return (
-    <motion.div
+    <Motion.div
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.1, duration: 0.5 }}
@@ -154,7 +154,7 @@ const TeamCard = ({ member, index, isHovered, setHovered, clearHover }) => {
       <div className="absolute top-0 right-0 p-4 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
         <FaArrowRight className="text-white -rotate-45" />
       </div>
-    </motion.div>
+    </Motion.div>
   );
 };
 

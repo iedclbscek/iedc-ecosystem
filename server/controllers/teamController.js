@@ -1,8 +1,10 @@
+import {cloudinaryUploadOptions} from '../utils/mediaUpload.js';
 import Registration from "../models/Registration.js";
 import StaffGuestRegistration from "../models/StaffGuestRegistration.js";
 import User from "../models/User.js";
 import EmailTemplate from "../models/EmailTemplate.js";
 import Club from "../models/Club.js";
+import ClubMembership from "../models/ClubMembership.js";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -13,6 +15,16 @@ import { hasPermission } from "../middleware/requireAuth.js";
 import { upsertSystemTemplate } from "./emailTemplateController.js";
 import WebsiteTeamEntry from "../models/WebsiteTeamEntry.js";
 import { extractCloudinaryPublicIdFromUrl } from "../utils/cloudinaryHelpers.js";
+import {
+  canAssignWorkspaceRole,
+  isSuperAdmin,
+  normalizePortalRole,
+  sanitizeAssignablePermissions,
+  mergeClubPermissions,
+  WORKSPACE_PERMISSIONS,
+} from "../utils/authorization.js";
+import { resolveClubAccess } from "../utils/clubAccess.js";
+import { paginationMeta, parsePagination } from "../utils/pagination.js";
 
 // Configure Cloudinary (reads from env)
 cloudinary.config({
@@ -127,33 +139,6 @@ const normalizeMemberType = (value) => {
   return null;
 };
 
-const CLUB_PORTAL_ALLOWED_PERMISSIONS = new Set([
-  "dashboard",
-  "events",
-  "users",
-  "makerspace",
-]);
-
-const limitPermissionsToActor = (requestedPermissions, actorPermissions) => {
-  const requested = Array.isArray(requestedPermissions)
-    ? requestedPermissions.map((p) => normalize(p)).filter(Boolean)
-    : [];
-  const allowed = Array.isArray(actorPermissions)
-    ? actorPermissions.map((p) => normalize(p)).filter(Boolean)
-    : [];
-
-  const allowedSet = new Set(allowed);
-  return Array.from(new Set(requested.filter((p) => allowedSet.has(p))));
-};
-
-const limitClubPortalPermissions = (requestedPermissions, actorPermissions) => {
-  const withinActor = limitPermissionsToActor(
-    requestedPermissions,
-    actorPermissions,
-  );
-  return withinActor.filter((p) => CLUB_PORTAL_ALLOWED_PERMISSIONS.has(p));
-};
-
 const isClubManager = (club, userId) => {
   const id = String(userId);
   const managers = Array.isArray(club?.managerUsers) ? club.managerUsers : [];
@@ -258,7 +243,7 @@ const sendPasswordSetupEmail = async ({ to, userId, token }) => {
 
 export const searchStudents = async (req, res) => {
   try {
-    const query = String(req.query.query ?? "").trim();
+    const query = String(req.query.query ?? "").trim().slice(0, 100);
     const memberType = normalizeMemberType(req.query.memberType);
 
     if (!memberType) {
@@ -267,7 +252,7 @@ export const searchStudents = async (req, res) => {
       });
     }
 
-    if (!query) {
+    if (query.length < 2) {
       return res.json({ students: [] });
     }
 
@@ -280,38 +265,20 @@ export const searchStudents = async (req, res) => {
       { email: regex },
     ];
 
+    if (!hasPermission(req.user, "users") && memberType !== "student") return res.sendStatus(403);
+    const directoryFields = "firstName lastName membershipId userType email createdAt";
     const [fromRegistrations, fromStaffGuests] = await Promise.all([
-      memberType === "staff" || memberType === "guest"
-        ? []
-        : memberType === "all"
-          ? Registration.find({ $or: baseOr }).sort({ createdAt: -1 }).limit(20)
-          : Registration.find({ $or: baseOr })
-              .sort({ createdAt: -1 })
-              .limit(20),
-
-      memberType === "student"
-        ? []
-        : memberType === "all"
-          ? StaffGuestRegistration.find({ $or: baseOr })
-              .sort({ createdAt: -1 })
-              .limit(20)
-          : StaffGuestRegistration.find({ userType: memberType, $or: baseOr })
-              .sort({ createdAt: -1 })
-              .limit(20),
+      memberType === "all" || memberType === "student"
+        ? Registration.find({ $or: baseOr }).select(directoryFields).sort({ createdAt: -1, _id: -1 }).limit(20).lean()
+        : [],
+      memberType === "student" ? [] : StaffGuestRegistration.find({
+        $or: baseOr, ...(memberType === "all" ? {} : { userType: memberType }),
+      }).select(directoryFields).sort({ createdAt: -1, _id: -1 }).limit(20).lean(),
     ]);
-
-    const merged = [...(fromRegistrations || []), ...(fromStaffGuests || [])]
-      .map((d) => {
-        const obj = typeof d?.toObject === "function" ? d.toObject() : d;
-        const inferred = normalize(obj?.userType) || "student";
-        return { ...obj, userType: inferred };
-      })
-      .sort((a, b) => {
-        const at = new Date(a?.createdAt || 0).getTime();
-        const bt = new Date(b?.createdAt || 0).getTime();
-        return bt - at;
-      })
-      .slice(0, 20);
+    const merged = [...fromRegistrations, ...fromStaffGuests]
+      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+      .slice(0, 20)
+      .map((record) => ({ ...record, userType: record.userType || "student" }));
 
     res.json({ students: merged });
   } catch (error) {
@@ -325,10 +292,40 @@ export const listUsers = async (req, res) => {
       return res.status(403).json({ message: "Forbidden" });
     }
 
-    const users = await User.find({})
+    const search = String(req.query.search ?? "").trim().slice(0, 100);
+    const roleCategory = String(req.query.roleCategory ?? "").trim().toLowerCase();
+    const searchFilter = search
+      ? { $or: ["name", "email", "membershipId", "role"].map((field) => ({
+          [field]: { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), $options: "i" },
+        })) }
+      : {};
+    const roleFilter = roleCategory === "execom"
+      ? { role: { $regex: /^(?:iedc[\s_-]*)?execom$/i } }
+      : roleCategory === "staff"
+        ? {
+            $and: [
+              { role: { $not: /^(?:(?:iedc[\s_-]*)?execom|club[\s_-]*(?:lead|member))$/i } },
+              {
+                $or: [
+                  { role: { $regex: /^(?:admin|super[\s_-]*admin|editor|.*staff.*)$/i } },
+                  { permissions: { $in: WORKSPACE_PERMISSIONS } },
+                ],
+              },
+            ],
+          }
+        : {};
+    const filters = [searchFilter, roleFilter].filter((value) => Object.keys(value).length);
+    const filter = filters.length > 1 ? { $and: filters } : (filters[0] || {});
+    const paginated = req.query.page !== undefined || req.query.limit !== undefined;
+    const { page, limit } = parsePagination(req.query, { defaultLimit: 20 });
+    const total = paginated ? await User.countDocuments(filter) : 0;
+    const meta = paginated ? paginationMeta({ page, limit, total }) : null;
+    let usersQuery = User.find(filter)
       .select("-password")
-      .sort({ "websiteProfile.order": 1, createdAt: -1 });
-    res.json({ users });
+      .sort({ "websiteProfile.order": 1, createdAt: -1, _id: -1 }).lean();
+    if (meta) usersQuery = usersQuery.skip((meta.page - 1) * limit).limit(limit);
+    const users = await usersQuery;
+    res.json({ users, ...(meta || {}) });
   } catch (error) {
     res
       .status(500)
@@ -764,18 +761,17 @@ export const reorderWebsiteTeamEntries = async (req, res) => {
         .json({ message: "year and orderedIds are required" });
     }
 
-    const entries = await WebsiteTeamEntry.find({
-      _id: { $in: orderedIds },
-      category,
-      year,
-    })
+    if (new Set(orderedIds).size !== orderedIds.length || orderedIds.some(id => !/^[a-f0-9]{24}$/i.test(id))) {
+      return res.status(400).json({ message: "Provide each roster member exactly once." });
+    }
+    const entries = await WebsiteTeamEntry.find({ category, year })
       .select("_id")
       .lean();
 
-    if (entries.length !== orderedIds.length) {
+    if (entries.length !== orderedIds.length || entries.some(entry => !orderedIds.includes(String(entry._id)))) {
       return res
         .status(400)
-        .json({ message: "All entries must belong to the same year/category" });
+        .json({ message: "The roster changed. Reload it before saving the order." });
     }
 
     const bulkOps = orderedIds.map((id, index) => ({
@@ -796,7 +792,17 @@ export const reorderWebsiteTeamEntries = async (req, res) => {
 
 export const uploadCloudinaryImage = async (req, res) => {
   try {
-    if (!hasPermission(req.user, "users")) {
+    const purpose = normalize(req.body?.purpose) || "profile";
+    if (purpose === "club_event" || purpose === "club_page") {
+      const club = await Club.findById(req.body?.clubId);
+      if (!club) return res.status(404).json({ message: "Club not found" });
+      const access = await resolveClubAccess({ club, user: req.user });
+      if (!(purpose === "club_page" ? access.pageEdit : access.edit)) return res.status(403).json({ message: "Forbidden" });
+    } else if (purpose === "iedc_event") {
+      if (!hasPermission(req.user, "events")) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+    } else if (!hasPermission(req.user, "users")) {
       return res.status(403).json({ message: "Forbidden" });
     }
 
@@ -826,13 +832,7 @@ export const uploadCloudinaryImage = async (req, res) => {
       ? source
       : `data:image/jpeg;base64,${source}`;
 
-    const result = await cloudinary.uploader.upload(dataUri, {
-      folder: "execom",
-      transformation: [
-        { width: 800, height: 800, crop: "fill", gravity: "face" },
-        { fetch_format: "auto", quality: "auto" },
-      ],
-    });
+    const result = await cloudinary.uploader.upload(dataUri, cloudinaryUploadOptions(purpose));
 
     return res.json({
       url: result.secure_url,
@@ -998,23 +998,31 @@ export const promoteToTeam = async (req, res) => {
 
   const roleInput = String(role ?? "").trim();
   const normalizedRole = roleInput.toLowerCase();
+  const canonicalRole = normalizePortalRole(roleInput);
 
-  const allowed = ["admin", "execom", "editor", "custom"]; // API accepts case-insensitive
-  if (!allowed.includes(normalizedRole)) {
+  const allowed = ["super_admin", "iedc_execom", "club_member"];
+  if (normalizedRole !== "custom" && !allowed.includes(canonicalRole)) {
     return res.status(400).json({ message: "Invalid role" });
   }
 
+  if (
+    (normalizedRole === "custom" && !isSuperAdmin(req.user)) ||
+    (normalizedRole !== "custom" && !canAssignWorkspaceRole(req.user, canonicalRole))
+  ) {
+    return res.status(403).json({ message: "Cannot assign this role" });
+  }
+
   const finalRole =
-    normalizedRole === "custom" ? String(customRole ?? "").trim() : roleInput;
+    normalizedRole === "custom"
+      ? String(customRole ?? "").trim()
+      : canonicalRole;
   if (normalizedRole === "custom" && !finalRole) {
     return res
       .status(400)
       .json({ message: "customRole is required when role is Custom" });
   }
 
-  const finalPermissions = Array.isArray(permissions)
-    ? permissions.map((p) => String(p).trim()).filter(Boolean)
-    : [];
+  const finalPermissions = sanitizeAssignablePermissions(permissions, req.user);
 
   try {
     let member = null;
@@ -1151,25 +1159,9 @@ export const updateUser = async (req, res) => {
     return res.status(403).json({ message: "Forbidden" });
   }
 
-  const roleInput = String(role ?? "").trim();
-  const normalizedRole = roleInput.toLowerCase();
-
-  const allowed = ["admin", "execom", "editor", "custom"]; // API accepts case-insensitive
-  if (!allowed.includes(normalizedRole)) {
-    return res.status(400).json({ message: "Invalid role" });
+  if (permissions !== undefined && (!Array.isArray(permissions) || permissions.some(value => typeof value !== "string"))) {
+    return res.status(400).json({ message: "permissions must be an array of strings" });
   }
-
-  const finalRole =
-    normalizedRole === "custom" ? String(customRole ?? "").trim() : roleInput;
-  if (normalizedRole === "custom" && !finalRole) {
-    return res
-      .status(400)
-      .json({ message: "customRole is required when role is Custom" });
-  }
-
-  const finalPermissions = Array.isArray(permissions)
-    ? permissions.map((p) => String(p).trim()).filter(Boolean)
-    : [];
 
   const patchWebsiteProfile = websiteProfile
     ? {
@@ -1198,14 +1190,57 @@ export const updateUser = async (req, res) => {
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
+    if (isSuperAdmin(user) && !isSuperAdmin(req.user)) {
+      return res.status(403).json({ message: "Only a super admin can edit this user" });
+    }
+
     if (String(user.membershipId).trim().toLowerCase() === "admin") {
       return res
         .status(400)
         .json({ message: "Cannot edit reserved admin user" });
     }
 
-    user.role = finalRole;
-    user.permissions = finalPermissions;
+    const existingPermissions = Array.isArray(user.permissions) ? [...user.permissions] : [];
+    // Authorize and save against the same access record, including legacy documents without an array.
+    user.$where = {
+      role: user.role ?? null,
+      permissions: existingPermissions.length ? existingPermissions : { $in: [[], null] },
+    };
+
+    if (role !== undefined) {
+      const roleInput = typeof role === "string" ? role.trim() : "";
+      const isCustom = roleInput.toLowerCase() === "custom";
+      const requested = isCustom ? (typeof customRole === "string" ? customRole.trim() : "") : roleInput;
+      if (!requested) {
+        return res.status(400).json({ message: isCustom ? "customRole is required when role is Custom" : "Invalid role" });
+      }
+      const canonical = normalizePortalRole(requested);
+      const assignableRoles = ["super_admin", "iedc_execom", "club_member"];
+      const knownRole = canonical === "club_lead" || assignableRoles.includes(canonical);
+      const sameKnownRole = knownRole && canonical === normalizePortalRole(user.role);
+      if (!isCustom && !assignableRoles.includes(canonical) && !sameKnownRole) {
+        return res.status(400).json({ message: "Invalid role" });
+      }
+      if (!sameKnownRole && requested !== user.role) {
+        if (isCustom ? !isSuperAdmin(req.user) : !canAssignWorkspaceRole(req.user, canonical)) {
+          return res.status(403).json({ message: "Cannot assign this role" });
+        }
+        const nextRole = isCustom ? requested : canonical;
+        // Changing a club account into a workspace account can activate older stored grants.
+        const nextAccess = { role: nextRole, permissions: existingPermissions };
+        const activatesProtectedGrant = WORKSPACE_PERMISSIONS.some(permission =>
+          !hasPermission(req.user, permission) && !hasPermission(user, permission) && hasPermission(nextAccess, permission)
+        );
+        if (activatesProtectedGrant) return res.status(403).json({ message: "This role would activate permissions you cannot assign" });
+        user.role = nextRole;
+      }
+    }
+
+    if (permissions !== undefined) {
+      const preserved = existingPermissions.filter(permission => !sanitizeAssignablePermissions([permission], req.user).length);
+      const requested = sanitizeAssignablePermissions(permissions, req.user);
+      user.permissions = [...new Set([...preserved, ...requested])];
+    }
 
     const wasPortalAccessEnabled = user.portalAccessEnabled !== false;
 
@@ -1263,6 +1298,9 @@ export const updateUser = async (req, res) => {
         : {}),
     });
   } catch (error) {
+    if (error.name === "VersionError" || error.name === "DocumentNotFoundError") {
+      return res.status(409).json({ message: "This account changed during your edit. Reload it and try again." });
+    }
     res.status(500).json({ message: "Update failed", error: error.message });
   }
 };
@@ -1277,6 +1315,10 @@ export const deleteUser = async (req, res) => {
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
+    if (isSuperAdmin(user) && !isSuperAdmin(req.user)) {
+      return res.status(403).json({ message: "Only a super admin can delete this user" });
+    }
+
     if (String(user.membershipId).trim().toLowerCase() === "admin") {
       return res
         .status(400)
@@ -1290,10 +1332,19 @@ export const deleteUser = async (req, res) => {
   }
 };
 
+const clubPermissionsExpression = (permissions, pagePermissions) => {
+  const requested = mergeClubPermissions([], { permissions, pagePermissions });
+  const replaced = [
+    ...(permissions !== undefined ? ["club_events_edit", "club_events_publish", "club_events_delete"] : []),
+    ...(pagePermissions !== undefined ? ["club_page_edit", "club_page_publish"] : []),
+  ];
+  return { $setUnion: [{ $filter: { input: { $ifNull: ["$permissions", []] }, as: "grant", cond: { $not: [{ $in: ["$$grant", replaced] }] } } }, { $literal: requested }] };
+};
+
 // Club-scoped portal user management (for club leads only)
 export const promoteClubPortalMember = async (req, res) => {
   const { clubId } = req.params;
-  const { registrationId, portalAccessEnabled, permissions } = req.body;
+  const { registrationId, portalAccessEnabled, permissions, pagePermissions } = req.body;
 
   if (!clubId) {
     return res.status(400).json({ message: "clubId is required" });
@@ -1306,7 +1357,8 @@ export const promoteClubPortalMember = async (req, res) => {
     const club = await Club.findById(clubId);
     if (!club) return res.status(404).json({ message: "Club not found" });
 
-    if (!isClubManager(club, req.user?.id)) {
+    const actorAccess = await resolveClubAccess({ club, user: req.user });
+    if (!actorAccess.managePermissions) {
       return res.status(403).json({ message: "Forbidden" });
     }
 
@@ -1333,12 +1385,9 @@ export const promoteClubPortalMember = async (req, res) => {
       club.memberRegistrations = [...memberRegs, regId];
     }
 
-    const requestedPerms = limitClubPortalPermissions(
-      permissions,
-      req.user?.permissions,
-    );
-    const nextPortalAccessEnabled =
-      portalAccessEnabled !== undefined ? Boolean(portalAccessEnabled) : true;
+    mergeClubPermissions([], { permissions, pagePermissions });
+    const nextMembershipStatus =
+      portalAccessEnabled === false ? "inactive" : "active";
 
     let user = await User.findOne({
       $or: [{ membershipId: student.membershipId }, { email: student.email }],
@@ -1350,18 +1399,15 @@ export const promoteClubPortalMember = async (req, res) => {
       const tempPassword = crypto.randomBytes(24).toString("hex");
       const tempPasswordHash = await bcrypt.hash(tempPassword, 10);
 
-      const tokenBundle = nextPortalAccessEnabled
-        ? generatePasswordSetupToken()
-        : null;
+      const tokenBundle = generatePasswordSetupToken();
 
       user = await User.create({
         name: `${student.firstName ?? ""} ${student.lastName ?? ""}`.trim(),
         email: student.email,
         membershipId: student.membershipId,
         password: tempPasswordHash,
-        role: "Club Member",
-        permissions: requestedPerms,
-        portalAccessEnabled: nextPortalAccessEnabled,
+        role: "club_member",
+        permissions: [],
         websiteProfile: {
           visible: false,
           order: 0,
@@ -1384,33 +1430,8 @@ export const promoteClubPortalMember = async (req, res) => {
         });
       }
     } else {
-      // Existing user: update permissions within actor scope.
-      user.permissions = requestedPerms;
-
-      const wasPortalAccessEnabled = user.portalAccessEnabled !== false;
-      if (portalAccessEnabled !== undefined) {
-        user.portalAccessEnabled = Boolean(portalAccessEnabled);
-      }
-      const isPortalAccessEnabled = user.portalAccessEnabled !== false;
-      const shouldSendPasswordSetupEmail =
-        !wasPortalAccessEnabled && isPortalAccessEnabled;
-
-      let tokenBundle = null;
-      if (shouldSendPasswordSetupEmail) {
-        tokenBundle = generatePasswordSetupToken();
-        user.passwordSetupTokenHash = tokenBundle.passwordSetupTokenHash;
-        user.passwordSetupExpiresAt = tokenBundle.expiresAt;
-      }
-
-      await user.save();
-
-      if (tokenBundle) {
-        passwordSetupEmailSent = await sendPasswordSetupEmail({
-          to: user.email,
-          userId: user._id,
-          token: tokenBundle.passwordSetupToken,
-        });
-      }
+      // Existing global account state is intentionally left unchanged. Club
+      // authority lives in ClubMembership and is revoked independently.
     }
 
     // Ensure the portal user is in club.memberUsers
@@ -1421,6 +1442,20 @@ export const promoteClubPortalMember = async (req, res) => {
     if (!memberUsers.includes(uid)) {
       club.memberUsers = [...memberUsers, uid];
     }
+
+    const permissionExpression = clubPermissionsExpression(permissions, pagePermissions);
+    const membership = await ClubMembership.findOneAndUpdate(
+      { userId: user._id, clubId: club._id },
+      [{
+        $set: {
+          role: isClubManager(club, user._id) ? "lead" : "member",
+          permissions: permissionExpression,
+          scope: "club",
+          status: nextMembershipStatus,
+        },
+      }],
+      { upsert: true, new: true },
+    );
 
     await club.save();
 
@@ -1433,14 +1468,16 @@ export const promoteClubPortalMember = async (req, res) => {
         role: user.role,
         permissions: user.permissions,
         portalAccessEnabled: user.portalAccessEnabled,
+        clubPermissions: membership.permissions,
+        clubStatus: membership.status,
         registrationRef: user.registrationRef,
         createdAt: user.createdAt,
       },
       passwordSetupEmailSent,
     });
   } catch (error) {
-    res.status(500).json({
-      message: "Failed to add club portal member",
+    res.status(error.status || 500).json({
+      message: error.status ? error.message : "Failed to add club portal member",
       error: error.message,
     });
   }
@@ -1448,7 +1485,7 @@ export const promoteClubPortalMember = async (req, res) => {
 
 export const updateClubPortalMember = async (req, res) => {
   const { clubId, userId } = req.params;
-  const { portalAccessEnabled, permissions } = req.body;
+  const { portalAccessEnabled, permissions, pagePermissions } = req.body;
 
   if (!clubId || !userId) {
     return res.status(400).json({ message: "clubId and userId are required" });
@@ -1458,7 +1495,8 @@ export const updateClubPortalMember = async (req, res) => {
     const club = await Club.findById(clubId);
     if (!club) return res.status(404).json({ message: "Club not found" });
 
-    if (!isClubManager(club, req.user?.id)) {
+    const actorAccess = await resolveClubAccess({ club, user: req.user });
+    if (!actorAccess.managePermissions) {
       return res.status(403).json({ message: "Forbidden" });
     }
 
@@ -1481,38 +1519,23 @@ export const updateClubPortalMember = async (req, res) => {
         .json({ message: "Cannot edit reserved admin user" });
     }
 
-    if (permissions !== undefined) {
-      user.permissions = limitClubPortalPermissions(
-        permissions,
-        req.user?.permissions,
-      );
-    }
-
-    const wasPortalAccessEnabled = user.portalAccessEnabled !== false;
-    if (portalAccessEnabled !== undefined) {
-      user.portalAccessEnabled = Boolean(portalAccessEnabled);
-    }
-    const isPortalAccessEnabled = user.portalAccessEnabled !== false;
-    const shouldSendPasswordSetupEmail =
-      !wasPortalAccessEnabled && isPortalAccessEnabled;
-
-    let tokenBundle = null;
-    if (shouldSendPasswordSetupEmail) {
-      tokenBundle = generatePasswordSetupToken();
-      user.passwordSetupTokenHash = tokenBundle.passwordSetupTokenHash;
-      user.passwordSetupExpiresAt = tokenBundle.expiresAt;
-    }
-
-    await user.save();
-
-    let passwordSetupEmailSent = false;
-    if (tokenBundle) {
-      passwordSetupEmailSent = await sendPasswordSetupEmail({
-        to: user.email,
-        userId: user._id,
-        token: tokenBundle.passwordSetupToken,
-      });
-    }
+    const permissionExpression = clubPermissionsExpression(permissions, pagePermissions);
+    const membership = await ClubMembership.findOneAndUpdate(
+      { userId: user._id, clubId: club._id },
+      [{
+        $set: {
+          ...(permissions !== undefined || pagePermissions !== undefined
+            ? { permissions: permissionExpression }
+            : {}),
+          ...(portalAccessEnabled !== undefined
+            ? { status: portalAccessEnabled ? "active" : "inactive" }
+            : { status: { $ifNull: ["$status", "active"] } }),
+          role: isClubManager(club, user._id) ? "lead" : "member",
+          scope: "club",
+        },
+      }],
+      { upsert: true, new: true },
+    );
 
     res.json({
       user: {
@@ -1523,14 +1546,15 @@ export const updateClubPortalMember = async (req, res) => {
         role: user.role,
         permissions: user.permissions,
         portalAccessEnabled: user.portalAccessEnabled,
+        clubPermissions: membership.permissions,
+        clubStatus: membership.status,
         registrationRef: user.registrationRef,
         createdAt: user.createdAt,
       },
-      ...(shouldSendPasswordSetupEmail ? { passwordSetupEmailSent } : {}),
     });
   } catch (error) {
-    res.status(500).json({
-      message: "Failed to update club portal member",
+    res.status(error.status || 500).json({
+      message: error.status ? error.message : "Failed to update club portal member",
       error: error.message,
     });
   }

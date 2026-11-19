@@ -1,0 +1,89 @@
+.ds-dashboard {
+  --text: var(--op-ink);
+  --subtle: var(--op-muted);
+  --blue: var(--op-blue);
+  --border: var(--op-line);
+  color: var(--text);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  font-variant-numeric: tabular-nums;
+}
+.ds-heading, .ds-tools, .ds-range, .ds-range span, .ds-primary,
+.ds-metric-label, .ds-panel header, .ds-schedule header a, .ds-next a, .ds-event-name {
+  display: flex;
+  align-items: center;
+}
+.ds-heading, .ds-panel header, .ds-metric-label {justify-content:space-between;gap:12px}
+.ds-heading {flex-wrap:wrap}
+.ds-heading h1 {font-size:clamp(24px,2.1vw,32px);font-weight:670;letter-spacing:-.055em;line-height:1.15}
+.ds-tools, .ds-range span, .ds-primary {gap:8px}
+.ds-range {background:#fff;border:1px solid var(--border);border-radius:28px;overflow:visible}
+.ds-range span,.ds-range select,.ds-primary {font-size:12px;font-weight:550;min-height:36px}
+.ds-range span {padding-inline:13px;border-right:1px solid var(--border);white-space:nowrap}
+.ds-range select {--select-border:transparent;--select-radius:0 24px 24px 0;--select-inset:10px}
+.ds-primary {padding:0 18px;background:var(--blue,#315bfa);color:white;border-radius:24px;justify-content:center;transition:background .15s,transform .15s}
+.ds-primary:hover {background:#2449dc}.ds-primary:active{transform:translateY(1px)}.ds-primary:disabled{opacity:.6}
+.ds-card {background:white;border:1px solid var(--border);border-radius:18px;min-width:0;box-shadow:0 1px 2px #10182803}
+.ds-metrics {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(145px,100%),1fr));gap:14px}
+.ds-metrics:empty {display:none}
+.ds-metric {display:flex;flex-direction:column;padding:17px 18px 15px;text-decoration:none;transition:border-color .15s}
+a.ds-metric:hover {border-color:#a2b2ff}
+.ds-metric-label {font-size:13px;font-weight:600;line-height:1.3}
+.ds-metric-label svg {color:var(--blue);width:16px;height:16px;flex:none;stroke-width:2.4}
+.ds-metric strong,.ds-plot-value strong,.ds-gauge strong {font-weight:630;letter-spacing:-.055em}
+.ds-metric strong {font-size:clamp(27px,2.6vw,35px);line-height:1.2;margin:15px 0 5px}
+.ds-metric small,.ds-note,.ds-plot-value small,.ds-plot-value p,.ds-next p,.ds-empty {color:var(--subtle);font-size:12px}
+.ds-columns {display:grid;grid-template-columns:minmax(0,1.68fr) minmax(0,1fr);gap:16px;align-items:start}
+.ds-stack {min-width:0;display:grid;gap:16px}
+.ds-panel {padding:20px}
+.ds-panel h2 {font-size:16px;font-weight:630;letter-spacing:-.035em;line-height:1.3}
+.ds-note {margin-top:3px}
+.ds-plot-row {display:grid;align-items:center;grid-template-columns:minmax(100px,.65fr) minmax(0,1.8fr);gap:5px;margin:14px 0 21px}
+.ds-plot-value strong {display:block;font-size:clamp(32px,3vw,44px);line-height:1.05}
+.ds-plot-value small,.ds-metric small,.ds-event-name small {display:block}
+.ds-plot-value p {margin-top:8px;font-size:11px}
+.ds-change {font-weight:650;background:#e3f8eb;border-radius:5px;color:#167a48;padding:3px 5px}.ds-change.down {background:#ffe8ee;color:#a62e56}
+.ds-trend svg {display:block;width:100%;height:116px;overflow:visible}
+.ds-ticks {display:flex;justify-content:space-between;margin-left:7%;color:var(--subtle);font-size:10px}
+.ds-breakdown {border:1px solid var(--border);border-radius:12px;padding:13px 14px 12px}
+.ds-breakdown h3 {font-size:12px;font-weight:600;margin:0 0 10px}
+.ds-segments {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.ds-segments>div {border-left:2px solid var(--segment);padding-left:7px}
+.ds-segments b {display:flex;align-items:center;gap:5px;font-size:15px;line-height:1.2}
+.ds-segments b i {width:7px;height:7px;border-radius:2px;background:var(--segment)}
+.ds-segments span {display:block;color:var(--subtle);font-size:10px;margin:6px 0}
+.ds-segment-track {height:5px;background:#f2f3f6;border-radius:2px;overflow:hidden}
+.ds-segment-track i {display:block;height:100%;background:var(--segment)}
+.ds-bars {display:flex;align-items:end;gap:5px;margin-top:14px}
+.ds-bars>div {flex:1;min-width:0;text-align:center}
+.ds-bar-area {height:100px;display:flex;flex-direction:column;justify-content:end;align-items:center;gap:3px}
+.ds-bar-area i {display:block;width:min(26px,80%);border-radius:6px 6px 4px 4px;background:#e8e9ee;transition:height .25s ease-out}
+.ds-bar-area small,.ds-bars span {font-size:10px}
+.ds-bar-area small {color:#555966}.ds-bars span{color:var(--subtle);display:block;margin-top:6px}
+.ds-bars .best i {background:linear-gradient(180deg,#315bfa,#8299ff)}
+.ds-bars .best span {color:#244edb;font-weight:650}
+.ds-gauge {position:relative;width:min(215px,90%);margin:16px auto 2px;text-align:center}
+.ds-gauge svg {display:block;width:100%}
+.ds-gauge div {position:absolute;bottom:5%;left:0;right:0}
+.ds-gauge strong {display:block;font-size:32px;line-height:1.18}
+.ds-gauge small {font-size:11px;color:var(--subtle)}
+.ds-schedule header a,.ds-next a {font-size:12px;color:var(--blue);gap:3px;font-weight:560}
+.ds-table-wrap {overflow:auto}
+.ds-schedule table {width:100%;border-collapse:collapse;line-height:1.4;font-size:12px;text-align:left;margin-top:11px}
+.ds-schedule th {color:var(--subtle);font-size:10px;text-transform:uppercase;letter-spacing:.065em;font-weight:550}
+.ds-schedule th,.ds-schedule td {padding:11px 7px;border-bottom:1px dashed var(--border)}
+.ds-schedule th:first-child,.ds-schedule td:first-child {padding-left:0}
+.ds-schedule tr:last-child td {border-bottom:0;padding-bottom:0}
+.ds-schedule time,.ds-status {white-space:nowrap}
+.ds-event-name {gap:8px}
+.ds-event-name>span {flex:none;background:#f1f3fa;border:1px solid var(--border);border-radius:8px;padding:7px;color:#526ab1}
+.ds-event-name b {font-weight:600}.ds-event-name small {color:var(--subtle);font-size:11px}
+.ds-status {color:#805921;background:#fbf3e6;padding:3px 7px;border-radius:5px;font-size:10px;text-transform:capitalize}
+.ds-status.published {color:#218055;background:#ecf9f1}
+.ds-empty {padding:23px 0 10px}
+.ds-next header svg {color:var(--blue)}.ds-next>strong {display:block;margin:13px 0 3px;font-size:19px;letter-spacing:-.04em}
+.ds-next a {margin-top:12px}
+@media(max-width:1080px) {.ds-panel{padding:16px}.ds-plot-row{grid-template-columns:minmax(65px,.55fr) minmax(0,1.45fr)}.ds-columns{grid-template-columns:minmax(0,1.55fr) minmax(0,1fr)}}
+@media(max-width:850px) {.ds-columns{grid-template-columns:1fr}.ds-stack:last-child{grid-template-columns:repeat(auto-fit,minmax(min(195px,100%),1fr))}.ds-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:540px) {.ds-dashboard{gap:14px}.ds-heading{gap:12px}.ds-tools{width:100%;flex-wrap:wrap;justify-content:space-between}.ds-range span,.ds-range select,.ds-primary{font-size:11px}.ds-range span{padding-inline:9px}.ds-primary{padding:0 13px}.ds-metrics{gap:9px}.ds-metric{padding:14px}.ds-metric-label{font-size:12px}.ds-card{border-radius:14px}.ds-metric strong{margin:10px 0 3px}.ds-plot-row{grid-template-columns:82px minmax(0,1fr)}.ds-schedule td{padding:10px 4px}.ds-event-name>span{display:none}.ds-bars{margin-top:4px}}

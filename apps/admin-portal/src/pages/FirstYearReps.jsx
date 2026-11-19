@@ -1,598 +1,278 @@
-import { useState, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  fetchFirstYearReps,
-  fetchFirstYearRep,
-  updateFirstYearRep,
-  deleteFirstYearRep,
-  fetchFirstYearRepsSettings,
-  updateFirstYearRepsSettings,
-} from "../api/adminService";
-import toast from "react-hot-toast";
-import {
-  Search,
-  ChevronLeft,
-  ChevronRight,
-  Filter,
-  Eye,
-  ArrowLeft,
-  Check,
-  X as XIcon,
-  Trash2,
-  Lock,
-  Unlock,
-} from "lucide-react";
-const STATUS_OPTIONS = [
-  "Applied",
-  "Reviewed",
-  "Shortlisted",
-  "Interview",
-  "Selected",
-  "Rejected",
-];
+import { useEffect, useState } from 'react';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, ArrowUpRight, CheckCheck, ChevronLeft, ChevronRight, ClipboardList, Download, FileClock, ListChecks, LockKeyhole, Search, Trash2, UnlockKeyhole } from 'lucide-react';
+import toast from 'react-hot-toast';
+import api from '../api/axios';
+import { deleteFirstYearRep, fetchFirstYearRep, fetchFirstYearReps, fetchFirstYearRepsSettings, updateFirstYearRep, updateFirstYearRepsSettings } from '../api/adminService';
+import { RowsSkeleton, TableSkeleton } from '../components/InlineSkeleton';
+import PortalDialog from '../components/PortalDialog';
+import FormAlert from '../components/FormAlert';
 
-const STATUS_COLORS = {
-  Applied: "bg-gray-100 text-gray-800",
-  Reviewed: "bg-blue-100 text-blue-800",
-  Shortlisted: "bg-purple-100 text-purple-800",
-  Interview: "bg-yellow-100 text-yellow-800",
-  Selected: "bg-green-100 text-green-800",
-  Rejected: "bg-red-100 text-red-800",
+const statusColors = {
+  Applied: 'bg-slate-100 text-slate-700',
+  Reviewed: 'bg-blue-50 text-blue-800',
+  Shortlisted: 'bg-violet-50 text-violet-800',
+  Interview: 'bg-amber-50 text-amber-800',
+  Selected: 'bg-emerald-50 text-emerald-800',
+  Rejected: 'bg-rose-50 text-rose-800',
 };
+const questions = [
+  ['motivation', 'Why do you want to join the IEDC Executive Committee as a First-Year Representative?'],
+  ['teamworkInitiative', 'Describe a time you took the initiative to organize an event, lead a project, or solve a problem.'],
+  ['representativeIdea', 'What is one new idea or initiative you would want to introduce for first-year students if selected?'],
+];
+const metrics = [
+  ['total', 'Total applications', <ClipboardList size={17} />],
+  ['applied', 'Awaiting review', <FileClock size={17} />],
+  ['shortlisted', 'Shortlisted', <ListChecks size={17} />],
+  ['selected', 'Selected', <CheckCheck size={17} />],
+];
+const dateFormat = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+const dateLabel = (date) => date && Number.isFinite(Date.parse(date)) ? dateFormat.format(new Date(date)) : '—';
+
+function ConfirmChange({ title, description, onConfirm, onClose, busy, danger, error }) {
+  return (
+    <PortalDialog labelledBy="rep-confirm-title" onClose={onClose} busy={busy}>
+      <div className="op-dialog-head"><h2 id="rep-confirm-title">{title}</h2></div>
+      <p className="op-caption p-5">{description}</p>
+      {error && <FormAlert className="mx-5 mb-4">{error}</FormAlert>}
+      <div className="op-dialog-foot">
+        <button className="op-secondary" onClick={onClose} disabled={busy}>Cancel</button>
+        <button className={danger ? 'op-danger' : 'op-primary'} onClick={onConfirm} disabled={busy}>
+          {busy ? 'Saving…' : title}
+        </button>
+      </div>
+    </PortalDialog>
+  );
+}
 
 function ApplicationDetail({ applicationId, onBack }) {
-  const queryClient = useQueryClient();
-  const [remarks, setRemarks] = useState("");
+  const client = useQueryClient();
+  const [draft, setDraft] = useState(null);
+  const [confirmation, setConfirmation] = useState(null);
+  const detail = useQuery({ queryKey: ['firstYearRep', applicationId], queryFn: () => fetchFirstYearRep(applicationId) });
+  const app = detail.data;
 
-  const { data: app, isLoading } = useQuery({
-    queryKey: ["firstYearRep", applicationId],
-    queryFn: () => fetchFirstYearRep(applicationId),
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: ({ status, remarks }) =>
-      updateFirstYearRep(applicationId, { status, remarks }),
-    onSuccess: () => {
-      queryClient.invalidateQueries(["firstYearRep", applicationId]);
-      queryClient.invalidateQueries(["firstYearReps"]);
-      toast.success("Application updated");
+  function refreshLists() {
+    client.invalidateQueries({ queryKey: ['firstYearReps'] });
+    client.invalidateQueries({ queryKey: ['overview'] });
+  }
+  const update = useMutation({
+    mutationFn: (changes) => updateFirstYearRep(applicationId, changes),
+    onSuccess: ({ application }, changes) => {
+      client.setQueryData(['firstYearRep', applicationId], application);
+      if (changes.remarks !== undefined) setDraft(null);
+      if (changes.status) refreshLists();
+      setConfirmation(null);
+      toast.success(changes.status ? 'Application status updated' : 'Reviewer notes saved');
     },
-    onError: (err) => {
-      toast.error(err.response?.data?.message || "Failed to update");
-    },
+    onError: (error) => toast.error(error.response?.data?.message || 'Could not update application'),
   });
-
-  const deleteMutation = useMutation({
+  const remove = useMutation({
     mutationFn: () => deleteFirstYearRep(applicationId),
     onSuccess: () => {
-      queryClient.invalidateQueries(["firstYearReps"]);
-      toast.success("Application deleted");
+      refreshLists();
       onBack();
+      toast.success('Application deleted');
     },
-    onError: (err) => {
-      toast.error(err.response?.data?.message || "Failed to delete");
-    },
+    onError: (error) => toast.error(error.response?.data?.message || 'Could not delete application'),
   });
-
-  const handleDelete = () => {
-    if (window.confirm("Are you sure you want to delete this application? This action cannot be undone.")) {
-      deleteMutation.mutate();
-    }
-  };
-
-  useEffect(() => {
-    if (app?.review?.remarks) {
-      setRemarks(app.review.remarks);
-    }
-  }, [app]);
-
-  if (isLoading) {
-    return <div className="p-8 text-center text-slate-500">Loading...</div>;
-  }
-
-  if (!app) {
-    return <div className="p-8 text-center text-red-500">Not found</div>;
-  }
-
-  const handleStatusChange = (newStatus) => {
-    if (["Selected", "Rejected"].includes(newStatus)) {
-      if (!window.confirm(`Are you sure you want to mark this applicant as ${newStatus}?`)) {
-        return;
-      }
-    }
-    updateMutation.mutate({ status: newStatus, remarks });
-  };
-
-  const handleSaveReview = () => {
-    updateMutation.mutate({ status: app.status, remarks });
-  };
+  const busy = update.isPending || remove.isPending;
+  const snapshot = app?.memberSnapshot || {};
+  const decision = confirmation === 'delete' ? remove : update;
+  const savedNotes = app?.review?.remarks || '';
+  const notes = draft ?? savedNotes;
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[calc(100vh-8rem)]">
-      {/* Header */}
-      <div className="border-b border-slate-200 p-4 flex items-center justify-between bg-slate-50 sticky top-0 z-10">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={onBack}
-            className="p-2 hover:bg-slate-200 rounded-lg text-slate-600 transition-colors"
-          >
-            <ArrowLeft size={20} />
-          </button>
-          <div>
-            <h2 className="text-lg font-bold text-slate-800 uppercase tracking-tight">
-              APPLICATION #{app.membershipId.slice(-4)}
-            </h2>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleDelete}
-            disabled={deleteMutation.isLoading}
-            className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-1 text-sm font-medium mr-2"
-            title="Delete Application"
-          >
-            <Trash2 size={18} />
-            <span className="hidden sm:inline">Delete</span>
-          </button>
-          <span className="text-sm font-medium text-slate-500">STATUS:</span>
-          <select
-            value={app.status}
-            onChange={(e) => handleStatusChange(e.target.value)}
-            disabled={updateMutation.isLoading}
-            className={`px-3 py-1.5 rounded-lg text-sm font-bold border-0 cursor-pointer outline-none ring-2 ring-transparent focus:ring-blue-500 ${
-              STATUS_COLORS[app.status]
-            }`}
-          >
-            {STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s} className="bg-white text-slate-800">
-                {s}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-6 lg:p-10 flex flex-col lg:flex-row gap-10">
-        {/* Left Column: Details & Review */}
-        <div className="w-full lg:w-1/3 space-y-8">
-          <div>
-            <div className="p-5 bg-slate-50 border border-slate-200 rounded-xl">
-              <h3 className="text-xl font-bold text-slate-800 mb-1">
-                {app.memberSnapshot.name}
-              </h3>
-              <p className="text-sm text-slate-500 font-mono mb-4">
-                {app.membershipId}
-              </p>
-              
-              <div className="space-y-3">
-                <div className="flex flex-col">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Department</span>
-                  <span className="text-sm text-slate-700">{app.memberSnapshot.department} · {app.memberSnapshot.semester}</span>
+    <div className="op-page">
+      <header className="op-header">
+        <div><h1>Application review</h1><p>{app ? 'Submitted ' + dateLabel(app.createdAt) : 'First-year representatives'}</p></div>
+        <button className="op-secondary" onClick={onBack} disabled={busy}><ArrowLeft size={15} /> Applications</button>
+      </header>
+      {detail.isPending ? <div className="op-card"><RowsSkeleton label="Loading application" /></div> : detail.isError || !app ? (
+        <FormAlert>Could not load the application. <button type="button" onClick={() => detail.refetch()}>Try again</button></FormAlert>
+      ) : (
+        <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(240px,0.8fr)_minmax(0,1.6fr)]">
+          <section className="op-card">
+            <div className="op-card-head">
+              <div className="min-w-0 break-words"><h2>{snapshot.name || 'Unnamed applicant'}</h2><p className="op-caption">{app.membershipId}</p></div>
+            </div>
+            <dl className="grid gap-3 border-t border-slate-100 p-5">
+              {[['Department', snapshot.department], ['Semester', snapshot.semester], ['Class', snapshot.class], ['Admission number', snapshot.admissionNumber], ['Email', snapshot.email], ['Phone', snapshot.phone]].map(([label, value]) => (
+                <div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd className="break-words text-sm font-medium">{value || 'Not provided'}</dd></div>
+              ))}
+            </dl>
+            <div className="grid gap-4 border-t border-slate-100 p-5">
+              <label className="op-field">Application status
+                <select aria-label="Application status" value={app.status} disabled={busy} onChange={event => {
+                  const status = event.target.value;
+                  if (['Selected', 'Rejected'].includes(status)) {
+                    update.reset();
+                    setConfirmation(status);
+                  }
+                  else update.mutate({ status });
+                }}>
+                  {Object.keys(statusColors).map(status => <option key={status}>{status}</option>)}
+                </select>
+              </label>
+              <button className="op-secondary justify-self-start" disabled={busy} onClick={() => setConfirmation('delete')}><Trash2 size={14} /> Delete application</button>
+            </div>
+          </section>
+          <div className="grid min-w-0 gap-4">
+            <section className="op-card">
+              <div className="op-card-head"><h2>Application responses</h2></div>
+              {questions.map(([field, question]) => (
+                <div key={field} className="border-t border-slate-100 p-5">
+                  <h3 className="text-sm font-semibold">{question}</h3>
+                  <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-600">{app[field] || 'Not provided'}</p>
                 </div>
-                <div className="flex flex-col">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Class</span>
-                  <span className="text-sm text-slate-700">{app.memberSnapshot.class || 'N/A'}</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Admission Number</span>
-                  <span className="text-sm text-slate-700">{app.memberSnapshot.admissionNumber}</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Email</span>
-                  <span className="text-sm text-slate-700">{app.memberSnapshot.email}</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Phone</span>
-                  <span className="text-sm text-slate-700">{app.memberSnapshot.phone}</span>
-                </div>
+              ))}
+            </section>
+            <section className="op-card">
+              <div className="op-card-head"><h2><label htmlFor="rep-notes">Reviewer notes</label></h2></div>
+              <div className="op-field px-5 pb-4">
+                <textarea id="rep-notes" rows={4} value={notes} disabled={busy} placeholder="Add your evaluation…" onChange={event => setDraft(event.target.value)} />
               </div>
-            </div>
-          </div>
-
-          <div>
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-200 pb-2">
-              Reviewer Notes
-            </h4>
-            <textarea
-              value={remarks}
-              onChange={(e) => setRemarks(e.target.value)}
-              placeholder="Add your evaluation remarks here..."
-              rows="5"
-              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:border-blue-500 outline-none resize-none mb-3"
-            />
-            <button
-              onClick={handleSaveReview}
-              disabled={updateMutation.isLoading || remarks === app.review?.remarks}
-              className="w-full py-2.5 bg-slate-800 text-white rounded-lg text-sm font-bold hover:bg-slate-700 transition-colors disabled:opacity-50"
-            >
-              Save Notes
-            </button>
-            {app.review?.reviewedBy && (
-              <p className="text-xs text-slate-400 mt-3 text-center">
-                Last updated by {app.review.reviewedBy.name} on {new Date(app.review.reviewedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-              </p>
-            )}
+              <div className="op-footer">
+                <span>{app.review?.reviewedAt && 'Updated ' + dateLabel(app.review.reviewedAt)}{app.review?.reviewedBy?.name && ' by ' + app.review.reviewedBy.name}</span>
+                <button className="op-primary" disabled={busy || notes === savedNotes} onClick={() => update.mutate({ remarks: notes })}>{update.isPending ? 'Saving…' : 'Save notes'}</button>
+              </div>
+            </section>
           </div>
         </div>
-
-        {/* Right Column: Answers */}
-        <div className="w-full lg:w-2/3 space-y-8">
-          <div>
-            <div className="mb-2">
-              <h4 className="text-xs font-bold text-blue-500 uppercase tracking-widest mb-1">
-                01 // Why IEDC?
-              </h4>
-              <p className="text-sm font-medium text-slate-800">
-                Why do you want to join the IEDC Executive Committee as a First-Year Representative?
-              </p>
-            </div>
-            <div className="p-5 bg-white border border-slate-200 rounded-xl text-slate-700 text-sm leading-relaxed whitespace-pre-wrap shadow-sm">
-              {app.motivation}
-            </div>
-          </div>
-
-          <div>
-            <div className="mb-2">
-              <h4 className="text-xs font-bold text-blue-500 uppercase tracking-widest mb-1">
-                02 // Teamwork & Initiative
-              </h4>
-              <p className="text-sm font-medium text-slate-800">
-                Describe a time you took the initiative to organize an event, lead a project, or solve a problem.
-              </p>
-            </div>
-            <div className="p-5 bg-white border border-slate-200 rounded-xl text-slate-700 text-sm leading-relaxed whitespace-pre-wrap shadow-sm">
-              {app.teamworkInitiative}
-            </div>
-          </div>
-
-          <div>
-            <div className="mb-2">
-              <h4 className="text-xs font-bold text-blue-500 uppercase tracking-widest mb-1">
-                03 // Representative Mindset
-              </h4>
-              <p className="text-sm font-medium text-slate-800">
-                What is one new idea or initiative you would want to introduce for first-year students if selected?
-              </p>
-            </div>
-            <div className="p-5 bg-white border border-slate-200 rounded-xl text-slate-700 text-sm leading-relaxed whitespace-pre-wrap shadow-sm">
-              {app.representativeIdea}
-            </div>
-          </div>
-        </div>
-      </div>
+      )}
+      {confirmation && <ConfirmChange
+        title={confirmation === 'delete' ? 'Delete application' : 'Mark as ' + confirmation.toLowerCase()}
+        error={decision.isError
+          ? decision.error?.response?.data?.message || 'Could not save this change. Try again.'
+          : ''}
+        description={confirmation === 'delete' ? 'Permanently delete this application and its reviewer notes?' : 'Change the application status for ' + (snapshot.name || app.membershipId) + '?'}
+        danger={confirmation === 'delete' || confirmation === 'Rejected'} busy={busy}
+        onClose={() => { update.reset(); remove.reset(); setConfirmation(null); }} onConfirm={() => confirmation === 'delete' ? remove.mutate() : update.mutate({ status: confirmation })}
+      />}
     </div>
   );
 }
 
 export default function FirstYearReps() {
-  const queryClient = useQueryClient();
+  const client = useQueryClient();
   const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [departmentFilter, setDepartmentFilter] = useState("");
-  const [selectedAppId, setSelectedAppId] = useState(null);
-
-  const { data, isLoading } = useQuery({
-    queryKey: ["firstYearReps", page, search, statusFilter, departmentFilter],
-    queryFn: () =>
-      fetchFirstYearReps({
-        page,
-        search,
-        status: statusFilter,
-        department: departmentFilter,
-      }),
-    keepPreviousData: true,
+  const [search, setSearch] = useState('');
+  const [debounced, setDebounced] = useState('');
+  const [department, setDepartment] = useState('');
+  const [status, setStatus] = useState(() => {
+    const requested = new URLSearchParams(window.location.search).get('status');
+    return Object.hasOwn(statusColors, requested) ? requested : '';
   });
+  const [selected, setSelected] = useState(null);
+  const [confirmSettings, setConfirmSettings] = useState(false);
+  useEffect(() => {
+    if (search.trim() === debounced) return;
+    const timer = setTimeout(() => { setDebounced(search.trim()); setPage(1); }, 300);
+    return () => clearTimeout(timer);
+  }, [search, debounced]);
 
-  const { data: settingsData, isLoading: isSettingsLoading } = useQuery({
-    queryKey: ["firstYearRepsSettings"],
-    queryFn: fetchFirstYearRepsSettings,
+  const list = useQuery({
+    queryKey: ['firstYearReps', page, debounced, status, department],
+    queryFn: () => fetchFirstYearReps({ page, search: debounced, department, status }),
+    placeholderData: keepPreviousData,
   });
-
-  const isApplicationsOpen = settingsData?.isOpen ?? true;
-
-  const toggleSettingsMutation = useMutation({
-    mutationFn: (newIsOpen) => updateFirstYearRepsSettings({ isOpen: newIsOpen }),
-    onSuccess: (res) => {
-      queryClient.invalidateQueries(["firstYearRepsSettings"]);
-      toast.success(res?.message || "Settings updated");
-    },
-    onError: (err) => {
-      toast.error(err.response?.data?.message || "Failed to update application status");
+  const data = list.data;
+  const settings = useQuery({ queryKey: ['firstYearRepsSettings'], queryFn: fetchFirstYearRepsSettings });
+  const open = settings.data?.isOpen;
+  const toggle = useMutation({
+    mutationFn: (isOpen) => updateFirstYearRepsSettings({ isOpen }),
+    onSuccess: (result) => {
+      client.setQueryData(['firstYearRepsSettings'], result);
+      setConfirmSettings(false);
+      toast.success(result.message);
     },
   });
+  const exportCsv = useMutation({
+    mutationFn: async () => {
+      const response = await api.get('/admin/first-year-reps/export/csv', { params: { search: debounced, department, status }, responseType: 'blob' });
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'first-year-representatives.csv';
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    },
+    onError: () => toast.error('Could not export applications'),
+  });
 
-  const handleToggleStatus = () => {
-    const nextState = !isApplicationsOpen;
-    const confirmMsg = nextState
-      ? "Are you sure you want to RE-OPEN applications? Students will be able to apply again."
-      : "Are you sure you want to CLOSE applications? First-year students will no longer be able to submit new applications.";
-
-    if (window.confirm(confirmMsg)) {
-      toggleSettingsMutation.mutate(nextState);
-    }
-  };
-
-  if (selectedAppId) {
-    return (
-      <div className="p-6">
-        <ApplicationDetail
-          applicationId={selectedAppId}
-          onBack={() => setSelectedAppId(null)}
-        />
-      </div>
-    );
-  }
-
-  const stats = data?.stats || {
-    total: 0,
-    applied: 0,
-    reviewed: 0,
-    shortlisted: 0,
-    interview: 0,
-    selected: 0,
-    rejected: 0,
-  };
+  if (selected) return <ApplicationDetail key={selected} applicationId={selected} onBack={() => setSelected(null)} />;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 uppercase tracking-tight">
-            First-Year Representatives 2026
-          </h1>
-          <p className="text-slate-500 mt-1">
-            Review applications, shortlist candidates, and finalize selections.
-          </p>
-        </div>
-
-        {/* Closing / Status Control */}
-        <div className="flex items-center gap-4 bg-white p-2.5 px-4 rounded-xl border border-slate-200 shadow-sm w-fit">
-          <div className="flex items-center gap-2.5">
-            <span
-              className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
-                isApplicationsOpen
-                  ? "bg-green-500 animate-pulse ring-4 ring-green-100"
-                  : "bg-red-500 ring-4 ring-red-100"
-              }`}
-            />
-            <div className="flex flex-col">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">
-                Applications
-              </span>
-              <span
-                className={`text-xs font-black uppercase tracking-wider mt-0.5 ${
-                  isApplicationsOpen ? "text-green-700" : "text-red-700"
-                }`}
-              >
-                {isApplicationsOpen ? "Open" : "Closed"}
-              </span>
-            </div>
-          </div>
-
-          <div className="h-6 w-px bg-slate-200" />
-
-          <button
-            onClick={handleToggleStatus}
-            disabled={toggleSettingsMutation.isLoading || isSettingsLoading}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer ${
-              isApplicationsOpen
-                ? "bg-red-50 text-red-700 hover:bg-red-100 border border-red-200"
-                : "bg-green-50 text-green-700 hover:bg-green-100 border border-green-200"
-            }`}
-            title={isApplicationsOpen ? "Click to close applications" : "Click to open applications"}
-          >
-            {isApplicationsOpen ? (
-              <>
-                <Lock size={14} />
-                Close Applications
-              </>
-            ) : (
-              <>
-                <Unlock size={14} />
-                Open Applications
-              </>
-            )}
+    <div className="op-page">
+      <header className="op-header">
+        <div><h1>First-year representatives</h1><p>{typeof open === 'boolean' ? 'Applications are ' + (open ? 'open' : 'closed') + '.' : settings.isError ? 'Application settings unavailable.' : 'Loading application settings…'}</p></div>
+        <div className="op-actions">
+          <button className="op-secondary" onClick={() => exportCsv.mutate()} disabled={exportCsv.isPending || list.isFetching || search.trim() !== debounced || !data}>
+            <Download size={15} />{exportCsv.isPending ? 'Exporting…' : 'Export CSV'}
           </button>
+          {settings.isError ? <button className="op-primary" onClick={() => settings.refetch()}>Retry settings</button> :
+            <button className="op-primary" disabled={typeof open !== 'boolean' || toggle.isPending} onClick={() => setConfirmSettings(true)}>
+              {open ? <LockKeyhole size={15} /> : <UnlockKeyhole size={15} />}{open ? 'Close applications' : 'Open applications'}
+            </button>}
         </div>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-8">
-        {[
-          { label: "Total", value: stats.total, color: "text-slate-900" },
-          { label: "Applied", value: stats.applied, color: "text-gray-600" },
-          { label: "Reviewed", value: stats.reviewed, color: "text-blue-600" },
-          { label: "Shortlisted", value: stats.shortlisted, color: "text-purple-600" },
-          { label: "Interview", value: stats.interview, color: "text-yellow-600" },
-          { label: "Selected", value: stats.selected, color: "text-green-600" },
-        ].map((stat) => (
-          <div
-            key={stat.label}
-            className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center justify-center text-center"
-          >
-            <span className={`text-2xl font-black ${stat.color}`}>
-              {stat.value}
-            </span>
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">
-              {stat.label}
-            </span>
+      </header>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {metrics.map(([key, label, icon]) => (
+          <div className="op-card p-4 sm:p-5" key={key}>
+            <div className="flex items-start justify-between gap-2"><span className="text-[13px] font-semibold">{label}</span><span aria-hidden="true" className="shrink-0 text-[#315bfa]">{icon}</span></div>
+            <div className="mt-3 text-3xl font-semibold tracking-tight">{data ? data.stats[key] : list.isPending ? <span aria-label="Loading" className="block h-8 w-12 animate-pulse rounded-lg bg-slate-100" /> : '—'}</div>
           </div>
         ))}
       </div>
-
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[calc(100vh-22rem)]">
-        {/* Toolbar */}
-        <div className="p-4 border-b border-slate-200 flex flex-col md:flex-row gap-4 justify-between items-center bg-slate-50">
-          <div className="flex gap-4 w-full md:w-auto flex-1">
-            <div className="relative w-full md:w-96">
-              <Search
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                size={18}
-              />
-              <input
-                type="text"
-                placeholder="Search by name, ID, admission no..."
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                  setPage(1);
-                }}
-                className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-shadow"
-              />
-            </div>
-            <button 
-              onClick={() => window.open(`${import.meta.env.VITE_API_URL}/admin/first-year-reps/export/csv`, "_blank")}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors whitespace-nowrap"
-            >
-              Export CSV
-            </button>
-          </div>
-
-          <div className="flex gap-3 w-full md:w-auto">
-            <select
-              value={departmentFilter}
-              onChange={(e) => {
-                setDepartmentFilter(e.target.value);
-                setPage(1);
-              }}
-              className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:border-blue-500 outline-none"
-            >
-              <option value="">All Departments</option>
-              <option value="CSE">CSE</option>
-              <option value="CSBS">CSBS</option>
-              <option value="CSE (AI & DS)">CSE (AI & DS)</option>
-              <option value="IT">IT</option>
-              <option value="ECE">ECE</option>
-              <option value="EEE">EEE</option>
-              <option value="ME">ME</option>
-              <option value="CE">CE</option>
+      <section className="op-card overflow-hidden" aria-busy={list.isFetching}>
+        <div className="op-card-head"><h2>Applications</h2>{data && <span className="op-count">{data.total} {data.total === 1 ? 'application' : 'applications'}</span>}</div>
+        <div className="flex flex-wrap items-center gap-2 px-4 pb-4 sm:px-5">
+          <label className="op-search w-full sm:w-auto sm:flex-1">
+            <Search size={16} aria-hidden="true" /><input type="search" value={search} aria-label="Search applications" placeholder="Name, email or ID" onChange={event => setSearch(event.target.value)} />
+          </label>
+          <label className="op-field max-w-full"><span className="sr-only">Department</span>
+            <select aria-label="Department" value={department} onChange={event => { setDepartment(event.target.value); setPage(1); }}>
+              <option value="">All departments</option>{(data?.departments || []).map(value => <option key={value}>{value}</option>)}
             </select>
-
-            <select
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
-                setPage(1);
-              }}
-              className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:border-blue-500 outline-none"
-            >
-              <option value="">All Statuses</option>
-              {STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
+          </label>
+          <label className="op-field"><span className="sr-only">Filter by status</span>
+            <select aria-label="Filter by status" value={status} onChange={event => { setStatus(event.target.value); setPage(1); }}>
+              <option value="">All statuses</option>{Object.keys(statusColors).map(value => <option key={value} value={value}>{value}{data && ' (' + data.stats[value.toLowerCase()] + ')'}</option>)}
             </select>
-          </div>
+          </label>
         </div>
-
-        {/* Table */}
-        <div className="flex-1 overflow-auto">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-slate-50 sticky top-0 shadow-sm z-10">
-              <tr>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-widest border-b border-slate-200">
-                  Applicant
-                </th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-widest border-b border-slate-200">
-                  Admission
-                </th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-widest border-b border-slate-200">
-                  Dept & Class
-                </th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-widest border-b border-slate-200">
-                  Date
-                </th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-widest border-b border-slate-200">
-                  Status
-                </th>
-                <th className="p-4 border-b border-slate-200"></th>
+        {list.isPending ? <TableSkeleton label="Loading applications" /> : list.isError ? (
+          <FormAlert className="m-4">Could not load applications. <button type="button" onClick={() => list.refetch()}>Try again</button></FormAlert>
+        ) : !data.applications.length ? (
+          <div className="op-empty"><p>No applications match these filters.</p>
+            {(search || department || status) && <button className="op-secondary" onClick={() => { setStatus(''); setDepartment(''); setSearch(''); setDebounced(''); setPage(1); }}>Clear filters</button>}
+          </div>
+        ) : (
+          <div className="op-scroll"><table className="op-table op-member-table" aria-label="First-year applications">
+            <thead><tr>{['Applicant', 'Department', 'Submitted', 'Status', 'Review'].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead>
+            <tbody>{data.applications.map(app => (
+              <tr key={app._id}>
+                <td className="member-identity"><strong className="font-semibold">{app.name || 'Unnamed applicant'}</strong><span className="op-member-sub">{[app.membershipId, app.admissionNumber].filter(Boolean).join(' · ')}</span></td>
+                <td className="member-attribute" data-label="Department">{app.department || '—'}{app.class && <span className="op-member-sub">{app.class}</span>}</td>
+                <td className="member-attribute whitespace-nowrap" data-label="Submitted">{dateLabel(app.submittedAt)}</td>
+                <td className="member-state"><span className={'whitespace-nowrap rounded-md px-2 py-1 text-xs font-medium ' + (statusColors[app.status] || statusColors.Applied)}>{app.status}</span></td>
+                <td className="member-actions"><button className="op-icon" aria-label={'Review ' + (app.name || app.membershipId)} onClick={() => setSelected(app._id)}><ArrowUpRight size={16} /></button></td>
               </tr>
-            </thead>
-            <tbody>
-              {isLoading ? (
-                <tr>
-                  <td colSpan="6" className="p-8 text-center text-slate-500">
-                    Loading applications...
-                  </td>
-                </tr>
-              ) : data?.applications?.length === 0 ? (
-                <tr>
-                  <td colSpan="6" className="p-8 text-center text-slate-500">
-                    No applications found.
-                  </td>
-                </tr>
-              ) : (
-                data?.applications?.map((app) => (
-                  <tr
-                    key={app._id}
-                    className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors"
-                    onClick={() => setSelectedAppId(app._id)}
-                  >
-                    <td className="p-4">
-                      <p className="font-bold text-slate-800">{app.name}</p>
-                      <p className="text-xs text-slate-500 font-mono mt-0.5">
-                        {app.membershipId}
-                      </p>
-                    </td>
-                    <td className="p-4 text-sm text-slate-600 font-mono">
-                      {app.admissionNumber}
-                    </td>
-                    <td className="p-4 text-sm text-slate-600">
-                      {app.department} {app.class ? `· ${app.class}` : ""}
-                    </td>
-                    <td className="p-4 text-sm text-slate-600">
-                      {new Date(app.submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                    </td>
-                    <td className="p-4">
-                      <span
-                        className={`px-2.5 py-1 text-xs font-bold rounded-full ${
-                          STATUS_COLORS[app.status]
-                        }`}
-                      >
-                        {app.status}
-                      </span>
-                    </td>
-                    <td className="p-4 text-right">
-                      <button className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                        <Eye size={18} />
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination */}
-        <div className="p-4 border-t border-slate-200 flex items-center justify-between bg-slate-50">
-          <p className="text-sm text-slate-500 font-medium">
-            Showing Page <span className="font-bold text-slate-700">{data?.page || 1}</span> of{" "}
-            <span className="font-bold text-slate-700">{data?.pages || 1}</span>
-            <span className="ml-2 hidden sm:inline">
-              ({data?.total || 0} total applications)
-            </span>
-          </p>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={!data || data.page <= 1}
-              className="p-2 bg-white border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <button
-              onClick={() => setPage((p) => Math.min(data.pages, p + 1))}
-              disabled={!data || data.page >= data.pages}
-              className="p-2 bg-white border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <ChevronRight size={18} />
-            </button>
+            ))}</tbody>
+          </table></div>
+        )}
+        {data && !list.isError && <div className="op-footer">
+          <span aria-live="polite">Page {data.page} of {data.pages}</span>
+          <div className="op-pager">
+            <button className="op-icon" aria-label="Previous applications page" disabled={data.page <= 1 || list.isPlaceholderData} onClick={() => setPage(data.page - 1)}><ChevronLeft size={16} /></button>
+            <button className="op-icon" aria-label="Next applications page" disabled={data.page >= data.pages || list.isPlaceholderData} onClick={() => setPage(data.page + 1)}><ChevronRight size={16} /></button>
           </div>
-        </div>
-      </div>
+        </div>}
+      </section>
+      {confirmSettings && <ConfirmChange title={open ? 'Close applications' : 'Open applications'} description={open ? 'First-year students will lose access to the application form.' : 'First-year students will be able to submit new applications.'} danger={open} busy={toggle.isPending}
+        error={toggle.isError ? toggle.error?.response?.data?.message || 'Could not update application availability. Try again.' : ''}
+        onClose={() => { toggle.reset(); setConfirmSettings(false); }} onConfirm={() => toggle.mutate(!open)} />}
     </div>
   );
 }

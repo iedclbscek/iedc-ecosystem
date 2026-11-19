@@ -1,19 +1,21 @@
 import { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion as Motion, AnimatePresence } from 'framer-motion';
 import { Terminal } from 'lucide-react';
 
-const Loader = ({ onComplete }) => {
-  const [progress, setProgress] = useState(0);
-  const [logs, setLogs] = useState([]);
-  
-  // The boot sequence messages
-  const bootSequence = [
+const BOOT_SEQUENCE = [
     "INITIALIZING_KERNEL...",
     "LOADING_MODULES...",
     "CONNECTING_TO_NEXUS...",
     "VERIFYING_PROTOCOLS...",
     "SYSTEM_READY."
   ];
+
+const Loader = ({ onComplete }) => {
+  const [progress, setProgress] = useState(0);
+  const [logs, setLogs] = useState([]);
+
+  // The boot sequence messages
+
 
   useEffect(() => {
     // 1. Progress Bar Logic
@@ -28,9 +30,9 @@ const Loader = ({ onComplete }) => {
       setProgress(newProgress);
 
       // Trigger log messages based on progress milestones
-      const logIndex = Math.floor((newProgress / 100) * (bootSequence.length - 1));
+      const logIndex = Math.floor((newProgress / 100) * (BOOT_SEQUENCE.length - 1));
       setLogs((prev) => {
-        const newLog = bootSequence[logIndex];
+        const newLog = BOOT_SEQUENCE[logIndex];
         if (!prev.includes(newLog)) return [...prev, newLog];
         return prev;
       });
@@ -47,14 +49,14 @@ const Loader = ({ onComplete }) => {
 
   return (
     <div className="fixed inset-0 bg-text-dark z-[100] flex flex-col items-center justify-center font-mono text-white overflow-hidden">
-      
+
       {/* Background Grid Pattern (Subtle) */}
-      <div className="absolute inset-0 opacity-5 pointer-events-none" 
+      <div className="absolute inset-0 opacity-5 pointer-events-none"
            style={{ backgroundImage: 'linear-gradient(#333 1px, transparent 1px), linear-gradient(90deg, #333 1px, transparent 1px)', backgroundSize: '40px 40px' }}>
       </div>
 
       <div className="relative w-full max-w-md px-6">
-        
+
         {/* Header Icon */}
         <div className="flex justify-center mb-8">
           <div className="w-16 h-16 border-2 border-white/20 flex items-center justify-center bg-white/5 animate-pulse">
@@ -75,9 +77,9 @@ const Loader = ({ onComplete }) => {
           <span>System_Boot</span>
           <span>{progress}%</span>
         </div>
-        
+
         <div className="w-full h-2 bg-gray-800 border border-gray-700 relative overflow-hidden">
-          <motion.div 
+          <Motion.div
             className="h-full bg-accent"
             initial={{ width: 0 }}
             animate={{ width: `${progress}%` }}
@@ -88,8 +90,8 @@ const Loader = ({ onComplete }) => {
         {/* System Logs (The "Terminal" Output) */}
         <div className="mt-4 h-24 flex flex-col justify-end items-start overflow-hidden">
           <AnimatePresence mode='popLayout'>
-            {logs.slice(-3).map((log, index) => (
-              <motion.div
+            {logs.slice(-3).map((log) => (
+              <Motion.div
                 key={log}
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -97,7 +99,7 @@ const Loader = ({ onComplete }) => {
                 className="text-xs text-gray-500 font-mono uppercase tracking-wide py-0.5 flex items-center gap-2"
               >
                 <span className="text-accent">{'>'}</span> {log}
-              </motion.div>
+              </Motion.div>
             ))}
           </AnimatePresence>
         </div>

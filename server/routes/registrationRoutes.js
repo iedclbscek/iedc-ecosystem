@@ -36,7 +36,7 @@ const router = express.Router();
  *               referralCode: { type: string }
  *               department: { type: string }
  *               yearOfJoining: { type: string }
- *               semester: { type: string }
+ *               semester: { type: string, description: Optional legacy field. }
  *               isLateralEntry: { type: boolean }
  *               interests:
  *                 type: array
@@ -57,7 +57,6 @@ const router = express.Router();
  *               - referralCode
  *               - department
  *               - yearOfJoining
- *               - semester
  *               - motivation
  *     responses:
  *       201:

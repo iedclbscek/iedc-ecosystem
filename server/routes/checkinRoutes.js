@@ -3,7 +3,10 @@ import User from "../models/User.js";
 import CheckInLog from "../models/CheckInLog.js";
 import UserStatus from "../models/UserStatus.js";
 import BannedMembershipId from "../models/BannedMembershipId.js";
-import { requireAuth } from "../middleware/requireAuth.js";
+import {
+  requireAuth,
+  requirePermission,
+} from "../middleware/requireAuth.js";
 
 const router = express.Router();
 
@@ -192,7 +195,7 @@ router.post("/makerspace/checkin", async (req, res) => {
  *       401:
  *         description: Not authenticated
  */
-router.get("/makerspace/active", requireAuth, async (req, res) => {
+router.get("/makerspace/active", requireAuth, requirePermission("makerspace"), async (req, res) => {
   const active = await UserStatus.find({ currentStatus: "IN" })
     .sort({ userName: 1 })
     .lean();
@@ -231,7 +234,7 @@ router.get("/makerspace/active", requireAuth, async (req, res) => {
  *       401:
  *         description: Not authenticated
  */
-router.get("/makerspace/history", requireAuth, async (req, res) => {
+router.get("/makerspace/history", requireAuth, requirePermission("makerspace"), async (req, res) => {
   const page = parsePositiveInt(req.query?.page, 1);
   const limit = Math.min(parsePositiveInt(req.query?.limit, 20), 100);
 
@@ -249,7 +252,7 @@ router.get("/makerspace/history", requireAuth, async (req, res) => {
   const [total, data] = await Promise.all([
     CheckInLog.countDocuments(filter),
     CheckInLog.find(filter)
-      .sort({ timestamp: -1 })
+      .sort({ timestamp: -1, _id: -1 })
       .skip(skip)
       .limit(limit)
       .lean(),
@@ -295,7 +298,7 @@ router.get("/makerspace/history", requireAuth, async (req, res) => {
  *       409:
  *         description: User not checked in
  */
-router.post("/makerspace/checkout", requireAuth, async (req, res) => {
+router.post("/makerspace/checkout", requireAuth, requirePermission("makerspace"), async (req, res) => {
   const membershipId = normalizeMembershipId(req.body?.membershipId);
 
   if (!membershipId) {
@@ -350,6 +353,42 @@ router.post("/makerspace/checkout", requireAuth, async (req, res) => {
   });
 });
 
+async function banAndCheckOut(fields, session) {
+  const [ban] = await BannedMembershipId.create([fields], { session });
+  let member;
+  try {
+    member = await UserStatus.findOneAndUpdate(
+      { membershipId: fields.membershipId, currentStatus: "IN" },
+      { $set: { currentStatus: "OUT", lastUpdated: ban.bannedAt } },
+      { session, new: false },
+    ).lean();
+    if (member) {
+      await CheckInLog.create([{
+        _id: ban._id,
+        membershipId: member.membershipId,
+        userName: member.userName,
+        action: "OUT",
+        timestamp: ban.bannedAt,
+      }], { session });
+    }
+  } catch (error) {
+    if (!session) {
+      // A standalone MongoDB has no multi-document transactions.
+      // If a log write succeeded but its acknowledgement was lost, the work is complete.
+      if (member && await CheckInLog.exists({ _id: ban._id })) return;
+      if (member) {
+        await UserStatus.updateOne(
+          { _id: member._id, currentStatus: "OUT", lastUpdated: ban.bannedAt },
+          { $set: { currentStatus: "IN", lastUpdated: member.lastUpdated, updatedAt: member.updatedAt } },
+          { timestamps: false },
+        );
+      }
+      await BannedMembershipId.deleteOne({ _id: ban._id });
+    }
+    throw error;
+  }
+}
+
 /**
  * @openapi
  * /api/makerspace/ban:
@@ -381,7 +420,7 @@ router.post("/makerspace/checkout", requireAuth, async (req, res) => {
  *       409:
  *         description: Already banned
  */
-router.post("/makerspace/ban", requireAuth, async (req, res) => {
+router.post("/makerspace/ban", requireAuth, requirePermission("makerspace"), async (req, res) => {
   const membershipId = normalizeMembershipId(req.body?.membershipId);
   const reason = String(req.body?.reason ?? "").trim();
 
@@ -389,22 +428,21 @@ router.post("/makerspace/ban", requireAuth, async (req, res) => {
     return res.status(400).json({ message: "membershipId is required" });
   }
 
-  const existing = await BannedMembershipId.findOne({ membershipId }).lean();
-  if (existing) {
-    return res.status(409).json({ message: "Membership ID is already banned" });
+  const fields = { membershipId, reason, bannedBy: req.user?.membershipId || "unknown" };
+  try {
+    try {
+      await BannedMembershipId.db.transaction(session => banAndCheckOut(fields, session));
+    } catch (error) {
+      if (error.code !== 20 || !/replica set member or mongos/i.test(error.message)) throw error;
+      await banAndCheckOut(fields, null);
+    }
+  } catch (error) {
+    if (error.code === 11000 && error.keyPattern?.membershipId) {
+      return res.status(409).json({ message: "Membership ID is already banned" });
+    }
+    console.error("Could not block makerspace access", error);
+    return res.status(500).json({ message: "Could not block makerspace access" });
   }
-
-  await BannedMembershipId.create({
-    membershipId,
-    reason,
-    bannedBy: req.user?.membershipId || "unknown",
-  });
-
-  // Force checkout if currently checked in
-  await UserStatus.updateOne(
-    { membershipId },
-    { $set: { currentStatus: "OUT" } },
-  );
 
   return res.status(201).json({
     message: "Banned",
@@ -441,7 +479,7 @@ router.post("/makerspace/ban", requireAuth, async (req, res) => {
  *       404:
  *         description: Not banned
  */
-router.post("/makerspace/unban", requireAuth, async (req, res) => {
+router.post("/makerspace/unban", requireAuth, requirePermission("makerspace"), async (req, res) => {
   const membershipId = normalizeMembershipId(req.body?.membershipId);
 
   if (!membershipId) {

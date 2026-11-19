@@ -1,17 +1,17 @@
 import React, { useState } from 'react';
 import { Search } from 'lucide-react';
 
-export const normalize = (v) => String(v ?? '').trim();
+const normalize = (v) => String(v ?? '').trim();
 
 const separator = ' · ';
 
-export const userLabel = (user) => {
+const userLabel = (user) => {
   const name = user?.name || user?.membershipId || 'Member';
   const meta = user?.meta || [user?.membershipId, user?.email].filter(Boolean).join(separator);
   return { name, meta };
 };
 
-export const matchesUserSearch = (user, query) => {
+const matchesUserSearch = (user, query) => {
   const search = normalize(query).toLowerCase();
   if (!search) return true;
 

@@ -1,0 +1,18 @@
+.nexus-edit-canvas{min-width:0;background:#fff;border:1px solid #e1e5ed;border-radius:16px;overflow:hidden}
+.nexus-edit-frame{position:relative;min-width:0;isolation:isolate;border:1px solid transparent;border-radius:10px;transition:border-color .15s}
+.nexus-edit-frame:hover,.nexus-edit-frame:focus-within{border-color:#a7b9ff}
+.nexus-edit-section{padding:12px;background:#f9faff;border-color:#e0e6f0}.nexus-edit-section.is-hidden{border-style:dashed;background:#f3f4f7}.nexus-edit-section.is-hidden>.nexus-container{opacity:.6}
+.nexus-edit-widget{background:#fff;border-color:#e0e6f0;overflow:hidden}.nexus-edit-widget>.nexus-widget,.nexus-edit-widget>.nexus-custom{border:0;border-radius:0}
+.nexus-edit-frame.is-dragging{z-index:20;opacity:.65;box-shadow:0 10px 28px #1b2b561f}
+.nexus-edit-tools{display:flex;align-items:center;gap:8px;min-height:42px;color:#56647b;padding:2px 0 10px}
+.nexus-edit-widget>.nexus-edit-tools{padding:6px 10px;border-bottom:1px solid #edf0f6;background:#fafbff}
+.nexus-edit-tools button{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:30px;min-height:30px;padding:5px;border:1px solid transparent;border-radius:6px;font:inherit;font-size:11px;white-space:nowrap;cursor:pointer}
+.nexus-edit-tools button:hover:not(:disabled){background:#eef2ff;color:#315bfa;border-color:#dbe3ff}
+.nexus-edit-tools button:focus-visible,.nexus-edit-empty:focus-visible{outline:3px solid #315bfa;outline-offset:2px}.nexus-edit-tools button:disabled{opacity:.3;cursor:default}
+.nexus-edit-tools .nexus-edit-handle{cursor:grab;touch-action:none}.nexus-edit-tools .nexus-edit-handle:active{cursor:grabbing}
+.nexus-edit-label{display:flex;align-items:center;gap:5px;min-width:0;flex:1;font-size:11px;font-weight:600}.nexus-edit-label>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.nexus-edit-label small{font-size:10px;font-weight:400}
+.nexus-edit-actions{display:flex;align-items:center;gap:2px;flex-shrink:0}
+.nexus-edit-empty{display:flex;align-items:center;justify-content:center;gap:10px;min-height:110px;width:100%;padding:20px;border:1px dashed #c9d3ec;border-radius:8px;background:#fff;color:#65738d;font-size:12px}.nexus-edit-empty:hover{color:#315bfa;background:#f5f7ff}
+.nexus-edit-section>.nexus-container>h2{font-size:24px}.nexus-edit-canvas .nexus-page-sections{gap:24px;padding:24px}.nexus-edit-canvas .nexus-page-hero{padding:40px 36px}.nexus-edit-canvas .nexus-page h1{font-size:clamp(30px,4vw,54px)}
+@media(max-width:640px){.nexus-edit-canvas{border-radius:12px}.nexus-edit-canvas .nexus-page-sections{padding:12px;gap:16px}.nexus-edit-canvas .nexus-page-hero{padding:28px 20px}.nexus-edit-section{padding:8px}.nexus-edit-tools{flex-wrap:wrap;gap:4px}.nexus-edit-tools button{min-width:34px;min-height:34px}.nexus-edit-label{min-width:60px}.nexus-edit-actions{margin-left:auto}.nexus-edit-widget>.nexus-edit-tools{padding:6px}.nexus-edit-actions .nexus-edit-labeled{padding-inline:7px}.nexus-edit-empty{min-height:90px;font-size:11px}}
+@media(prefers-reduced-motion:reduce){.nexus-edit-frame{transition:none!important}}

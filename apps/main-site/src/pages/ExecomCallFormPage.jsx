@@ -24,12 +24,12 @@ const ExecomCallFormPage = () => {
   const [eligible, setEligible] = useState(null); // null, true, false
   const [error, setError] = useState("");
   const [notEligibleReason, setNotEligibleReason] = useState("");
-  const [registration, setRegistration] = useState(null);
+  const [, setRegistration] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [form, setForm] = useState(initialForm);
-  const [showClosedModal, setShowClosedModal] = useState(true); // Changed from false to true to close the form
-  //const [showClosedModal, setShowClosedModal] = useState(false);
+  const [showClosedModal] = useState(true); // Changed from false to true to close the form
+  //const [showClosedModal] = useState(false);
   // Step 1: Membership ID input and eligibility check
   const handleNext = async () => {
     setError("");
@@ -67,7 +67,7 @@ const ExecomCallFormPage = () => {
               setRegistration(found);
               setStep(2);
             }
-          } catch (execomErr) {
+          } catch {
             // If the check endpoint doesn't exist, proceed anyway
             setEligible(true);
             setRegistration(found);
@@ -176,7 +176,7 @@ const ExecomCallFormPage = () => {
     try {
       await axios.post(`${API_BASE_URL}/api/registrations/execom-call`, form);
       setSubmitSuccess(true);
-    } catch (err) {
+    } catch {
       setError("Submission failed. Please try again.");
     } finally {
       setIsSubmitting(false);

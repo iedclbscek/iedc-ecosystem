@@ -1,55 +1,112 @@
-import { useState, useEffect, useRef } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { motion, AnimatePresence, useMotionValue, useTransform } from "framer-motion";
+import { teamSection } from '../../../../shared/teamSections';
+import { createElement, useState, useEffect, useRef } from "react";
+import { Link } from "react-router-dom";
+import { motion as Motion, useMotionValue, useTransform } from "framer-motion";
 import {
   FaArrowLeft, FaSearch, FaLinkedinIn, FaGithub, FaTwitter,
-  FaTimes, FaChevronLeft, FaChevronRight,
+  FaTimes,
 } from "react-icons/fa";
 import axios from "axios";
+import ExecomProfilePage from "./ExecomProfilePage";
+import { PublicErrorState, TeamSkeleton } from "../components/ui/PublicPageState";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TEAM PAGE
 // ─────────────────────────────────────────────────────────────────────────────
-const TeamPage = () => {
-  const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:5000" : "");
-  if (import.meta.env.PROD && !import.meta.env.VITE_API_URL) throw new Error("VITE_API_URL is required in production");
+const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:5000" : "");
+if (import.meta.env.PROD && !import.meta.env.VITE_API_URL) throw new Error("VITE_API_URL is required in production");
 
+const formatMember = (member) => {
+  const rawName = member.user?.name || member.name || "Unknown";
+  return {
+    id: member.id || member._id,
+    name: String(rawName).toUpperCase(),
+    role: member.roleTitle || member.role || "Member",
+    image: member.imageUrl || member.user?.image || null,
+    membershipId: (member.user?.membershipId || "").toUpperCase(),
+    linkedin: member.linkedin || member.user?.linkedin || "",
+    github: member.github || member.user?.github || "",
+    twitter: member.twitter || member.user?.twitter || "",
+  };
+};
+
+const processMembers = (members, query) => {
+  const q = query.toLowerCase().trim();
+  const filtered = members.filter(
+    (m) => m.name.toLowerCase().includes(q) || m.role.toLowerCase().includes(q)
+  );
+  const cat = { nodalOfficers: [], facultyMembers: [], coreTeam: [], teamMembers: [] };
+  filtered.forEach((m) => {
+    cat[teamSection(m.role, m.membershipId)].push(m);
+  });
+  return cat;
+};
+
+const TeamPage = () => {
   const [availableYears, setAvailableYears]   = useState([]);
   const [selectedYear,   setSelectedYear]     = useState(null);
-  const [displayData,    setDisplayData]      = useState({ nodalOfficers: [], facultyMembers: [], coreTeam: [], teamMembers: [] });
   const [rawData,        setRawData]          = useState([]);
   const [searchQuery,    setSearchQuery]      = useState("");
   const [loading,        setLoading]          = useState(true);
   const [isYearsLoading, setIsYearsLoading]   = useState(true);
   const [selectedMember, setSelectedMember]   = useState(null); // profile modal
-  const goToProfile = useNavigate();
+  const [loadError, setLoadError] = useState("");
+  const [retryNonce, setRetryNonce] = useState(0);
+  const [rosterRetry, setRosterRetry] = useState(0);
+  const initialRosterYearRef = useRef(null);
+  function openProfile(event, member) {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+    event.preventDefault();
+    setSelectedMember({ member, opener: event.currentTarget });
+  }
 
   // 1. Fetch available years
   useEffect(() => {
+    const controller = new AbortController();
     const fetchYears = async () => {
       try {
         setIsYearsLoading(true);
-        const { data } = await axios.get(`${API_BASE_URL}/api/public/execom/years`);
+        setLoading(true);
+        setLoadError("");
+        const { data } = await axios.get(`${API_BASE_URL}/api/public/execom/years`, {
+          params: { includeRoster: true },
+          signal: controller.signal,
+        });
         let years = Array.isArray(data) ? data : data.years ?? data.data ?? [];
         const sorted = years.map(String).sort((a, b) => b.localeCompare(a));
         setAvailableYears(sorted);
-        if (sorted.length > 0) setSelectedYear(sorted[0]);
+        if (sorted.length > 0) {
+          const initialYear = sorted[0];
+          const formatted = (data.roster || []).map(formatMember);
+          initialRosterYearRef.current = Array.isArray(data.roster) ? initialYear : null;
+          setSelectedYear(initialYear);
+          setRawData(formatted);
+          setLoading(false);
+        }
         else { const y = String(new Date().getFullYear()); setAvailableYears([y]); setSelectedYear(y); }
       } catch {
-        const y = String(new Date().getFullYear()); setAvailableYears([y]); setSelectedYear(y);
-      } finally { setIsYearsLoading(false); }
+        if (controller.signal.aborted) return;
+        setLoadError("We could not load the team roster. Check your connection and try again.");
+        setLoading(false);
+      } finally { if (!controller.signal.aborted) setIsYearsLoading(false); }
     };
     fetchYears();
-  }, []);
+    return () => controller.abort();
+  }, [retryNonce]);
 
   // 2. Fetch roster (AbortController prevents race conditions)
   useEffect(() => {
     if (!selectedYear) return;
+    if (initialRosterYearRef.current === selectedYear) {
+      initialRosterYearRef.current = null;
+      return;
+    }
     const controller = new AbortController();
 
     const fetchYearData = async () => {
       try {
         setLoading(true);
+        setLoadError("");
         const { data } = await axios.get(`${API_BASE_URL}/api/public/execom`, {
           params: { year: selectedYear },
           signal: controller.signal,
@@ -58,27 +115,12 @@ const TeamPage = () => {
           (data.years || []).find((y) => y.year === selectedYear) ||
           data.years?.[0] || { members: [] };
 
-        const formatted = (yearData.members || []).map((m) => {
-          const rawName = m.user?.name || m.name || "Unknown";
-          return {
-            id: m.id || m._id,
-            name: String(rawName).toUpperCase(),
-            role: m.roleTitle || m.role || "Member",
-            image: m.imageUrl || m.user?.image || null,
-            // membershipId embedded — no index-based raw lookup needed
-            membershipId: (m.user?.membershipId || "").toUpperCase(),
-            linkedin: m.linkedin || m.user?.linkedin || "",
-            github:   m.github   || m.user?.github   || "",
-            twitter:  m.twitter  || m.user?.twitter  || "",
-          };
-        });
-
+        const formatted = (yearData.members || []).map(formatMember);
         setRawData(formatted);
-        processMembers(formatted, searchQuery);
       } catch (err) {
         if (axios.isCancel(err)) return;
+        setLoadError("We could not load the selected team year. Please try again.");
         setRawData([]);
-        setDisplayData({ nodalOfficers: [], facultyMembers: [], coreTeam: [], teamMembers: [] });
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
@@ -86,36 +128,9 @@ const TeamPage = () => {
 
     fetchYearData();
     return () => controller.abort();
-  }, [selectedYear]);
+  }, [selectedYear, rosterRetry]);
 
-  // 3. Client-side search
-  useEffect(() => {
-    if (rawData.length > 0) processMembers(rawData, searchQuery);
-  }, [searchQuery, rawData]);
-
-  // Helper: categorise members
-  const processMembers = (members, query) => {
-    const q = query.toLowerCase().trim();
-    const filtered = members.filter(
-      (m) => m.name.toLowerCase().includes(q) || m.role.toLowerCase().includes(q)
-    );
-    const cat = { nodalOfficers: [], facultyMembers: [], coreTeam: [], teamMembers: [] };
-    filtered.forEach((m) => {
-      const r = m.role.toLowerCase();
-      const isStaff = m.membershipId.includes("ST");
-      if (r.includes("nodal officer") || r.includes("president") || isStaff)
-        cat.nodalOfficers.push(m);
-      else if (r.includes("faculty") || r.includes("advisor") || r.includes("mentor") || r.includes("principal"))
-        cat.facultyMembers.push(m);
-      else if (
-        r.includes("ceo") || r.includes("cto") || r.includes("coo") || r.includes("cfo") ||
-        r.includes("cmo") || r.includes("lead") || r.includes("head") || r.includes("chief") ||
-        r.includes("chair") || r.includes("coordinator")
-      ) cat.coreTeam.push(m);
-      else cat.teamMembers.push(m);
-    });
-    setDisplayData(cat);
-  };
+  const displayData = processMembers(rawData, searchQuery);
 
   const hasData =
     displayData.nodalOfficers.length > 0 || displayData.facultyMembers.length > 0 ||
@@ -136,26 +151,26 @@ const TeamPage = () => {
           </Link>
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
             <div>
-              <motion.span
+              <Motion.span
                 initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                 className="text-accent font-mono font-bold tracking-widest text-sm uppercase mb-4 block"
               >
                 06 // PERSONNEL_DATABASE
-              </motion.span>
-              <motion.h1
+              </Motion.span>
+              <Motion.h1
                 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
                 className="text-5xl md:text-7xl font-black text-text-dark tracking-tighter leading-[0.9]"
               >
                 THE PEOPLE<br />
                 <span className="text-gray-300">BEHIND IT.</span>
-              </motion.h1>
+              </Motion.h1>
             </div>
-            <motion.p
+            <Motion.p
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}
               className="text-text-light max-w-sm text-base border-l-4 border-accent pl-5 leading-relaxed"
             >
               Meet the builders, leaders, and dreamers driving innovation at LBSCEK.
-            </motion.p>
+            </Motion.p>
           </div>
         </div>
       </section>
@@ -191,7 +206,7 @@ const TeamPage = () => {
           <div className="relative w-full sm:w-64 group">
             <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs group-focus-within:text-accent transition-colors" />
             <input
-              type="text"
+              type="search" aria-label="Search team by name or role"
               placeholder="Search name or role..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -202,12 +217,11 @@ const TeamPage = () => {
       </section>
 
       {/* ── CONTENT ──────────────────────────────────────────────────────── */}
-      <main className="py-20">
+      <div className="py-20">
         {loading ? (
-          <div className="flex flex-col items-center justify-center h-64 gap-4">
-            <div className="animate-spin w-10 h-10 border-[3px] border-accent border-t-transparent rounded-full" />
-            <p className="font-mono text-xs text-gray-400 uppercase tracking-widest">Loading Roster...</p>
-          </div>
+          <TeamSkeleton />
+        ) : loadError ? (
+          <PublicErrorState title="Team unavailable" message={loadError} onRetry={() => availableYears.length ? setRosterRetry(value => value + 1) : setRetryNonce(value => value + 1)} />
         ) : hasData ? (
           <>
             {/* LEVEL 1 — Nodal Officers: editorial large portraits */}
@@ -216,7 +230,7 @@ const TeamPage = () => {
                 title="Nodal Officers"
                 accent="#FF6B6B"
                 members={displayData.nodalOfficers}
-                onSelect={(m) => goToProfile(`/team/${m.id}`)}
+                onSelect={openProfile}
               />
             )}
 
@@ -226,7 +240,7 @@ const TeamPage = () => {
                 title="Faculty Board"
                 accent="#A8D5BA"
                 members={displayData.facultyMembers}
-                onSelect={(m) => goToProfile(`/team/${m.id}`)}
+                onSelect={openProfile}
               />
             )}
 
@@ -236,7 +250,7 @@ const TeamPage = () => {
                 title="Executive Committee"
                 accent="#2E2E2E"
                 members={displayData.coreTeam}
-                onSelect={(m) => goToProfile(`/team/${m.id}`)}
+                onSelect={openProfile}
               />
             )}
 
@@ -245,7 +259,7 @@ const TeamPage = () => {
               <MemberGridSection
                 title="Member Network"
                 members={displayData.teamMembers}
-                onSelect={(m) => goToProfile(`/team/${m.id}`)}
+                onSelect={openProfile}
               />
             )}
           </>
@@ -272,18 +286,10 @@ const TeamPage = () => {
             </div>
           </div>
         )}
-      </main>
+      </div>
 
       {/* ── PROFILE MODAL ─────────────────────────────────────────────────── */}
-      <AnimatePresence>
-        {selectedMember && (
-          <ProfileModal
-            member={selectedMember}
-            year={selectedYear}
-            onClose={() => setSelectedMember(null)}
-          />
-        )}
-      </AnimatePresence>
+      {selectedMember && <ProfileModal member={selectedMember.member} opener={selectedMember.opener} onClose={() => setSelectedMember(null)} />}
     </div>
   );
 };
@@ -315,14 +321,14 @@ const EditorialSection = ({ title, accent, members, onSelect }) => (
     <div className="container mx-auto px-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {members.map((m, i) => (
-          <motion.div
+          <Motion.div
             key={m.id}
             initial={{ opacity: 0, y: 32 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.07, duration: 0.4, ease: "easeOut" }}
           >
             <EditorialCard member={m} onSelect={onSelect} />
-          </motion.div>
+          </Motion.div>
         ))}
       </div>
     </div>
@@ -335,6 +341,7 @@ const EditorialSection = ({ title, accent, members, onSelect }) => (
 const EditorialCard = ({ member, onSelect }) => {
   const [imgError, setImgError] = useState(false);
   const [hovered, setHovered]   = useState(false);
+  const [focused, setFocused] = useState(false);
   const cardRef = useRef(null);
   const mouseX  = useMotionValue(0);
   const mouseY  = useMotionValue(0);
@@ -352,21 +359,22 @@ const EditorialCard = ({ member, onSelect }) => {
   const onMouseLeave = () => { mouseX.set(0); mouseY.set(0); setHovered(false); };
 
   return (
-    <motion.div
+    <Motion.div
       ref={cardRef}
       style={{ rotateX, rotateY, perspective: 900, transformStyle: "preserve-3d" }}
       whileHover={{ y: -10, boxShadow: "0 24px 60px rgba(0,0,0,0.15)" }}
+      onFocusCapture={() => setFocused(true)}
+      onBlurCapture={e => { if (!e.currentTarget.contains(e.relatedTarget)) setFocused(false); }}
       onMouseMove={onMouseMove}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={onMouseLeave}
-      onClick={() => onSelect(member)}
       transition={{ type: "spring", damping: 22, stiffness: 280 }}
       className="cursor-pointer overflow-hidden bg-white border border-gray-100 group"
     >
       {/* Portrait */}
       <div className="aspect-[3/4] relative overflow-hidden bg-gray-900">
         {!imgError && member.image ? (
-          <motion.img
+          <Motion.img
             src={member.image}
             alt={member.name}
             className="w-full h-full object-cover object-top"
@@ -384,9 +392,9 @@ const EditorialCard = ({ member, onSelect }) => {
         <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
 
         {/* Info block — always visible, socials slide in on hover */}
-        <div className="absolute bottom-0 left-0 right-0 p-5">
+        <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-10 p-5">
           {/* Animated accent bar */}
-          <motion.div
+          <Motion.div
             className="h-[2px] bg-accent rounded-full mb-3"
             animate={{ width: hovered ? 52 : 20 }}
             transition={{ duration: 0.3 }}
@@ -397,9 +405,9 @@ const EditorialCard = ({ member, onSelect }) => {
           </p>
 
           {/* Social links */}
-          <motion.div
+          <Motion.div
             className="flex gap-2 mt-3"
-            animate={{ opacity: hovered ? 1 : 0, y: hovered ? 0 : 8 }}
+            animate={{ opacity: hovered || focused ? 1 : 0, y: hovered || focused ? 0 : 8 }}
             transition={{ duration: 0.2, delay: hovered ? 0.06 : 0 }}
           >
             {[
@@ -416,24 +424,27 @@ const EditorialCard = ({ member, onSelect }) => {
                   rel="noopener noreferrer"
                   aria-label={`${label} profile of ${member.name}`}
                   onClick={(e) => e.stopPropagation()}
-                  className="w-7 h-7 bg-white/15 hover:bg-accent flex items-center justify-center rounded-full transition-colors text-white text-xs"
+                  className={`${hovered || focused ? "pointer-events-auto" : "pointer-events-none"} w-7 h-7 bg-white/15 hover:bg-accent flex items-center justify-center rounded-full transition-colors text-white text-xs`}
                 >
-                  <Icon aria-hidden="true" />
+                  {createElement(Icon, { "aria-hidden": true })}
                 </a>
               ))}
-          </motion.div>
+          </Motion.div>
         </div>
 
         {/* "View Profile" chip */}
-        <motion.div
+        <Motion.div
           className="absolute top-4 right-4 bg-black/40 backdrop-blur-sm px-2 py-1 font-mono text-[9px] text-white/70 uppercase tracking-widest"
-          animate={{ opacity: hovered ? 1 : 0 }}
+          animate={{ opacity: hovered || focused ? 1 : 0 }}
           transition={{ duration: 0.2 }}
         >
-          View Profile ↗
-        </motion.div>
+          View Profile
+        </Motion.div>
+        <a href={`/team/${encodeURIComponent(member.id)}`} aria-haspopup="dialog"
+          aria-label={`View profile of ${member.name}`} onClick={(event) => onSelect(event, member)}
+          className="absolute inset-0 focus-visible:outline-4 focus-visible:-outline-offset-4 focus-visible:outline-accent" />
       </div>
-    </motion.div>
+    </Motion.div>
   );
 };
 
@@ -445,7 +456,7 @@ const MemberGridSection = ({ title, members, onSelect }) => (
   <section className="mb-20">
     <SectionHeader title={title} count={members.length} accent="#8A8A8A" />
     <div className="container mx-auto px-6">
-      <motion.div
+      <Motion.div
         initial="hidden"
         animate="visible"
         variants={{
@@ -457,7 +468,7 @@ const MemberGridSection = ({ title, members, onSelect }) => (
         {members.map((m) => (
           <MemberCard key={m.id} member={m} onSelect={onSelect} />
         ))}
-      </motion.div>
+      </Motion.div>
     </div>
   </section>
 );
@@ -470,10 +481,12 @@ const MemberCard = ({ member, onSelect }) => {
   const initials = (member.name || "?").split(" ").map((w) => w[0]).slice(0, 2).join("");
 
   return (
-    <motion.div
+    <Motion.a
       variants={{ hidden: { opacity: 0, scale: 0.9 }, visible: { opacity: 1, scale: 1 } }}
       whileHover={{ y: -4, boxShadow: "0 10px 24px rgba(0,0,0,0.08)" }}
-      onClick={() => onSelect(member)}
+      href={`/team/${encodeURIComponent(member.id)}`}
+      aria-label={`View profile of ${member.name}`} aria-haspopup="dialog"
+      onClick={(event) => onSelect(event, member)}
       className="group flex flex-col items-center text-center p-4 bg-white border border-gray-200 hover:border-accent/40 transition-all duration-200 cursor-pointer"
     >
       <div className="relative w-16 h-16 mb-3 overflow-hidden rounded-full ring-2 ring-gray-100 group-hover:ring-accent/40 transition-all flex-shrink-0">
@@ -496,142 +509,43 @@ const MemberCard = ({ member, onSelect }) => {
       <p className="text-[9px] font-mono text-gray-400 uppercase tracking-widest mt-1 line-clamp-1">
         {member.role}
       </p>
-    </motion.div>
+    </Motion.a>
   );
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PROFILE MODAL — click-to-expand with spring animation
 // ─────────────────────────────────────────────────────────────────────────────
-const ProfileModal = ({ member, year, onClose }) => {
-  const [imgError, setImgError] = useState(false);
-  const initials = (member.name || "?").split(" ").map((w) => w[0]).slice(0, 2).join("");
-
-  // Lock scroll + Escape key to close
+function ProfileModal({ member, opener, onClose }) {
+  const ref = useRef(null);
   useEffect(() => {
-    const esc = (e) => { if (e.key === "Escape") onClose(); };
-    document.addEventListener("keydown", esc);
-    document.body.style.overflow = "hidden";
+    const dialog = ref.current;
+    const overflow = document.documentElement.style.overflow;
+    dialog.showModal();
+    document.documentElement.style.overflow = "hidden";
     return () => {
-      document.removeEventListener("keydown", esc);
-      document.body.style.overflow = "";
+      dialog.close();
+      document.documentElement.style.overflow = overflow;
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
     };
-  }, [onClose]);
+  }, [opener]);
 
-  const safeHref = (href) =>
-    href ? (href.startsWith("http") ? href : `https://${href}`) : null;
-
-  const socials = [
-    { href: safeHref(member.linkedin), Icon: FaLinkedinIn, label: "LinkedIn",  color: "#0A66C2", bg: "#0A66C2/10" },
-    { href: safeHref(member.github),   Icon: FaGithub,    label: "GitHub",    color: "#1a1a1a", bg: "gray-900/10" },
-    { href: safeHref(member.twitter),  Icon: FaTwitter,   label: "Twitter",   color: "#1DA1F2", bg: "#1DA1F2/10" },
-  ].filter(({ href }) => href);
+  function closeOnBackdrop(event) {
+    if (event.target !== ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) onClose();
+  }
 
   return (
-    <motion.div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.18 }}
-    >
-      {/* Backdrop */}
-      <motion.div
-        className="absolute inset-0 bg-black/82 backdrop-blur-md"
-        onClick={onClose}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-      />
-
-      {/* Profile card */}
-      <motion.div
-        className="relative z-10 bg-white w-full max-w-2xl max-h-[92vh] flex flex-col md:flex-row overflow-hidden shadow-2xl"
-        initial={{ scale: 0.87, opacity: 0, y: 28 }}
-        animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ scale: 0.93, opacity: 0, y: 16 }}
-        transition={{ type: "spring", damping: 26, stiffness: 320 }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* ── Photo column ── */}
-        <div className="w-full md:w-[44%] flex-shrink-0 relative overflow-hidden min-h-[280px]">
-          {!imgError && member.image ? (
-            <img
-              src={member.image}
-              alt={member.name}
-              className="w-full h-full object-cover object-top absolute inset-0"
-              onError={() => setImgError(true)}
-            />
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-900 to-gray-700">
-              <span className="text-[9rem] font-black text-white/8 select-none leading-none">{initials}</span>
-            </div>
-          )}
-          {/* Photo gradient overlay */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-          {/* Year badge */}
-          <div className="absolute top-4 left-4 bg-black/50 backdrop-blur-sm px-3 py-1 font-mono text-[10px] text-white uppercase tracking-widest">
-            IEDC // {year}
-          </div>
-        </div>
-
-        {/* ── Info column ── */}
-        <div className="flex-1 flex flex-col p-7 md:p-8 overflow-y-auto">
-          {/* Close button */}
-          <button
-            onClick={onClose}
-            aria-label="Close profile"
-            className="absolute top-4 right-4 z-20 w-9 h-9 bg-gray-100 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-colors"
-          >
-            <FaTimes className="text-sm" />
-          </button>
-
-          {/* Name + role */}
-          <div className="mb-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-[2px] bg-accent" />
-              <span className="font-mono text-[10px] text-gray-400 uppercase tracking-widest">
-                {year} Executive
-              </span>
-            </div>
-            <h2 className="text-3xl md:text-4xl font-black text-text-dark leading-tight tracking-tighter">
-              {member.name}
-            </h2>
-            <p className="font-mono text-sm text-gray-500 uppercase tracking-widest mt-3">
-              {member.role}
-            </p>
-          </div>
-
-          <div className="border-t border-gray-100 mb-6" />
-
-          {/* Social profiles */}
-          <div className="space-y-3 flex-1">
-            <p className="font-mono text-[10px] text-gray-400 uppercase tracking-widest mb-3">
-              Connect
-            </p>
-            {socials.length > 0 ? socials.map(({ href, Icon, label }) => (
-              <a
-                key={label}
-                href={href}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={`${label} profile of ${member.name}`}
-                className="flex items-center gap-4 p-4 border border-gray-100 hover:border-accent hover:bg-accent/5 group transition-all"
-              >
-                <div className="w-8 h-8 bg-gray-100 text-text-dark flex items-center justify-center rounded-full group-hover:bg-accent group-hover:text-white transition-all text-sm">
-                  <Icon aria-hidden="true" />
-                </div>
-                <span className="text-sm font-semibold text-text-dark">{label}</span>
-                <span className="ml-auto text-accent font-bold opacity-0 group-hover:opacity-100 transition-opacity">→</span>
-              </a>
-            )) : (
-              <p className="text-gray-300 font-mono text-xs">No social profiles linked yet.</p>
-            )}
-          </div>
-        </div>
-      </motion.div>
-    </motion.div>
+    <dialog ref={ref} aria-label={`Full profile of ${member.name}`} onClick={closeOnBackdrop}
+      onCancel={event => { event.preventDefault(); onClose(); }}
+      className="m-auto max-h-[90dvh] w-[calc(100%_-_1.5rem)] max-w-[52rem] overflow-auto overscroll-contain bg-white text-text-dark shadow-2xl backdrop:bg-black/60">
+      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-gray-200 bg-white px-5 py-2">
+        <span className="font-mono text-xs uppercase tracking-widest">Execom profile</span>
+        <button type="button" onClick={onClose} aria-label="Close profile" className="grid h-10 w-10 place-items-center hover:bg-gray-100"><FaTimes /></button>
+      </header>
+      <ExecomProfilePage memberId={member.id} />
+    </dialog>
   );
-};
-
+}
 export default TeamPage;

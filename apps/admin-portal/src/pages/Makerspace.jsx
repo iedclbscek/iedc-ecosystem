@@ -1,374 +1,203 @@
-import { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Ban, ChevronLeft, ChevronRight, Clock3, History, LogIn, LogOut, RefreshCw, Search, ShieldCheck, UsersRound } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { LogIn, LogOut, RefreshCw, Search, ChevronLeft, ChevronRight, Ban, AlertCircle } from 'lucide-react';
-import { checkInMember, getActiveMembers, getCheckInHistory, forceCheckOutMember, banMembershipId, unbanMembershipId } from '../api/adminService';
+import { banMembershipId, checkInMember, forceCheckOutMember, getActiveMembers, getCheckInHistory, unbanMembershipId } from '../api/adminService';
+import { TableSkeleton } from '../components/InlineSkeleton';
+import PortalDialog from '../components/PortalDialog';
+import FormAlert from '../components/FormAlert';
+
+const activeLimit = 10;
+const dateFormat = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+const updatedAt = value => value && Number.isFinite(Date.parse(value)) ? dateFormat.format(new Date(value)) : '—';
+
+function Pager({ page, pages, total, unit, changePage, pending }) {
+  return (
+    <div className="op-footer">
+      <span aria-live="polite">Page {page} of {pages} · {total} {unit}{total === 1 ? '' : 's'}</span>
+      <div className="op-pager">
+        <button className="op-icon" aria-label="Previous page" disabled={page <= 1 || pending} onClick={() => changePage(page - 1)}><ChevronLeft size={16} /></button>
+        <button className="op-icon" aria-label="Next page" disabled={page >= pages || pending} onClick={() => changePage(page + 1)}><ChevronRight size={16} /></button>
+      </div>
+    </div>
+  );
+}
+
+function MemberCell({ person }) {
+  return <td className="member-identity"><strong className="font-semibold">{person.userName || 'Unknown member'}</strong><span className="op-member-sub">{person.membershipId}</span></td>;
+}
+
+function CountCard({ title, count, icon, loading }) {
+  const Icon = icon;
+  return <div className="op-card p-4 sm:p-5">
+    <div className="flex items-start justify-between gap-2"><span className="text-[13px] font-semibold">{title}</span><Icon size={17} className="shrink-0 text-[#315bfa]" aria-hidden="true" /></div>
+    <div className="mt-3 text-3xl font-semibold tracking-tight">{loading ? <span className="block h-8 w-12 animate-pulse rounded-lg bg-slate-100" aria-label="Loading" /> : count ?? '—'}</div>
+  </div>;
+}
+
+function LoadError({ message, onRetry }) {
+  return <FormAlert className="m-4">{message} <button type="button" onClick={onRetry}>Try again</button></FormAlert>;
+}
 
 export default function Makerspace() {
-  const queryClient = useQueryClient();
-  const [membershipIdInput, setMembershipIdInput] = useState('');
+  const client = useQueryClient();
+  const [tab, setTab] = useState('active');
+  const [membershipId, setMembershipId] = useState('');
+  const [activePage, setActivePage] = useState(1);
   const [historyPage, setHistoryPage] = useState(1);
-  const [historyLimit, setHistoryLimit] = useState(20);
-  const [filterMembershipId, setFilterMembershipId] = useState('');
-  const [filterAction, setFilterAction] = useState('');
-  const [bannedIds, setBannedIds] = useState(new Set());
+  const [limit, setLimit] = useState(20);
+  const [action, setAction] = useState('');
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('');
+  const [dialog, setDialog] = useState(null);
+  const [restoreId, setRestoreId] = useState('');
+  useEffect(() => {
+    if (search.trim() === filter) return;
+    const timer = setTimeout(() => { setFilter(search.trim()); setHistoryPage(1); }, 300);
+    return () => clearTimeout(timer);
+  }, [search, filter]);
 
-  // Fetch active members
-  const { data: activeData, isLoading: activeLoading, refetch: refetchActive } = useQuery({
-    queryKey: ['activeMembers'],
-    queryFn: getActiveMembers,
-    refetchInterval: 5000, // Auto-refresh every 5 seconds
+  const active = useQuery({ queryKey: ['activeMembers'], queryFn: getActiveMembers, refetchInterval: 5000 });
+  const historyTotals = useQuery({ queryKey: ['checkInHistory', 1, 20, '', ''], queryFn: () => getCheckInHistory(1, 20) });
+  const history = useQuery({
+    queryKey: ['checkInHistory', historyPage, limit, filter, action],
+    queryFn: () => getCheckInHistory(historyPage, limit, { membershipId: filter, action }),
+    enabled: tab === 'history',
+    placeholderData: keepPreviousData,
   });
-
-  // Fetch check-in history
-  const { data: historyData, isLoading: historyLoading, refetch: refetchHistory } = useQuery({
-    queryKey: ['checkInHistory', historyPage, historyLimit, filterMembershipId, filterAction],
-    queryFn: () =>
-      getCheckInHistory(historyPage, historyLimit, {
-        ...(filterMembershipId && { membershipId: filterMembershipId }),
-        ...(filterAction && { action: filterAction }),
-      }),
+  function refresh() {
+    client.invalidateQueries({ queryKey: ['activeMembers'] });
+    client.invalidateQueries({ queryKey: ['checkInHistory'] });
+    client.invalidateQueries({ queryKey: ['overview'] });
+  }
+  const attendance = useMutation({
+    mutationFn: ({ type, id }) => type === 'in' ? checkInMember({ membershipId: id, action: 'IN' }) : forceCheckOutMember(id),
+    onSuccess: (response, { type }) => {
+      if (type === 'in') setMembershipId('');
+      toast.success(response.userName + (type === 'in' ? ' checked in' : ' checked out'));
+      refresh();
+    },
+    onError: (error) => toast.error(error.response?.data?.message || 'Could not update attendance'),
   });
-
-  // Check-in mutation
-  const checkInMutation = useMutation({
-    mutationFn: checkInMember,
-    onSuccess: (response) => {
-      toast.success(`${response.userName} checked IN`);
-      setMembershipIdInput('');
-      queryClient.invalidateQueries({ queryKey: ['activeMembers'] });
-      queryClient.invalidateQueries({ queryKey: ['checkInHistory'] });
-    },
-    onError: (error) => {
-      const message = error.response?.data?.message || 'Check-in failed';
-      if (error.response?.status === 403) {
-        toast.error('This membership ID is banned from makerspace');
-      } else {
-        toast.error(message);
-      }
-    },
-  });
-
-  // Force checkout mutation
-  const checkOutMutation = useMutation({
-    mutationFn: forceCheckOutMember,
-    onSuccess: (response) => {
-      toast.success(`${response.userName} checked OUT`);
-      queryClient.invalidateQueries({ queryKey: ['activeMembers'] });
-      queryClient.invalidateQueries({ queryKey: ['checkInHistory'] });
-    },
-    onError: (error) => {
-      const message = error.response?.data?.message || 'Checkout failed';
-      toast.error(message);
+  const access = useMutation({
+    mutationFn: ({ type, id }) => type === 'restore' ? unbanMembershipId(id) : banMembershipId(id),
+    onSuccess: (response, { type }) => {
+      toast.success((type === 'restore' ? 'Restored access for ' : 'Blocked access for ') + response.membershipId);
+      setDialog(null);
+      setRestoreId('');
+      refresh();
     },
   });
-
-  // Ban mutation
-  const banMutation = useMutation({
-    mutationFn: banMembershipId,
-    onSuccess: (response) => {
-      toast.success(`${response.membershipId} has been banned`);
-      setBannedIds((prev) => new Set([...prev, response.membershipId]));
-      queryClient.invalidateQueries({ queryKey: ['activeMembers'] });
-      queryClient.invalidateQueries({ queryKey: ['checkInHistory'] });
-    },
-    onError: (error) => {
-      const message = error.response?.data?.message || 'Ban failed';
-      toast.error(message);
-    },
-  });
-
-  // Unban mutation
-  const unbanMutation = useMutation({
-    mutationFn: unbanMembershipId,
-    onSuccess: (response) => {
-      toast.success(`${response.membershipId} has been unbanned`);
-      setBannedIds((prev) => {
-        const updated = new Set(prev);
-        updated.delete(response.membershipId);
-        return updated;
-      });
-      queryClient.invalidateQueries({ queryKey: ['activeMembers'] });
-    },
-    onError: (error) => {
-      const message = error.response?.data?.message || 'Unban failed';
-      toast.error(message);
-    },
-  });
-
-  const handleCheckIn = (e) => {
-    e.preventDefault();
-    if (!membershipIdInput.trim()) {
-      toast.error('Please enter a membership ID');
-      return;
-    }
-    checkInMutation.mutate({
-      membershipId: membershipIdInput,
-      action: 'IN',
-    });
-  };
-
-  const activeMembers = activeData?.data || [];
-  const historyRecords = historyData?.data || [];
-  const totalPages = historyData?.totalPages || 1;
+  const members = active.data?.data || [];
+  const activePages = Math.max(1, Math.ceil(members.length / activeLimit));
+  const displayPage = Math.min(activePage, activePages);
+  const records = history.data?.data || [];
+  const restoring = dialog?.type === 'restore';
+  function closeAccessDialog() {
+    access.reset();
+    setDialog(null);
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900">Makerspace Dashboard</h1>
-            <p className="text-slate-600 mt-1">Check-in management system</p>
-          </div>
-          <button
-            onClick={() => {
-              refetchActive();
-              refetchHistory();
-            }}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-          >
-            <RefreshCw size={18} />
-            Refresh
-          </button>
+    <div className="op-page">
+      <header className="op-header">
+        <div><h1>Makerspace</h1><p>Member attendance and workspace access.</p></div>
+        <div className="op-actions">
+          <button className="op-secondary" onClick={refresh} disabled={active.isFetching || history.isFetching}><RefreshCw size={15} /> Refresh</button>
+          <button className="op-secondary" onClick={() => { setRestoreId(''); setDialog({ type: 'restore' }); }}><ShieldCheck size={15} /> Restore access</button>
         </div>
-
-        {/* Check-in Form */}
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold text-slate-900 mb-4">Check Member IN</h2>
-          <form onSubmit={handleCheckIn} className="flex gap-3">
-            <input
-              type="text"
-              placeholder="Enter membership ID (e.g., IEDC24IT029)"
-              value={membershipIdInput}
-              onChange={(e) => setMembershipIdInput(e.target.value)}
-              className="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              disabled={checkInMutation.isPending}
-            />
-            <button
-              type="submit"
-              disabled={checkInMutation.isPending}
-              className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:bg-gray-400"
-            >
-              <LogIn size={18} />
-              {checkInMutation.isPending ? 'Processing...' : 'Check IN'}
-            </button>
+      </header>
+      <div className="grid grid-cols-2 items-stretch gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+        <section className="op-card col-span-2 p-4 sm:p-5 lg:col-span-1">
+          <h2 className="op-section-title mb-3">Check-in desk</h2>
+          <form className="flex flex-wrap items-center gap-2" onSubmit={event => { event.preventDefault(); if (membershipId.trim()) attendance.mutate({ type: 'in', id: membershipId.trim() }); }}>
+            <label className="op-field min-w-0 basis-40 grow"><span className="sr-only">Membership ID to check in</span>
+              <input value={membershipId} autoComplete="off" placeholder="Membership ID" required disabled={attendance.isPending} onChange={event => setMembershipId(event.target.value)} />
+            </label>
+            <button className="op-primary" disabled={!membershipId.trim() || attendance.isPending}><LogIn size={15} />Check in</button>
           </form>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Active Members */}
-          <div className="lg:col-span-2 bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-semibold text-slate-900 mb-4">
-              Currently Checked In ({activeMembers.length})
-            </h2>
-            {activeLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              </div>
-            ) : activeMembers.length === 0 ? (
-              <div className="text-center py-8 text-slate-500">
-                <p>No members currently checked in</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-slate-50 border-b border-slate-200">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-slate-900">Name</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-slate-900">Membership ID</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-slate-900">Status</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-slate-900">Last Updated</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-slate-900">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200">
-                    {activeMembers.map((member) => (
-                      <tr key={member._id} className="hover:bg-slate-50">
-                        <td className="px-4 py-3 text-slate-900">{member.userName}</td>
-                        <td className="px-4 py-3 text-slate-600 font-mono">{member.membershipId}</td>
-                        <td className="px-4 py-3">
-                          <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-semibold">
-                            {member.currentStatus}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-slate-500">
-                          {new Date(member.lastUpdated).toLocaleTimeString()}
-                        </td>
-                        <td className="px-4 py-3 flex gap-2">
-                          <button
-                            onClick={() => checkOutMutation.mutate(member.membershipId)}
-                            disabled={checkOutMutation.isPending}
-                            className="flex items-center gap-1 px-3 py-1 bg-red-100 text-red-700 hover:bg-red-200 rounded transition disabled:opacity-50"
-                            title="Force checkout"
-                          >
-                            <LogOut size={16} />
-                            <span className="text-xs font-medium">Out</span>
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (bannedIds.has(member.membershipId)) {
-                                unbanMutation.mutate(member.membershipId);
-                              } else {
-                                if (window.confirm(`Ban ${member.membershipId} from makerspace?`)) {
-                                  banMutation.mutate(member.membershipId);
-                                }
-                              }
-                            }}
-                            disabled={banMutation.isPending || unbanMutation.isPending}
-                            className={`flex items-center gap-1 px-3 py-1 rounded transition disabled:opacity-50 text-xs font-medium ${
-                              bannedIds.has(member.membershipId)
-                                ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
-                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                            }`}
-                            title={bannedIds.has(member.membershipId) ? 'Unban' : 'Ban'}
-                          >
-                            <Ban size={16} />
-                            <span>{bannedIds.has(member.membershipId) ? 'Unban' : 'Ban'}</span>
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* Quick Stats */}
-          <div className="bg-white rounded-lg shadow-md p-6 h-fit">
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">Quick Stats</h3>
-            <div className="space-y-4">
-              <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-                <p className="text-slate-600 text-sm">Currently Active</p>
-                <p className="text-3xl font-bold text-green-600">{activeMembers.length}</p>
-              </div>
-              <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                <p className="text-slate-600 text-sm">Total History Records</p>
-                <p className="text-3xl font-bold text-blue-600">{historyData?.total || 0}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Check-in History */}
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold text-slate-900 mb-4">Check-In History</h2>
-
-          {/* Filters */}
-          <div className="mb-4 flex gap-3 flex-wrap">
-            <div className="flex-1 min-w-[200px]">
-              <input
-                type="text"
-                placeholder="Filter by membership ID..."
-                value={filterMembershipId}
-                onChange={(e) => {
-                  setFilterMembershipId(e.target.value);
-                  setHistoryPage(1);
-                }}
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <select
-              value={filterAction}
-              onChange={(e) => {
-                setFilterAction(e.target.value);
-                setHistoryPage(1);
-              }}
-              className="px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">All Actions</option>
-              <option value="IN">Check IN</option>
-              <option value="OUT">Check OUT</option>
-            </select>
-            {(filterMembershipId || filterAction) && (
-              <button
-                onClick={() => {
-                  setFilterMembershipId('');
-                  setFilterAction('');
-                  setHistoryPage(1);
-                }}
-                className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition"
-              >
-                Clear Filters
-              </button>
-            )}
-          </div>
-
-          {/* History Table */}
-          {historyLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            </div>
-          ) : historyRecords.length === 0 ? (
-            <div className="text-center py-8 text-slate-500">
-              <p>No check-in history records found</p>
-            </div>
-          ) : (
-            <>
-              <div className="overflow-x-auto mb-4">
-                <table className="w-full">
-                  <thead className="bg-slate-50 border-b border-slate-200">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-slate-900">Name</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-slate-900">Membership ID</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-slate-900">Action</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-slate-900">Timestamp</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200">
-                    {historyRecords.map((record) => (
-                      <tr key={record._id} className="hover:bg-slate-50">
-                        <td className="px-4 py-3 text-slate-900">{record.userName}</td>
-                        <td className="px-4 py-3 text-slate-600 font-mono">{record.membershipId}</td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={`px-3 py-1 rounded-full text-sm font-semibold ${
-                              record.action === 'IN'
-                                ? 'bg-green-100 text-green-800'
-                                : 'bg-red-100 text-red-800'
-                            }`}
-                          >
-                            {record.action}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-slate-500">
-                          {new Date(record.timestamp).toLocaleString()}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Pagination */}
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-slate-600">
-                  Page {historyPage} of {totalPages} ({historyData?.total || 0} total records)
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
-                    disabled={historyPage === 1}
-                    className="flex items-center gap-1 px-3 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                  >
-                    <ChevronLeft size={18} />
-                    Previous
-                  </button>
-                  <button
-                    onClick={() => setHistoryPage((p) => (p < totalPages ? p + 1 : p))}
-                    disabled={historyPage === totalPages}
-                    className="flex items-center gap-1 px-3 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                  >
-                    Next
-                    <ChevronRight size={18} />
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
+        </section>
+        <CountCard title="Checked in now" icon={UsersRound} count={active.data?.total} loading={active.isPending} />
+        <CountCard title="Attendance records" icon={History} count={historyTotals.data?.total} loading={historyTotals.isPending} />
       </div>
+
+      <div className="op-tabs" role="group" aria-label="Attendance view">
+        <button className="op-tab" aria-pressed={tab === 'active'} onClick={() => setTab('active')}><UsersRound size={15} /> Checked in</button>
+        <button className="op-tab" aria-pressed={tab === 'history'} onClick={() => setTab('history')}><Clock3 size={15} /> Attendance history</button>
+      </div>
+      {tab === 'active' ? <section className="op-card overflow-hidden">
+        <div className="op-card-head"><h2>Checked-in members</h2>{active.data && <span className="op-count">{members.length} present</span>}</div>
+        {active.isPending ? <TableSkeleton label="Loading checked-in members" columns={4} /> : active.isError ? (
+          <LoadError message="Could not load checked-in members." onRetry={() => active.refetch()} />
+        ) : !members.length ? <p className="op-empty">No members are currently checked in.</p> : (
+          <>
+            <div className="op-scroll"><table className="op-table op-member-table" aria-label="Checked-in members">
+              <thead><tr>{['Member', 'Checked in', 'Status', 'Actions'].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead>
+              <tbody>{members.slice((displayPage - 1) * activeLimit, displayPage * activeLimit).map(member => (
+                <tr key={member._id}>
+                  <MemberCell person={member} />
+                  <td className="member-attribute whitespace-nowrap" data-label="Checked in">{updatedAt(member.lastUpdated)}</td>
+                  <td className="member-state"><span className="op-status active">Checked in</span></td>
+                  <td className="member-actions"><div className="flex gap-1.5">
+                    <button className="op-icon" title="Check out" aria-label={'Check out ' + member.membershipId} disabled={attendance.isPending || access.isPending}
+                      onClick={() => attendance.mutate({ type: 'out', id: member.membershipId })}><LogOut size={15} /></button>
+                    <button className="op-icon danger" title="Block access" aria-label={'Block access for ' + member.membershipId} disabled={attendance.isPending || access.isPending}
+                      onClick={() => setDialog({ type: 'block', member })}><Ban size={15} /></button>
+                  </div></td>
+                </tr>
+              ))}</tbody>
+            </table></div>
+            {activePages > 1 && <Pager page={displayPage} pages={activePages} total={members.length} unit="member" changePage={setActivePage} />}
+          </>
+        )}
+      </section> : <section className="op-card overflow-hidden" aria-busy={history.isFetching}>
+        <div className="op-card-head"><h2>Attendance history</h2>{history.data && <span className="op-count">{history.data.total} {history.data.total === 1 ? 'record' : 'records'}</span>}</div>
+        <div className="flex flex-wrap items-center gap-2 px-4 pb-4 sm:px-5">
+          <label className="op-search w-full sm:w-auto sm:flex-1"><Search size={16} aria-hidden="true" />
+            <input type="search" aria-label="Filter history by membership ID" placeholder="Exact membership ID" value={search} onChange={event => setSearch(event.target.value)} />
+          </label>
+          <label className="op-field"><span className="sr-only">Attendance action</span>
+            <select aria-label="Attendance action" value={action} onChange={event => { setAction(event.target.value); setHistoryPage(1); }}>
+              <option value="">All actions</option><option value="IN">Check-in</option><option value="OUT">Check-out</option>
+            </select>
+          </label>
+          <label className="op-field"><span className="sr-only">Rows per page</span>
+            <select aria-label="Rows per page" value={limit} onChange={event => { setLimit(Number(event.target.value)); setHistoryPage(1); }}>
+              {[10, 20, 50].map(size => <option value={size} key={size}>{size} per page</option>)}
+            </select>
+          </label>
+          {(action || search) && <button className="op-secondary" onClick={() => { setSearch(''); setFilter(''); setAction(''); setHistoryPage(1); }}>Clear filters</button>}
+        </div>
+        {history.isPending ? <TableSkeleton label="Loading attendance history" columns={3} /> : history.isError ? (
+          <LoadError message="Could not load attendance history." onRetry={() => history.refetch()} />
+        ) : !records.length ? <p className="op-empty">No attendance records found.</p> : (
+          <div className="op-scroll"><table className="op-table op-member-table" aria-label="Attendance history">
+            <thead><tr>{['Member', 'Action', 'Recorded at'].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead>
+            <tbody>{records.map(record => (
+              <tr key={record._id}><MemberCell person={record} />
+                <td className="member-actions"><span className={'op-status ' + (record.action === 'IN' ? 'active' : 'rejected')}>{record.action === 'IN' ? 'Check-in' : 'Check-out'}</span></td>
+                <td className="member-attribute" data-label="Recorded at">{updatedAt(record.timestamp)}</td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+        )}
+        {history.data && !history.isError && <Pager page={history.data.page} pages={history.data.totalPages} total={history.data.total} unit="record" changePage={setHistoryPage} pending={history.isPlaceholderData} />}
+      </section>}
+
+      {dialog && <PortalDialog labelledBy="makerspace-access-title" busy={access.isPending} onClose={closeAccessDialog}>
+        <div className="op-dialog-head"><h2 id="makerspace-access-title">{restoring ? 'Restore makerspace access' : 'Block makerspace access'}</h2></div>
+        <form onSubmit={event => { event.preventDefault(); access.mutate({ type: dialog.type, id: restoring ? restoreId.trim() : dialog.member.membershipId }); }}>
+          <div className="p-5">
+            {restoring ? <label className="op-field">Blocked membership ID<input required value={restoreId} autoComplete="off" disabled={access.isPending} onChange={event => setRestoreId(event.target.value)} /></label> :
+              <p className="op-caption">{dialog.member.userName || dialog.member.membershipId} will be checked out and blocked from checking in again until access is restored.</p>}
+          </div>
+          {access.isError && <FormAlert className="mx-5 mb-4">{access.error?.response?.data?.message || 'Could not update makerspace access. Check your connection and try again.'}</FormAlert>}
+          <div className="op-dialog-foot">
+            <button type="button" className="op-secondary" disabled={access.isPending} onClick={closeAccessDialog}>Cancel</button>
+            <button className={restoring ? 'op-primary' : 'op-danger'} disabled={access.isPending || (restoring && !restoreId.trim())}>{access.isPending ? 'Saving…' : restoring ? 'Restore access' : 'Block access'}</button>
+          </div>
+        </form>
+      </PortalDialog>}
     </div>
   );
 }

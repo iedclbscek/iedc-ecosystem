@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion as Motion } from 'framer-motion';
 import { 
   BrainCircuit, 
   Cpu, 
@@ -46,7 +46,7 @@ const WhatWeDoSection = () => {
         
         {/* Section Title */}
         <div className="flex flex-col md:flex-row items-baseline gap-6 mb-20">
-          <h2 className="text-6xl md:text-7xl font-black text-text-dark tracking-tighter uppercase leading-none">
+          <h2 className="text-[clamp(2rem,10vw,3.75rem)] md:text-7xl font-black text-text-dark tracking-tighter uppercase leading-none">
             OPERATIONS<span className="text-accent">.</span>
           </h2>
           <div className="h-[2px] flex-grow bg-gray-200 hidden md:block"></div>
@@ -87,7 +87,7 @@ const WhatWeDoSection = () => {
           {/* Activity Cards (Grid) */}
           <div className="md:col-span-5 grid grid-cols-1 divide-y divide-gray-200">
             {activities.map((activity) => (
-              <motion.div
+              <Motion.div
                 key={activity.id}
                 whileHover={{ backgroundColor: "var(--color-primary-light)" }}
                 className="p-8 flex flex-col justify-between group transition-colors relative"
@@ -120,7 +120,7 @@ const WhatWeDoSection = () => {
 
                 {/* Visual Accent Line */}
                 <div className="absolute bottom-0 left-0 w-0 h-[2px] bg-accent group-hover:w-full transition-all duration-500"></div>
-              </motion.div>
+              </Motion.div>
             ))}
           </div>
         </div>

@@ -15,29 +15,39 @@ export const seedAdminUser = async () => {
 
   const existing = await User.findOne({ membershipId });
 
-  const hash = await bcrypt.hash(password, 10);
-
   const adminPayload = {
     name: "Super Admin",
     email: process.env.ADMIN_EMAIL || "iedc@lbscek.ac.in",
     membershipId,
-    password: hash,
     role: "Admin",
     permissions: ["dashboard", "registrations", "users", "settings"],
   };
 
   if (!existing) {
-    await User.create(adminPayload);
+    const hash = await bcrypt.hash(password, 10);
+    await User.create({ ...adminPayload, password: hash });
     return { seeded: true, action: "created" };
   }
 
-  // Ensure membershipId 'admin' always has the expected admin role/permissions,
-  // and rotate password to ADMIN_PASSWORD when provided.
+  const passwordMatches = await bcrypt.compare(password, existing.password);
+  const permissionsMatch =
+    JSON.stringify(existing.permissions || []) ===
+    JSON.stringify(adminPayload.permissions);
+  const profileMatches =
+    existing.name === adminPayload.name &&
+    existing.email === adminPayload.email &&
+    existing.role === adminPayload.role &&
+    permissionsMatch;
+
+  if (passwordMatches && profileMatches) {
+    return { seeded: false, action: "unchanged" };
+  }
+
   existing.name = adminPayload.name;
   existing.email = adminPayload.email;
   existing.role = adminPayload.role;
   existing.permissions = adminPayload.permissions;
-  existing.password = adminPayload.password;
+  if (!passwordMatches) existing.password = await bcrypt.hash(password, 10);
   await existing.save();
 
   return { seeded: true, action: "updated" };

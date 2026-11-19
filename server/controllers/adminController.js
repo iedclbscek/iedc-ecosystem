@@ -1,5 +1,6 @@
 import Registration from "../models/Registration.js";
 import StaffGuestRegistration from "../models/StaffGuestRegistration.js";
+import { paginationMeta, parsePagination } from "../utils/pagination.js";
 
 const normalizeMemberType = (value) => {
   const v = String(value || "")
@@ -13,8 +14,7 @@ const normalizeMemberType = (value) => {
 // GET registrations with Pagination
 export const getRegistrations = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
+    const { page, limit } = parsePagination(req.query, { defaultLimit: 10 });
     const search = String(req.query.search || "").trim();
     const memberType = normalizeMemberType(req.query.memberType);
     if (!memberType) {
@@ -22,24 +22,23 @@ export const getRegistrations = async (req, res) => {
         .status(400)
         .json({ message: "memberType must be 'student', 'staff', or 'guest'" });
     }
-    const skip = (page - 1) * limit;
-
     const baseQuery = memberType === "student" ? {} : { userType: memberType };
     let query = baseQuery;
     if (search) {
+      const escapedSearch = search.slice(0, 100).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const or = [
-        { firstName: { $regex: search, $options: "i" } },
-        { lastName: { $regex: search, $options: "i" } },
-        { department: { $regex: search, $options: "i" } },
-        { membershipId: { $regex: search, $options: "i" } },
-        { email: { $regex: search, $options: "i" } },
+        { firstName: { $regex: escapedSearch, $options: "i" } },
+        { lastName: { $regex: escapedSearch, $options: "i" } },
+        { department: { $regex: escapedSearch, $options: "i" } },
+        { membershipId: { $regex: escapedSearch, $options: "i" } },
+        { email: { $regex: escapedSearch, $options: "i" } },
       ];
 
       if (memberType === "student") {
-        or.push({ admissionNo: { $regex: search, $options: "i" } });
+        or.push({ admissionNo: { $regex: escapedSearch, $options: "i" } });
       }
       if (memberType === "guest") {
-        or.push({ organization: { $regex: search, $options: "i" } });
+        or.push({ organization: { $regex: escapedSearch, $options: "i" } });
       }
 
       query = { $and: [baseQuery, { $or: or }] };
@@ -48,16 +47,19 @@ export const getRegistrations = async (req, res) => {
     const Model =
       memberType === "student" ? Registration : StaffGuestRegistration;
 
-    const [members, total] = await Promise.all([
-      Model.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit),
-      Model.countDocuments(query),
-    ]);
+    const total = await Model.countDocuments(query);
+    const meta = paginationMeta({ page, limit, total });
+    const members = await Model.find(query)
+      .select("firstName lastName email membershipId admissionNo department semester phone phoneNumber whatsappNumber organization status")
+      .sort({ createdAt: -1, _id: -1 })
+      .skip((meta.page - 1) * limit)
+      .limit(limit);
 
     res.json({
       memberType,
       members,
-      totalPages: Math.ceil(total / limit),
-      currentPage: page,
+      totalPages: meta.totalPages,
+      currentPage: meta.page,
       totalMembers: total,
 
       // Backwards compatibility for older UI
@@ -82,47 +84,40 @@ export const updateRegistration = async (req, res) => {
     const Model =
       memberType === "student" ? Registration : StaffGuestRegistration;
 
-    // Build update object from request body
-    const updateData = {};
-    const allowedFields =
-      memberType === "student"
-        ? [
-            "firstName",
-            "lastName",
-            "email",
-            "admissionNo",
-            "department",
-            "semester",
-            "phoneNumber",
-            "whatsappNumber",
-          ]
-        : [
-            "firstName",
-            "lastName",
-            "email",
-            "membershipId",
-            "department",
-            "phoneNumber",
-            "whatsappNumber",
-            ...(memberType === "guest" ? ["organization"] : []),
-          ];
-
-    allowedFields.forEach((field) => {
-      if (req.body[field] !== undefined) {
-        updateData[field] = req.body[field];
+    const filter = { _id: req.params.id };
+    if (memberType !== "student") filter.userType = memberType;
+    const input = req.body || {};
+    const allowedFields = [
+      "firstName", "lastName", "email", "department", "phone", "whatsappNumber",
+      ...(memberType === "student" ? ["admissionNo", "semester"] : ["membershipId"]),
+      ...(memberType === "guest" ? ["organization"] : []),
+    ];
+    const fields = {};
+    for (const field of allowedFields) {
+      const value = field === "phone" ? input.phone ?? input.phoneNumber : input[field];
+      if (value === undefined) continue;
+      if (typeof value !== "string") {
+        return res.status(400).json({ message: `${field} must be text` });
       }
-    });
-
-    const doc = await Model.findByIdAndUpdate(
-      req.params.id,
-      { $set: updateData },
-      { new: true, runValidators: true },
-    );
-
+      fields[field] = value.trim();
+    }
+    if (fields.email !== undefined && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fields.email)) {
+      return res.status(400).json({ message: "Enter a valid email address." });
+    }
+    const update = { $set: fields };
+    if (fields.admissionNo === "") {
+      delete fields.admissionNo;
+      update.$unset = { admissionNo: 1 };
+    }
+    const doc = await Model.findOneAndUpdate(filter, update, {
+      new: true, runValidators: true,
+    }).select("-accessCode");
     if (!doc) return res.status(404).json({ message: "Member not found" });
     res.json({ message: "Record updated successfully", member: doc });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    if (error.code === 11000) return res.status(409).json({ message: "Another member already uses that identifier or email." });
+    if (error.name === "ValidationError" || error.name === "CastError") return res.status(400).json({ message: "Check the member details and try again." });
+    res.status(500).json({ message: "Could not update this member." });
   }
 };
 
@@ -138,10 +133,13 @@ export const deleteRegistration = async (req, res) => {
 
     const Model =
       memberType === "student" ? Registration : StaffGuestRegistration;
-    const doc = await Model.findByIdAndDelete(req.params.id);
+    const filter = { _id: req.params.id };
+    if (memberType !== "student") filter.userType = memberType;
+    const doc = await Model.findOneAndDelete(filter);
     if (!doc) return res.status(404).json({ message: "Member not found" });
     res.json({ message: "Record deleted successfully" });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    if (error.name === "CastError") return res.status(400).json({ message: "Invalid member ID." });
+    res.status(500).json({ message: "Could not delete this member." });
   }
 };

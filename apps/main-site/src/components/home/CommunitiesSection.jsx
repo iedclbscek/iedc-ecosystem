@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { communities } from '../../data/communitiesData';
-import { FaArrowRight, FaCube } from 'react-icons/fa';
+import CommunityIcon from '../community/CommunityIcon.jsx';
+import useNexusCatalogue from '../../utils/useNexusCatalogue.js';
+import { FaArrowRight } from 'react-icons/fa';
 
 const CommunitiesSection = () => {
   const [isHovered, setIsHovered] = useState(false);
+  const { communities, loading, error, retry } = useNexusCatalogue();
 
   return (
     <section id="nexus" className="py-32 bg-white border-b border-gray-200 overflow-hidden">
@@ -32,6 +33,8 @@ const CommunitiesSection = () => {
         </div>
       </div>
 
+      {loading && <div className="container mx-auto px-6 grid gap-6 md:grid-cols-3" role="status" aria-label="Loading communities">{[0,1,2].map(i=><div key={i} className="h-64 bg-gray-100 animate-pulse"/>)}</div>}
+      {error && <div role="alert" className="container mx-auto px-6 py-8"><p className="text-text-light mb-4">Communities could not load.</p><button type="button" onClick={retry} className="bg-text-dark text-white px-5 py-3 font-semibold">Try again</button></div>}
       {/* The Conveyor Belt (Marquee) */}
       <div className="relative w-full border-y border-gray-200 bg-bg-secondary/30 py-12">
         {/* Background Grid Pattern */}
@@ -82,7 +85,7 @@ const CommunityCard = ({ community, index }) => {
       <div className="flex justify-between items-start mb-6">
         <div className="w-12 h-12 bg-gray-50 border border-gray-200 flex items-center justify-center text-2xl group-hover:bg-accent group-hover:text-white group-hover:border-accent transition-colors duration-300">
           {/* If community.icon is a string/emoji, render it, else render a fallback */}
-          {community.icon || <FaCube />}
+          {community.cover ? <img src={community.cover} alt="" className="w-full h-full object-cover"/> : <CommunityIcon name={community.iconName}/>}
         </div>
         <span className="font-mono text-[10px] text-gray-400 border border-gray-200 px-2 py-1">
           NEX-{String(index % 6 + 1).padStart(2, '0')}

@@ -1,0 +1,4 @@
+{
+  "framework": "express",
+  "installCommand": "pnpm install --frozen-lockfile"
+}

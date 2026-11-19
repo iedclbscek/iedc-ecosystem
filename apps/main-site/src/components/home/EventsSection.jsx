@@ -1,20 +1,43 @@
-import { useState, useRef } from 'react';
-import { motion } from 'framer-motion';
+import { useEffect, useState, useRef } from 'react';
+import { motion as Motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { FaRocket, FaArrowRight, FaChevronRight, FaChevronLeft } from 'react-icons/fa';
-import { events } from '../../data/eventsData';
+import axios from 'axios';
 import EventDetailModal from '../ui/EventDetailModal';
+import { normalizePublicEvent, publicEventRegistration } from '../../utils/publicEvent';
 
 const EventsSection = () => {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [upcomingEvents, setUpcomingEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [retryNonce, setRetryNonce] = useState(0);
   const scrollContainerRef = useRef(null);
 
-  // Get upcoming events
-  const upcomingEvents = [...events]
-    .filter(event => !event.isPast)
-    .sort((a, b) => new Date(a.date) - new Date(b.date))
-    .slice(0, 5); 
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadUpcomingEvents = async () => {
+      const baseUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:5000' : '');
+      try {
+        setLoading(true);
+        setError('');
+        const { data } = await axios.get(`${baseUrl}/api/events`, {
+          params: { time: 'upcoming', limit: 5 },
+          signal: controller.signal,
+        });
+        const normalized = (data.events || []).map(normalizePublicEvent);
+        setUpcomingEvents(normalized);
+      } catch (requestError) {
+        if (axios.isCancel(requestError)) return;
+        setError('Upcoming events could not be loaded.');
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    };
+    loadUpcomingEvents();
+    return () => controller.abort();
+  }, [retryNonce]);
 
   const openEventDetail = (event) => {
     setSelectedEvent(event);
@@ -81,7 +104,20 @@ const EventsSection = () => {
           className="flex gap-8 overflow-x-auto pb-12 snap-x snap-mandatory scrollbar-hide"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
-          {upcomingEvents.length === 0 ? (
+          {loading ? (
+            Array.from({ length: 3 }, (_, index) => (
+              <div key={index} className="min-w-[350px] md:min-w-[400px] border border-gray-200 bg-white p-5 space-y-4" aria-hidden="true">
+                <div className="h-48 bg-gray-200 animate-pulse" />
+                <div className="h-4 w-24 bg-gray-200 animate-pulse" />
+                <div className="h-7 w-4/5 bg-gray-200 animate-pulse" />
+              </div>
+            ))
+          ) : error ? (
+            <div className="w-full h-64 border border-red-200 bg-white flex flex-col gap-4 items-center justify-center text-center px-6" role="alert">
+              <p className="text-text-light">{error}</p>
+              <button type="button" onClick={() => setRetryNonce((value) => value + 1)} className="bg-text-dark text-white px-5 py-3 font-mono text-xs font-bold uppercase tracking-widest">Retry event feed</button>
+            </div>
+          ) : upcomingEvents.length === 0 ? (
             <div className="w-full h-64 border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 font-mono uppercase tracking-widest">
               [ NO_ACTIVE_OPPORTUNITIES ]
             </div>
@@ -108,12 +144,12 @@ const EventsSection = () => {
 };
 
 const EventCard = ({ event, index, onClick }) => {
-  const dateObj = new Date(event.date);
-  const day = dateObj.getDate();
-  const month = dateObj.toLocaleString('default', { month: 'short' }).toUpperCase();
+  const day = event.date?.getDate() ?? 'TBA';
+  const month = event.date?.toLocaleString('default', { month: 'short' }).toUpperCase();
+  const { isOpen } = publicEventRegistration(event);
 
   return (
-    <motion.div 
+    <Motion.div
       initial={{ opacity: 0, x: 50 }}
       whileInView={{ opacity: 1, x: 0 }}
       viewport={{ once: true }}
@@ -137,7 +173,7 @@ const EventCard = ({ event, index, onClick }) => {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
             </span>
-            <span className="font-mono text-[10px] text-gray-500 font-bold">OPEN</span>
+            <span className="font-mono text-[10px] text-gray-500 font-bold">{isOpen ? 'OPEN' : 'UPCOMING'}</span>
           </div>
         </div>
       </div>
@@ -176,11 +212,11 @@ const EventCard = ({ event, index, onClick }) => {
 
         {/* The Action Button */}
         <button className="w-full py-4 bg-gray-50 text-text-dark font-black font-mono text-xs uppercase tracking-widest border-t border-gray-200 group-hover:bg-text-dark group-hover:text-white transition-all duration-300 flex justify-between px-6 items-center">
-          <span>Secure_Seat</span>
+          <span>View event</span>
           <FaArrowRight className="opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all" />
         </button>
       </div>
-    </motion.div>
+    </Motion.div>
   );
 };
 

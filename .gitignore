@@ -4,7 +4,6 @@ node_modules/
 .npm/
 package-lock.json
 yarn.lock
-pnpm-lock.yaml
 
 # --- Environment Variables (CRITICAL) ---
 .env
@@ -51,4 +50,8 @@ coverage/
 # --- Miscellaneous ---
 .vercel/
 .turbo/
-server/utils/seedEmailTemplates.js
+
+# Local agent state
+.serena/
+.ua/
+.superpowers/

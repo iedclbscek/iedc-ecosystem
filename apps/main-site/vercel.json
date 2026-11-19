@@ -1,8 +1,24 @@
 {
   "rewrites": [
-    { "source": "/api-docs", "destination": "https://api.iedclbscek.in/api-docs" },
-    { "source": "/api-docs/(.*)", "destination": "https://api.iedclbscek.in/api-docs/$1" },
-    { "source": "/api-docs.json", "destination": "https://api.iedclbscek.in/api-docs.json" },
-    { "source": "/(.*)", "destination": "/index.html" }
-  ]
+    {
+      "source": "/api-docs",
+      "destination": "https://api.iedclbscek.in/api-docs"
+    },
+    {
+      "source": "/api-docs/(.*)",
+      "destination": "https://api.iedclbscek.in/api-docs/$1"
+    },
+    {
+      "source": "/api-docs.json",
+      "destination": "https://api.iedclbscek.in/api-docs.json"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "framework": "vite",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "pnpm run build",
+  "outputDirectory": "dist"
 }

@@ -1,43 +1,32 @@
+import ClubPage from "../models/ClubPage.js";
 import Club from "../models/Club.js";
 import { isAdmin } from "../middleware/requireAuth.js";
+import ClubMembership from "../models/ClubMembership.js";
+import { resolveClubAccess } from "../utils/clubAccess.js";
+import { findRemovedClubUserIds, getClubEventAccess } from "../utils/authorization.js";
 
 const normalize = (v) => String(v ?? "").trim();
 
-const canManageClub = (club, userId) => {
-  const id = String(userId);
-  const managers = Array.isArray(club?.managerUsers) ? club.managerUsers : [];
-  return managers.some((m) => String(m) === id);
-};
-
-const canEditClub = (club, userId) => {
-  const id = String(userId);
-  const editors = Array.isArray(club?.editorUsers) ? club.editorUsers : [];
-  const managers = Array.isArray(club?.managerUsers) ? club.managerUsers : [];
-  return (
-    managers.some((m) => String(m) === id) ||
-    editors.some((e) => String(e) === id)
-  );
-};
-
-const canAccessClub = (club, userId) => {
-  const id = String(userId);
-  const members = Array.isArray(club?.memberUsers) ? club.memberUsers : [];
-  const managers = Array.isArray(club?.managerUsers) ? club.managerUsers : [];
-  const editors = Array.isArray(club?.editorUsers) ? club.editorUsers : [];
-  return (
-    members.some((m) => String(m) === id) ||
-    managers.some((m) => String(m) === id) ||
-    editors.some((e) => String(e) === id)
-  );
-};
+function presentClub(club, user, memberships) {
+  const ownMembership = memberships.find((row) => String(row.userId) === String(user.id));
+  const access = getClubEventAccess({ club, user, membership: ownMembership });
+  if (!access.view) return null;
+  const clubMembership = ownMembership && { status: ownMembership.status, permissions: ownMembership.permissions };
+  if (access.managePermissions) return { ...club.toObject(), access, clubMembership, memberships };
+  return { _id: club._id, name: club.name, description: club.description, access, clubMembership };
+}
 
 export const listClubs = async (req, res) => {
   try {
     const user = req.user;
+    const memberships = isAdmin(user)
+      ? []
+      : await ClubMembership.find({ userId: user.id }).select("clubId").lean();
     const query = isAdmin(user)
       ? {}
       : {
           $or: [
+            { _id: { $in: memberships.map((membership) => membership.clubId) } },
             { memberUsers: user.id },
             { managerUsers: user.id },
             { editorUsers: user.id },
@@ -54,7 +43,18 @@ export const listClubs = async (req, res) => {
       )
       .sort({ name: 1 });
 
-    res.json({ clubs });
+    const scopedMemberships = await ClubMembership.find({
+      clubId: { $in: clubs.map((club) => club._id) },
+    }).select("userId clubId role status permissions").lean();
+    const membershipsByClub = new Map();
+    for (const row of scopedMemberships) {
+      const id = String(row.clubId);
+      if (!membershipsByClub.has(id)) membershipsByClub.set(id, []);
+      membershipsByClub.get(id).push(row);
+    }
+    res.json({ clubs: clubs.map((club) =>
+      presentClub(club, user, membershipsByClub.get(String(club._id)) || [])
+    ).filter(Boolean) });
   } catch (error) {
     res
       .status(500)
@@ -71,6 +71,7 @@ export const createClub = async (req, res) => {
     const name = normalize(req.body?.name);
     const description = normalize(req.body?.description);
     if (!name) return res.status(400).json({ message: "name is required" });
+    if (name.toLowerCase() === "iedc") return res.status(409).json({ message: "IEDC is the main organisation. Use the IEDC workspace instead of creating a club." });
 
     const managerUsers = Array.isArray(req.body?.managerUserIds)
       ? req.body.managerUserIds
@@ -90,6 +91,17 @@ export const createClub = async (req, res) => {
       editorUsers,
       memberRegistrations,
     });
+    if (managerUsers.length > 0) {
+      await Promise.all(
+        managerUsers.map((userId) =>
+          ClubMembership.findOneAndUpdate(
+            { clubId: club._id, userId },
+            { $set: { role: "lead", scope: "club", status: "active" } },
+            { upsert: true, setDefaultsOnInsert: true },
+          ),
+        ),
+      );
+    }
 
     const populated = await Club.findById(club._id)
       .populate("memberUsers", "name email membershipId role")
@@ -117,12 +129,16 @@ export const updateClub = async (req, res) => {
     const { id } = req.params;
     const club = await Club.findById(id);
     if (!club) return res.status(404).json({ message: "Club not found" });
+    const previousAssignments = {
+      managerUsers: [...(club.managerUsers || [])],
+      editorUsers: [...(club.editorUsers || [])],
+      memberUsers: [...(club.memberUsers || [])],
+    };
 
     const user = req.user;
-    const isLead = canManageClub(club, user.id);
-    const canEdit = canEditClub(club, user.id);
+    const { managePermissions: isLead } = await resolveClubAccess({ club, user });
 
-    if (!isAdmin(user) && !canEdit) {
+    if (!isLead) {
       return res.status(403).json({ message: "Forbidden" });
     }
 
@@ -133,6 +149,7 @@ export const updateClub = async (req, res) => {
       }
       const name = normalize(req.body.name);
       if (!name) return res.status(400).json({ message: "name is required" });
+      if (name.toLowerCase() === "iedc") return res.status(409).json({ message: "IEDC is the main organisation. Use the IEDC workspace instead of renaming a club." });
       club.name = name;
     }
 
@@ -182,6 +199,25 @@ export const updateClub = async (req, res) => {
 
     await club.save();
 
+    const removedUserIds = findRemovedClubUserIds(previousAssignments, club);
+    if (removedUserIds.length > 0) {
+      await ClubMembership.updateMany(
+        { clubId: club._id, userId: { $in: removedUserIds } },
+        { $set: { status: "inactive" } },
+      );
+    }
+    if (club.managerUsers.length > 0) {
+      await Promise.all(
+        club.managerUsers.map((userId) =>
+          ClubMembership.findOneAndUpdate(
+            { clubId: club._id, userId },
+            { $set: { role: "lead", scope: "club", status: "active" } },
+            { upsert: true, setDefaultsOnInsert: true },
+          ),
+        ),
+      );
+    }
+
     const populated = await Club.findById(club._id)
       .populate("memberUsers", "name email membershipId role")
       .populate("managerUsers", "name email membershipId role")
@@ -208,10 +244,15 @@ export const deleteClub = async (req, res) => {
       return res.status(403).json({ message: "Forbidden" });
     }
 
+    // Keep the slug tombstone so deleting a club cannot resurrect its legacy page.
+    await ClubPage.updateOne({ clubId: req.params.id }, {
+      $set: { published: null, adopted: true, publishedBy: String(req.user.id), publishedAt: new Date() },
+      $inc: { revision: 1 },
+    });
     const deleted = await Club.findByIdAndDelete(req.params.id);
     if (!deleted) return res.status(404).json({ message: "Club not found" });
 
-    res.json({ message: "Club deleted" });
+    res.json({ message: "Club deleted. Its Nexus page has been withdrawn." });
   } catch (error) {
     res
       .status(500)
@@ -233,11 +274,10 @@ export const getClubAccess = async (req, res) => {
     if (!club) return res.status(404).json({ message: "Club not found" });
 
     const user = req.user;
-    if (!isAdmin(user) && !canAccessClub(club, user.id)) {
-      return res.status(403).json({ message: "Forbidden" });
-    }
-
-    res.json({ club });
+    const memberships = await ClubMembership.find({ clubId: club._id }).select("userId role status permissions").lean();
+    const visibleClub = presentClub(club, user, memberships);
+    if (!visibleClub) return res.status(403).json({ message: "Forbidden" });
+    res.json({ club: visibleClub });
   } catch (error) {
     res
       .status(500)

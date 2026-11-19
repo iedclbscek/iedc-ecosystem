@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
-import { Link, useParams, useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
+import { createElement, useState, useEffect } from "react";
+import { Link, useParams } from "react-router-dom";
+import { motion as Motion } from "framer-motion";
 import {
   FaArrowLeft,
   FaLinkedinIn,
@@ -10,102 +10,79 @@ import {
   FaCheck,
 } from "react-icons/fa";
 import axios from "axios";
+import { ProfileSkeleton, PublicErrorState } from "../components/ui/PublicPageState";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EXECOM PROFILE PAGE — /team/:id
 // ─────────────────────────────────────────────────────────────────────────────
-const ExecomProfilePage = () => {
+const ExecomProfilePage = ({ memberId }) => {
   const API_BASE_URL =
     import.meta.env.VITE_API_URL ||
     (import.meta.env.DEV ? "http://localhost:5000" : "");
   if (import.meta.env.PROD && !import.meta.env.VITE_API_URL)
     throw new Error("VITE_API_URL is required in production");
 
-  const { id } = useParams();
-  const navigate = useNavigate();
+  const params = useParams();
+  const id = memberId || params.id;
 
   const [member, setMember] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [imgError, setImgError] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
+  const [showLink, setShowLink] = useState(false);
 
   useEffect(() => {
+    const controller = new AbortController();
     const fetchMember = async () => {
       try {
         setLoading(true);
         setError(null);
         const { data } = await axios.get(
-          `${API_BASE_URL}/api/public/execom/${id}`
+          `${API_BASE_URL}/api/public/execom/${encodeURIComponent(id)}`, { signal: controller.signal }
         );
         setMember(data.member);
+        setImgError(false);
+        setCopied(false);
+        setShowLink(false);
       } catch (err) {
+        if (controller.signal.aborted) return;
         if (err.response?.status === 404) {
           setError("Member not found");
         } else {
           setError("Failed to load profile");
         }
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     };
     if (id) fetchMember();
-  }, [id]);
+    return () => controller.abort();
+  }, [id, retryNonce, API_BASE_URL]);
 
+  const url = new URL(`/team/${encodeURIComponent(id)}`, window.location.origin).href;
   const handleShare = async () => {
-    const url = window.location.href;
     try {
-      if (navigator.share) {
-        await navigator.share({ title: `${name} — IEDC LBSCEK`, url });
-      } else {
+      if (navigator.share) await navigator.share({ title: `${name} — IEDC LBSCEK`, url });
+      else {
         await navigator.clipboard.writeText(url);
         setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
       }
-    } catch {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      if (err.name !== "AbortError") setShowLink(true);
     }
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-[#F5F5F0] flex flex-col items-center justify-center gap-4">
-        <div className="animate-spin w-10 h-10 border-[3px] border-accent border-t-transparent rounded-full" />
-        <p className="font-mono text-xs text-gray-400 uppercase tracking-widest">
-          Loading Profile...
-        </p>
-      </div>
-    );
+    return <ProfileSkeleton compact={Boolean(memberId)} />;
   }
 
   if (error || !member) {
-    return (
-      <div className="min-h-screen bg-[#F5F5F0] flex flex-col items-center justify-center px-6">
-        <div className="max-w-md w-full text-center p-10 border-2 border-dashed border-gray-300 bg-white/50 backdrop-blur-sm">
-          <div className="w-16 h-16 bg-gray-50 border border-gray-200 flex items-center justify-center mx-auto mb-6 text-2xl text-gray-300">
-            ?
-          </div>
-          <span className="font-mono text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 block">
-            ERROR_CODE: 404_NOT_FOUND
-          </span>
-          <h1 className="text-3xl font-black text-text-dark mb-4 uppercase tracking-tighter">
-            {error || "Profile Not Found"}
-          </h1>
-          <p className="text-text-light mb-8 font-medium leading-relaxed">
-            This execom profile doesn't exist or has been removed.
-          </p>
-          <Link
-            to="/team"
-            className="inline-flex items-center gap-2 px-8 py-3 bg-text-dark text-white font-mono text-xs font-bold uppercase tracking-widest hover:bg-accent transition-colors"
-          >
-            <FaArrowLeft className="w-3 h-3" />
-            Back to Team
-          </Link>
-        </div>
-      </div>
-    );
+    return <div className={memberId ? "" : "pt-24"}>
+      <PublicErrorState title="Profile unavailable" message={error || "This member could not be found."} onRetry={() => setRetryNonce(value => value + 1)} />
+      {!memberId && <div className="pb-12 text-center"><Link to="/team" className="font-semibold underline">Back to team</Link></div>}
+    </div>;
   }
 
   const name = member.user?.name || "Unknown";
@@ -115,7 +92,6 @@ const ExecomProfilePage = () => {
   const membershipId = (member.user?.membershipId || "").toUpperCase();
   const registration = member.user?.registration;
   const department = registration?.department || "";
-  const semester = registration?.semester || "";
   const initials = name
     .split(" ")
     .map((w) => w[0])
@@ -125,6 +101,7 @@ const ExecomProfilePage = () => {
   const safeHref = (href) =>
     href ? (href.startsWith("http") ? href : `https://${href}`) : null;
 
+  const Heading = memberId ? "h2" : "h1";
   const socials = [
     {
       href: safeHref(member.linkedin),
@@ -147,9 +124,9 @@ const ExecomProfilePage = () => {
   ].filter(({ href }) => href);
 
   return (
-    <div className="min-h-screen bg-[#F5F5F0]">
+    <div className={memberId ? "bg-white" : "min-h-screen bg-[#F5F5F0]"}>
       {/* ── BACK NAV ── */}
-      <section className="pt-32 pb-0 bg-white border-b border-gray-200">
+      {!memberId && <section className="pt-32 pb-0 bg-white border-b border-gray-200">
         <div className="container mx-auto px-6 pb-6">
           <Link
             to="/team"
@@ -159,21 +136,21 @@ const ExecomProfilePage = () => {
             Back_to_Team
           </Link>
         </div>
-      </section>
+      </section>}
 
       {/* ── PROFILE ── */}
-      <section className="bg-white pb-16">
+      <section className={memberId ? "bg-white py-6" : "bg-white pb-16"}>
         <div className="container mx-auto px-6">
           <div className="max-w-5xl mx-auto">
-            <div className="flex flex-col lg:flex-row gap-10 lg:gap-16">
+            <div className={memberId ? "grid gap-6 sm:grid-cols-[minmax(0,.8fr)_minmax(0,1.2fr)]" : "flex flex-col lg:flex-row gap-10 lg:gap-16"}>
               {/* ── Photo column ── */}
-              <motion.div
+              <Motion.div
                 initial={{ opacity: 0, x: -30 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.5, ease: "easeOut" }}
-                className="w-full lg:w-[380px] flex-shrink-0"
+                className={memberId ? "w-full" : "w-full lg:w-[380px] flex-shrink-0"}
               >
-                <div className="aspect-[3/4] relative overflow-hidden bg-gray-900">
+                <div className={`relative overflow-hidden bg-gray-900 ${memberId ? "aspect-[2/1] sm:aspect-[3/4]" : "aspect-[3/4]"}`}>
                   {!imgError && image ? (
                     <img
                       src={image}
@@ -197,10 +174,10 @@ const ExecomProfilePage = () => {
                     </div>
                   )}
                 </div>
-              </motion.div>
+              </Motion.div>
 
               {/* ── Info column ── */}
-              <motion.div
+              <Motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: 0.15, ease: "easeOut" }}
@@ -215,9 +192,9 @@ const ExecomProfilePage = () => {
                 </div>
 
                 {/* Name */}
-                <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-text-dark leading-[0.95] tracking-tighter mb-4">
+                <Heading className={`break-words font-black text-text-dark leading-[0.95] tracking-tighter mb-4 ${memberId ? "text-3xl md:text-4xl" : "text-4xl md:text-5xl lg:text-6xl"}`}>
                   {name.toUpperCase()}
-                </h1>
+                </Heading>
 
                 {/* Role */}
                 <p className="font-mono text-sm text-gray-500 uppercase tracking-widest mb-6">
@@ -244,16 +221,6 @@ const ExecomProfilePage = () => {
                         </p>
                         <p className="text-sm font-bold text-text-dark">
                           {department}
-                        </p>
-                      </div>
-                    )}
-                    {semester && (
-                      <div>
-                        <p className="font-mono text-[10px] text-gray-400 uppercase tracking-widest mb-1">
-                          Semester
-                        </p>
-                        <p className="text-sm font-bold text-text-dark">
-                          {semester}
                         </p>
                       </div>
                     )}
@@ -287,7 +254,7 @@ const ExecomProfilePage = () => {
                           className="flex items-center gap-4 p-4 border border-gray-100 hover:border-accent hover:bg-accent/5 group transition-all"
                         >
                           <div className="w-9 h-9 bg-gray-100 text-text-dark flex items-center justify-center rounded-full group-hover:bg-accent group-hover:text-white transition-all text-sm">
-                            <Icon aria-hidden="true" />
+                            {createElement(Icon, { "aria-hidden": true })}
                           </div>
                           <span className="text-sm font-semibold text-text-dark">
                             {label}
@@ -299,7 +266,7 @@ const ExecomProfilePage = () => {
                       ))}
                     </div>
                   ) : (
-                    <p className="text-gray-300 font-mono text-xs">
+                    <p className="text-gray-600 font-mono text-xs">
                       No social profiles linked yet.
                     </p>
                   )}
@@ -322,7 +289,8 @@ const ExecomProfilePage = () => {
                     </>
                   )}
                 </button>
-              </motion.div>
+                {showLink && <input aria-label="Profile link" className="mt-2 w-full border border-gray-300 p-2" readOnly value={url} onFocus={e => e.target.select()} />}
+              </Motion.div>
             </div>
           </div>
         </div>

@@ -5,7 +5,7 @@ Express + MongoDB API for the IEDC ecosystem.
 ## Production
 
 * API base URL: `https://api.iedclbscek.in/api`
-* Swagger UI: `https://api.iedclbscek.in/api-docs`
+* Swagger UI: `https://api.iedclbscek.in/docs`
 * OpenAPI JSON: `https://api.iedclbscek.in/api-docs.json`
 
 ## Route prefixes
@@ -62,16 +62,66 @@ For cross-subdomain usage (admin portal on `admin.iedclbscek.in`), production mu
 
 CORS is configured in `server/server.js`.
 
-* Production should allow the known deployment origins.
+* Production accepts HTTPS on the configured base domain and its `www`, `admin`, and `api` hosts. Add each additional trusted origin, including any Vercel preview that needs credentialed access, to the comma-separated `ALLOWED_ORIGINS` setting.
 * Local development also allows any `http://localhost:<port>` origin (so Vite can run on 5173+).
 
 ## API documentation
 
 The API reference lives in Swagger:
 
-* UI: `GET /api-docs`
+* UI: `GET /docs`
 * JSON: `GET /api-docs.json`
 
 ## Email Template Center
 
 Student registration confirmation uses template key: `student_registration_confirmation`.
+
+## Club Nexus pages
+
+Administrators explicitly connect a club to a stable public slug with
+`PATCH /api/admin/clubs/:clubId/public-binding` and `{ "slug": "gdg", "draft": { ... } }`.
+The draft may be omitted for a new empty page. Superadmins can correct a connection by sending a new slug, its draft and the current expectedRevision. The previous snapshot is retained privately in club_page_binding_backups before the revision-checked update. The old slug is released; any original static page is available again. The target starts as an unpublished draft. Occupied slugs and stale revisions return 409. Same-slug requests do not replace content. A failed concurrent change may leave an additional safety backup, without changing the active connection.
+The portal imports the existing content when connecting an existing Nexus page.
+
+Club leads receive page editing and publishing capabilities for their own clubs. They can grant
+`club_page_edit` and `club_page_publish` independently through the existing portal-member endpoints,
+using `pagePermissions: []` to revoke both. The legacy `permissions` array continues to update event
+grants only. Concurrent requests preserve the other namespace.
+
+- `GET /api/admin/clubs/:clubId/page` returns `{ page, access }`, including `pageEdit` and `pagePublish`.
+- `PUT /api/admin/clubs/:clubId/page/draft` accepts `{ expectedRevision, draft }`.
+- `POST /api/admin/clubs/:clubId/page/publish` and `/unpublish` accept only `{ expectedRevision }`.
+- `GET` and `PUT /api/admin/nexus/order` read/save `{ order: ["gdg", "tinkerhub"] }` for administrators.
+- `GET /api/public/nexus` returns published cards, explicit withdrawn slugs and directory order.
+- `GET /api/public/nexus/:slug` returns published content only. A 404 with `legacy: true` allows the
+  frontend's static fallback; `withdrawn: true` explicitly forbids that fallback.
+
+Save/publish increment the revision atomically. A stale revision returns 409 without replacing the
+saved content. Publish copies the persisted draft, so a publisher cannot inject an unsaved body.
+Deleting a club withdraws its public page while retaining a slug tombstone.
+
+Pages allow 40 containers, 100 widgets, 100 KB of custom code per widget and 1 MB total. Image URLs
+require HTTP(S) or a site-relative path and image widgets require alternative text. Custom code runs
+in an opaque-origin iframe with only scripts allowed, restrictive CSP, no parent data bridge, and no
+API connections. This sandbox limits authority, not CPU or memory usage. Review code before publishing.
+Normal text does not execute HTML. Page uploads use `purpose: "club_page"` and the owning `clubId`.
+
+Run the disposable HTTP verification against a local Mongo endpoint:
+
+```sh
+TEST_MONGO_URI=mongodb://127.0.0.1:28473 node server/scripts/clubNexusRoundTrip.mjs
+```
+
+It starts the real Express routers on an ephemeral loopback port, creates bcrypt fixture accounts in
+a unique database, signs in with cookies, verifies grants/revisions/publication/revocation/withdrawal,
+and drops and checks the disposable database in `finally`. It never writes the existing preview or
+production database and never sends email or performs a Cloudinary upload.
+
+The Team members widget can use `source: "club"` for the owning club's live team or
+`source: "custom"` for its saved display list. Customizing the list changes only the page widget;
+it does not change membership or account roles. Legacy team widgets retain their custom lists.
+The live source includes club-associated users who already opted into public website visibility
+or have a visible linked team profile, excluding inactive club memberships. It returns only
+`{ people: [{ name, role, image, url }] }`, without private email addresses or membership IDs.
+`GET /api/public/nexus/:slug/team` requires a published page; editors can preview the same safe data
+before publication through `GET /api/admin/clubs/:clubId/page/team`.

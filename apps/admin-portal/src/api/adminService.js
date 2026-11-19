@@ -64,14 +64,21 @@ export const updateStudent = async (id, updateData) => {
 };
 
 // Team management
-export const fetchUsers = async () => {
-  const { data } = await api.get("/admin/users");
+export const fetchUsers = async ({ page, limit, search = "", roleCategory } = {}) => {
+  const { data } = await api.get("/admin/users", {
+    params: {
+      ...(page ? { page } : {}),
+      ...(limit ? { limit } : {}),
+      ...(search ? { search: String(search).trim() } : {}),
+      ...(roleCategory ? { roleCategory } : {}),
+    },
+  });
   return data; // { users }
 };
 
-export const searchStudents = async (query, memberType = "student") => {
+export const searchStudents = async (query, memberType = "student", { clubId } = {}) => {
   const { data } = await api.get("/admin/users/search", {
-    params: { query, memberType },
+    params: { query, memberType, clubId },
   });
   return data; // { students }
 };
@@ -121,11 +128,13 @@ export const promoteClubPortalMember = async ({
   registrationId,
   portalAccessEnabled,
   permissions,
+  pagePermissions,
 }) => {
   const { data } = await api.post(`/admin/clubs/${clubId}/portal-members`, {
     registrationId,
     portalAccessEnabled,
     permissions,
+    pagePermissions,
   });
   return data; // { user, passwordSetupEmailSent }
 };
@@ -135,12 +144,14 @@ export const updateClubPortalMember = async ({
   userId,
   portalAccessEnabled,
   permissions,
+  pagePermissions,
 }) => {
   const { data } = await api.patch(
     `/admin/clubs/${clubId}/portal-members/${userId}`,
     {
       portalAccessEnabled,
       permissions,
+      pagePermissions,
     },
   );
   return data; // { user, passwordSetupEmailSent? }
@@ -228,8 +239,8 @@ export const updateWebsiteTeamEntry = async ({
   return data; // { entry }
 };
 
-export const uploadCloudinaryImage = async ({ source }) => {
-  const { data } = await api.post("/admin/uploads/cloudinary", { source });
+export const uploadCloudinaryImage = async ({ source, purpose, clubId }) => {
+  const { data } = await api.post("/admin/uploads/cloudinary", { source, purpose, clubId });
   return data; // { url, response }
 };
 
@@ -288,8 +299,8 @@ export const reorderWebsiteTeamEntries = async ({
 };
 
 // Email templates
-export const fetchEmailTemplates = async ({ search = "" } = {}) => {
-  const params = search ? { q: search } : {};
+export const fetchEmailTemplates = async ({ search = "", page, limit } = {}) => {
+  const params = { ...(search ? { q: search } : {}), ...(page ? { page } : {}), ...(limit ? { limit } : {}) };
   const { data } = await api.get("/admin/email/templates", { params });
   return data; // { templates }
 };
@@ -372,24 +383,33 @@ export const sendTestEmailTemplate = async ({ id, to, data: templateData }) => {
   return data; // { sent, reason }
 };
 
+export const fetchActiveMemberAudience = async (filters = {}) => {
+  const { data } = await api.get("/admin/email/active-member-audience", {
+    params: filters,
+  });
+  return data;
+};
+
 export const sendBulkEmailTemplate = async ({
   id,
   sendTo,
   recipients,
+  filters,
   data: templateData,
 }) => {
   const { data } = await api.post(`/admin/email/templates/${id}/bulk`, {
     sendTo,
     recipients,
+    filters,
     data: templateData,
   });
   return data; // { mode, total, sent, failed, failures[] }
 };
 
 // Events
-export const fetchEvents = async (search = "") => {
+export const fetchEvents = async (search = "", { page, limit, scope } = {}) => {
   const { data } = await api.get("/admin/events", {
-    params: { search: String(search ?? "").trim() },
+    params: { search: String(search ?? "").trim(), ...(page ? { page } : {}), ...(limit ? { limit } : {}), ...(scope ? { scope } : {}) },
   });
   return data; // { events }
 };
@@ -544,9 +564,9 @@ export const fetchClubAccess = async (id) => {
 };
 
 // Club Events
-export const fetchClubEvents = async ({ clubId, search = "" }) => {
+export const fetchClubEvents = async ({ clubId, search = "", page, limit }) => {
   const { data } = await api.get(`/admin/clubs/${clubId}/events`, {
-    params: { search: String(search ?? "").trim() },
+    params: { search: String(search ?? "").trim(), ...(page ? { page } : {}), ...(limit ? { limit } : {}) },
   });
   return data; // { events }
 };
@@ -686,3 +706,12 @@ export const unbanMembershipId = async (membershipId) => {
   });
   return data;
 };
+
+// Club Nexus drafts and publication
+export const fetchClubPage = async (clubId) => (await api.get(`/admin/clubs/${clubId}/page`)).data;
+export const saveClubPage = async (clubId, body) => (await api.put(`/admin/clubs/${clubId}/page/draft`, body)).data;
+export const publishClubPage = async (clubId, expectedRevision) => (await api.post(`/admin/clubs/${clubId}/page/publish`, { expectedRevision })).data;
+export const unpublishClubPage = async (clubId, expectedRevision) => (await api.post(`/admin/clubs/${clubId}/page/unpublish`, { expectedRevision })).data;
+export const bindClubPage = async (clubId, body) => (await api.patch(`/admin/clubs/${clubId}/public-binding`, body)).data;
+export const fetchNexusOrder = async () => (await api.get('/admin/nexus/order')).data;
+export const saveNexusOrder = async (order) => (await api.put('/admin/nexus/order', { order })).data;

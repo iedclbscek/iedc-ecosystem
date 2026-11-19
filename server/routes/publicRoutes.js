@@ -12,8 +12,14 @@ import {
   getWebsiteTeamEntrySelf,
   updateWebsiteTeamEntrySelf,
 } from "../controllers/teamController.js";
+import { setPublicCache } from "../utils/httpCache.js";
 
+import { getPublicNexus, getPublicClubPage } from "../controllers/clubPageController.js";
+import { getPublicClubPageTeam } from "../controllers/clubPageTeamController.js";
 const router = express.Router();
+router.get("/nexus", getPublicNexus);
+router.get("/nexus/:slug", getPublicClubPage);
+router.get("/nexus/:slug/team", getPublicClubPageTeam);
 
 /**
  * @openapi
@@ -39,8 +45,10 @@ router.get("/team", async (req, res) => {
     const users = await User.find({ "websiteProfile.visible": true })
       .select("name membershipId websiteProfile registrationRef")
       .populate("registrationRef", "firstName lastName department semester")
-      .sort({ "websiteProfile.order": 1, createdAt: 1 });
+      .sort({ "websiteProfile.order": 1, createdAt: 1 })
+      .lean();
 
+    setPublicCache(res);
     res.json({ team: users });
   } catch (error) {
     res
@@ -83,7 +91,8 @@ router.get("/execom", async (req, res) => {
           select: "firstName lastName department semester",
         },
       })
-      .sort({ year: -1, order: 1, createdAt: 1 });
+      .sort({ year: -1, order: 1, createdAt: 1 })
+      .lean();
 
     const yearsMap = new Map();
     for (const entry of entries) {
@@ -122,6 +131,7 @@ router.get("/execom", async (req, res) => {
     const years = Array.from(yearsMap.keys()).sort((a, b) =>
       b.localeCompare(a),
     );
+    setPublicCache(res);
     return res.json({
       years: years.map((y) => ({ year: y, members: yearsMap.get(y) })),
     });
@@ -156,7 +166,55 @@ router.get("/execom/years", async (req, res) => {
       .filter(Boolean)
       .sort((a, b) => b.localeCompare(a));
 
-    return res.json({ years: normalizedYears });
+    let roster;
+    if (req.query.includeRoster === "true" && normalizedYears[0]) {
+      const entries = await WebsiteTeamEntry.find({
+        category: "execom",
+        visible: true,
+        year: normalizedYears[0],
+      })
+        .populate({
+          path: "userRef",
+          select: "name membershipId registrationRef",
+          populate: {
+            path: "registrationRef",
+            select: "firstName lastName department semester",
+          },
+        })
+        .sort({ order: 1, createdAt: 1 })
+        .lean();
+
+      roster = entries.map((entry) => ({
+        id: entry._id,
+        year: String(entry.year || "").trim(),
+        order: entry.order,
+        roleTitle: entry.roleTitle || "",
+        imageUrl: entry.imageUrl || "",
+        linkedin: entry.linkedin || "",
+        github: entry.github || "",
+        twitter: entry.twitter || "",
+        user: entry.userRef
+          ? {
+              id: entry.userRef._id,
+              name: entry.userRef.name,
+              membershipId: entry.userRef.membershipId,
+              registration: entry.userRef.registrationRef || null,
+            }
+          : {
+              id: null,
+              name: entry.customName || "",
+              membershipId: entry.customMembershipId || "",
+              registration: null,
+            },
+      }));
+    }
+
+    setPublicCache(res, {
+      browserSeconds: 300,
+      sharedSeconds: 1800,
+      staleSeconds: 86400,
+    });
+    return res.json({ years: normalizedYears, roster });
   } catch (error) {
     return res
       .status(500)
@@ -193,14 +251,16 @@ router.get("/execom/:id", async (req, res) => {
       _id: id,
       category: "execom",
       visible: true,
-    }).populate({
-      path: "userRef",
-      select: "name membershipId registrationRef",
-      populate: {
-        path: "registrationRef",
-        select: "firstName lastName department semester",
-      },
-    });
+    })
+      .populate({
+        path: "userRef",
+        select: "name membershipId registrationRef",
+        populate: {
+          path: "registrationRef",
+          select: "firstName lastName department semester",
+        },
+      })
+      .lean();
 
     if (!entry) {
       return res.status(404).json({ message: "Member not found" });
@@ -231,6 +291,7 @@ router.get("/execom/:id", async (req, res) => {
           },
     };
 
+    setPublicCache(res);
     return res.json({ member });
   } catch (error) {
     if (error.name === "CastError") {

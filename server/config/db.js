@@ -1,5 +1,7 @@
 import mongoose from "mongoose";
 
+export const isDatabaseReady = () => mongoose.connection.readyState === 1;
+
 const connectDB = async () => {
   try {
     // Check if URI exists to prevent "undefined" errors

@@ -27,7 +27,12 @@ import {
   uploadCloudinaryImage,
   requestWebsiteTeamUpdateEmail,
 } from "../controllers/teamController.js";
-import { requireAuth } from "../middleware/requireAuth.js";
+import {
+  requireAuth,
+  requirePermission,
+  requirePermissionOrClubManager,
+} from "../middleware/requireAuth.js";
+import { getOverview } from "../controllers/overviewController.js";
 import {
   listEmailTemplates,
   getEmailTemplate,
@@ -36,6 +41,7 @@ import {
   deleteEmailTemplate,
   sendTestEmailTemplate,
   sendBulkEmailTemplate,
+  getActiveMemberAudience,
 } from "../controllers/emailTemplateController.js";
 import {
   listEvents,
@@ -64,6 +70,9 @@ import {
   updateSettings as updateFirstYearRepSettings,
 } from "../controllers/adminFirstYearRepController.js";
 
+import { getClubPage, bindClubPage, saveClubPageDraft, publishClubPage, unpublishClubPage, getNexusOrder, putNexusOrder } from "../controllers/clubPageController.js";
+
+import { getClubPageTeam } from "../controllers/clubPageTeamController.js";
 const router = express.Router();
 
 /**
@@ -173,6 +182,29 @@ router.options("*", (req, res) => {
 
 // Require auth for everything below
 router.use(requireAuth);
+router.get("/clubs/:clubId/page", getClubPage);
+router.get("/clubs/:clubId/page/team", getClubPageTeam);
+router.patch("/clubs/:clubId/public-binding", bindClubPage);
+router.put("/clubs/:clubId/page/draft", saveClubPageDraft);
+router.post("/clubs/:clubId/page/publish", publishClubPage);
+router.post("/clubs/:clubId/page/unpublish", unpublishClubPage);
+router.get("/nexus/order", getNexusOrder);
+router.put("/nexus/order", putNexusOrder);
+/**
+ * @openapi
+ * /api/admin/overview:
+ *   get:
+ *     tags: [Admin Events]
+ *     summary: Workspace dashboard metrics, activity and upcoming events
+ *     security: [{ cookieAuth: [] }]
+ *     parameters:
+ *       - { in: query, name: clubId, schema: { type: string }, description: Club workspace ID. Omit for IEDC. }
+ *       - { in: query, name: days, schema: { type: integer, enum: [7, 30, 90], default: 30 } }
+ *     responses:
+ *       200: { description: Metrics available to the signed-in user }
+ *       403: { description: Workspace access denied }
+ */
+router.get("/overview", getOverview);
 
 // Registrations
 /**
@@ -201,7 +233,7 @@ router.use(requireAuth);
  *       200:
  *         description: List response
  */
-router.get("/registrations", getRegistrations);
+router.get("/registrations", requirePermission("registrations"), getRegistrations);
 
 /**
  * @openapi
@@ -229,11 +261,28 @@ router.get("/registrations", getRegistrations);
  *         application/json:
  *           schema:
  *             type: object
+ *             properties:
+ *               firstName: { type: string }
+ *               lastName: { type: string }
+ *               email: { type: string, format: email }
+ *               department: { type: string }
+ *               phone: { type: string }
+ *               whatsappNumber: { type: string }
+ *               admissionNo: { type: string, description: Student admission number. Send an empty string to clear it. }
+ *               semester: { type: string, description: Students only. }
+ *               membershipId: { type: string, description: Staff and guests only. }
+ *               organization: { type: string, description: Guests only. }
  *     responses:
  *       200:
  *         description: Updated
+ *       400:
+ *         description: Invalid input
+ *       404:
+ *         description: No member matches the ID and category
+ *       409:
+ *         description: Email or identifier is already in use
  */
-router.patch("/registrations/:id", updateRegistration);
+router.patch("/registrations/:id", requirePermission("registrations"), updateRegistration);
 
 /**
  * @openapi
@@ -259,7 +308,7 @@ router.patch("/registrations/:id", updateRegistration);
  *       200:
  *         description: Deleted
  */
-router.delete("/registrations/:id", deleteRegistration);
+router.delete("/registrations/:id", requirePermission("registrations"), deleteRegistration);
 
 // Team/User management
 /**
@@ -276,7 +325,7 @@ router.delete("/registrations/:id", deleteRegistration);
  *       200:
  *         description: Users list
  */
-router.get("/users", listUsers);
+router.get("/users", requirePermission("users"), listUsers);
 
 /**
  * @openapi
@@ -298,7 +347,7 @@ router.get("/users", listUsers);
  *       200:
  *         description: Search results
  */
-router.get("/users/search", searchStudents);
+router.get("/users/search", requirePermissionOrClubManager("users"), searchStudents);
 
 /**
  * @openapi
@@ -343,7 +392,7 @@ router.get("/users/search", searchStudents);
  *       404:
  *         description: Member not found
  */
-router.post("/users/promote", promoteToTeam);
+router.post("/users/promote", requirePermission("users"), promoteToTeam);
 
 /**
  * @openapi
@@ -377,7 +426,7 @@ router.post("/users/promote", promoteToTeam);
  *       200:
  *         description: Updated
  */
-router.patch("/users/:id", updateUser);
+router.patch("/users/:id", requirePermission("users"), updateUser);
 
 /**
  * @openapi
@@ -398,7 +447,7 @@ router.patch("/users/:id", updateUser);
  *       200:
  *         description: Deleted
  */
-router.delete("/users/:id", deleteUser);
+router.delete("/users/:id", requirePermission("users"), deleteUser);
 
 // Website Team (Execom) year-wise entries
 /**
@@ -419,7 +468,7 @@ router.delete("/users/:id", deleteUser);
  *       200:
  *         description: Years list
  */
-router.get("/team/years", listWebsiteTeamYears);
+router.get("/team/years", requirePermission("users"), listWebsiteTeamYears);
 
 /**
  * @openapi
@@ -442,7 +491,7 @@ router.get("/team/years", listWebsiteTeamYears);
  *       200:
  *         description: Entries list
  */
-router.get("/team/entries", listWebsiteTeamEntries);
+router.get("/team/entries", requirePermission("users"), listWebsiteTeamEntries);
 
 /**
  * @openapi
@@ -475,7 +524,7 @@ router.get("/team/entries", listWebsiteTeamEntries);
  *       409:
  *         description: Already exists
  */
-router.post("/team/entries", createWebsiteTeamEntry);
+router.post("/team/entries", requirePermission("users"), createWebsiteTeamEntry);
 
 /**
  * @openapi
@@ -506,7 +555,7 @@ router.post("/team/entries", createWebsiteTeamEntry);
  *       200:
  *         description: Updated
  */
-router.patch("/team/entries/:id", updateWebsiteTeamEntry);
+router.patch("/team/entries/:id", requirePermission("users"), updateWebsiteTeamEntry);
 
 /**
  * @openapi
@@ -526,6 +575,7 @@ router.patch("/team/entries/:id", updateWebsiteTeamEntry);
  */
 router.post(
   "/team/entries/:id/request-update-email",
+  requirePermission("users"),
   requestWebsiteTeamUpdateEmail,
 );
 
@@ -548,7 +598,7 @@ router.post(
  *       200:
  *         description: Deleted
  */
-router.delete("/team/entries/:id", deleteWebsiteTeamEntry);
+router.delete("/team/entries/:id", requirePermission("users"), deleteWebsiteTeamEntry);
 
 /**
  * @openapi
@@ -579,7 +629,7 @@ router.delete("/team/entries/:id", deleteWebsiteTeamEntry);
  *       200:
  *         description: Reordered
  */
-router.post("/team/entries/reorder", reorderWebsiteTeamEntries);
+router.post("/team/entries/reorder", requirePermission("users"), reorderWebsiteTeamEntries);
 
 // Media uploads (Cloudinary for execom photos)
 router.post("/uploads/cloudinary", uploadCloudinaryImage);
@@ -659,7 +709,7 @@ router.patch("/clubs/:clubId/portal-members/:userId", updateClubPortalMember);
  *       200:
  *         description: Templates list
  */
-router.get("/email/templates", listEmailTemplates);
+router.get("/email/templates", requirePermission("mailer"), listEmailTemplates);
 
 /**
  * @openapi
@@ -680,7 +730,7 @@ router.get("/email/templates", listEmailTemplates);
  *       200:
  *         description: Template
  */
-router.get("/email/templates/:id", getEmailTemplate);
+router.get("/email/templates/:id", requirePermission("mailer"), getEmailTemplate);
 
 /**
  * @openapi
@@ -708,7 +758,7 @@ router.get("/email/templates/:id", getEmailTemplate);
  *       201:
  *         description: Created
  */
-router.post("/email/templates", createEmailTemplate);
+router.post("/email/templates", requirePermission("mailer"), createEmailTemplate);
 
 /**
  * @openapi
@@ -739,7 +789,7 @@ router.post("/email/templates", createEmailTemplate);
  *       200:
  *         description: Updated
  */
-router.patch("/email/templates/:id", updateEmailTemplate);
+router.patch("/email/templates/:id", requirePermission("mailer"), updateEmailTemplate);
 
 /**
  * @openapi
@@ -762,7 +812,7 @@ router.patch("/email/templates/:id", updateEmailTemplate);
  *       400:
  *         description: Cannot delete base template
  */
-router.delete("/email/templates/:id", deleteEmailTemplate);
+router.delete("/email/templates/:id", requirePermission("mailer"), deleteEmailTemplate);
 
 /**
  * @openapi
@@ -793,18 +843,73 @@ router.delete("/email/templates/:id", deleteEmailTemplate);
  *       200:
  *         description: Sent
  */
-router.post("/email/templates/:id/test", sendTestEmailTemplate);
+router.post("/email/templates/:id/test", requirePermission("mailer"), sendTestEmailTemplate);
+
+/**
+ * @openapi
+ * /api/admin/email/active-member-audience:
+ *   get:
+ *     tags: [Admin Email Templates]
+ *     summary: Preview a filtered active-member email audience
+ *     description: The total applies both filters together. Options cover all active registrations with a valid email address. Only requests with a page parameter include recipient identities. Results are ordered by first name, last name and registration ID.
+ *     security:
+ *       - cookieAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: department
+ *         description: Exact department label, ignoring case and surrounding whitespace.
+ *         schema: { type: string, minLength: 1 }
+ *       - in: query
+ *         name: yearOfJoining
+ *         schema: { type: string, pattern: '^[0-9]{4}$' }
+ *       - in: query
+ *         name: page
+ *         description: One-based recipient page of up to 10 members. A page beyond the final page returns an empty array.
+ *         schema: { type: integer, minimum: 1, maximum: 100000 }
+ *     responses:
+ *       200:
+ *         description: Available department labels, joining years (newest first) and current recipient count.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [departments, years, total]
+ *               properties:
+ *                 departments: { type: array, items: { type: string } }
+ *                 years: { type: array, items: { type: string } }
+ *                 total: { type: integer, minimum: 0 }
+ *                 page: { type: integer, minimum: 1, description: Requested page when pagination is enabled. }
+ *                 totalPages: { type: integer, minimum: 1 }
+ *                 members:
+ *                   type: array
+ *                   maxItems: 10
+ *                   items:
+ *                     type: object
+ *                     required: [id, firstName, lastName, email, department, yearOfJoining]
+ *                     properties:
+ *                       id: { type: string }
+ *                       firstName: { type: string }
+ *                       lastName: { type: string }
+ *                       email: { type: string, format: email }
+ *                       department: { type: string }
+ *                       yearOfJoining: { type: string }
+ *       400:
+ *         description: Invalid audience filter
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Mailer permission required
+ */
+router.get("/email/active-member-audience", requirePermission("mailer"), getActiveMemberAudience);
 
 /**
  * @openapi
  * /api/admin/email/templates/{id}/bulk:
  *   post:
- *     tags:
- *       - Admin Email Templates
- *     summary: Send a bulk email using a template
+ *     tags: [Admin Email Templates]
+ *     summary: Send a saved email template to active members or supplied recipients
  *     security:
  *       - cookieAuth: []
- *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -815,12 +920,47 @@ router.post("/email/templates/:id/test", sendTestEmailTemplate);
  *       content:
  *         application/json:
  *           schema:
- *             type: object
+ *             oneOf:
+ *               - type: object
+ *                 required: [sendTo]
+ *                 properties:
+ *                   sendTo: { type: string, enum: [all] }
+ *                   data: { type: object, additionalProperties: true }
+ *                   filters:
+ *                     type: object
+ *                     additionalProperties: false
+ *                     description: Omit both filters for all eligible active members. Supplying both selects their intersection.
+ *                     properties:
+ *                       department: { type: string, minLength: 1 }
+ *                       yearOfJoining: { type: string, pattern: '^[0-9]{4}$' }
+ *               - type: object
+ *                 required: [sendTo, recipients]
+ *                 properties:
+ *                   sendTo: { type: string, enum: [list] }
+ *                   data: { type: object, additionalProperties: true }
+ *                   recipients:
+ *                     type: array
+ *                     minItems: 1
+ *                     maxItems: 2000
+ *                     items:
+ *                       type: object
+ *                       required: [email]
+ *                       properties:
+ *                         email: { type: string, format: email }
+ *                         data: { type: object, additionalProperties: true }
  *     responses:
  *       200:
- *         description: Dispatched
+ *         description: Delivery totals for the selected recipients, including up to ten failures.
+ *       400:
+ *         description: Invalid audience filter or recipient list
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Mailer permission required
+ *       404:
+ *         description: Template not found
  */
-router.post("/email/templates/:id/bulk", sendBulkEmailTemplate);
+router.post("/email/templates/:id/bulk", requirePermission("mailer"), sendBulkEmailTemplate);
 
 // Events
 /**
@@ -1136,7 +1276,7 @@ router.delete("/clubs/:id", deleteClub);
  *     security:
  *       - cookieAuth: []
  */
-router.get("/first-year-reps", getFirstYearRepApplications);
+router.get("/first-year-reps", requirePermission("firstYearReps"), getFirstYearRepApplications);
 
 /**
  * @openapi
@@ -1148,7 +1288,7 @@ router.get("/first-year-reps", getFirstYearRepApplications);
  *     security:
  *       - cookieAuth: []
  */
-router.get("/first-year-reps/settings", getFirstYearRepSettings);
+router.get("/first-year-reps/settings", requirePermission("firstYearReps"), getFirstYearRepSettings);
 
 /**
  * @openapi
@@ -1160,7 +1300,7 @@ router.get("/first-year-reps/settings", getFirstYearRepSettings);
  *     security:
  *       - cookieAuth: []
  */
-router.patch("/first-year-reps/settings", updateFirstYearRepSettings);
+router.patch("/first-year-reps/settings", requirePermission("firstYearReps"), updateFirstYearRepSettings);
 
 /**
  * @openapi
@@ -1172,7 +1312,7 @@ router.patch("/first-year-reps/settings", updateFirstYearRepSettings);
  *     security:
  *       - cookieAuth: []
  */
-router.get("/first-year-reps/export/csv", exportFirstYearRepApplications);
+router.get("/first-year-reps/export/csv", requirePermission("firstYearReps"), exportFirstYearRepApplications);
 
 /**
  * @openapi
@@ -1184,7 +1324,7 @@ router.get("/first-year-reps/export/csv", exportFirstYearRepApplications);
  *     security:
  *       - cookieAuth: []
  */
-router.get("/first-year-reps/:id", getFirstYearRepApplicationDetail);
+router.get("/first-year-reps/:id", requirePermission("firstYearReps"), getFirstYearRepApplicationDetail);
 
 /**
  * @openapi
@@ -1196,7 +1336,7 @@ router.get("/first-year-reps/:id", getFirstYearRepApplicationDetail);
  *     security:
  *       - cookieAuth: []
  */
-router.patch("/first-year-reps/:id", updateFirstYearRepApplication);
+router.patch("/first-year-reps/:id", requirePermission("firstYearReps"), updateFirstYearRepApplication);
 
 /**
  * @openapi
@@ -1208,6 +1348,6 @@ router.patch("/first-year-reps/:id", updateFirstYearRepApplication);
  *     security:
  *       - cookieAuth: []
  */
-router.delete("/first-year-reps/:id", deleteFirstYearRepApplication);
+router.delete("/first-year-reps/:id", requirePermission("firstYearReps"), deleteFirstYearRepApplication);
 
 export default router;

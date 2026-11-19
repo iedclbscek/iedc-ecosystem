@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom';
 import { sendRegistrationOtp, submitRegistration, verifyRegistrationOtp } from '../services/registrationService';
 import toast from 'react-hot-toast';
 import { FaArrowLeft, FaCheckCircle, FaUserSecret, FaCode, FaIdCard, FaPaperPlane } from 'react-icons/fa';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion as Motion, AnimatePresence } from 'framer-motion';
+import PublicSelect from '../components/ui/PublicSelect';
 
 const INITIAL_FORM_DATA = {
   firstName: '',
@@ -13,7 +14,6 @@ const INITIAL_FORM_DATA = {
   admissionNo: '',
   department: '',
   yearOfJoining: '',
-  semester: '',
   isLateralEntry: false,
   interests: [],
   nonTechInterests: '',
@@ -48,10 +48,6 @@ const RegistrationPage = () => {
   const departments = ['CSE', 'CSBS', 'CSE (AI & DS)', 'EEE', 'ECE', 'IT', 'ME', 'CE'];
   const currentYear = new Date().getFullYear();
   const joiningYears = Array.from({ length: 8 }, (_, i) => String(currentYear - 5 + i));
-  const semesters = [
-    '1st Semester', '2nd Semester', '3rd Semester', '4th Semester',
-    '5th Semester', '6th Semester', '7th Semester', '8th Semester'
-  ];
   const interestAreas = ['Web Dev', 'App Dev', 'AI/ML', 'Data Science', 'Cybersecurity', 'IoT', 'Blockchain', 'Cloud', 'UI/UX', 'Product Mgmt', 'Robotics', 'Game Dev', 'DevOps'];
 
   useEffect(() => {
@@ -72,6 +68,9 @@ const RegistrationPage = () => {
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+    if ((name === 'department' || name === 'yearOfJoining') && value && errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: undefined }));
+    }
     if (name === 'email' && isEmailVerified) {
       setIsEmailVerified(false);
       setShowVerificationField(false);
@@ -99,9 +98,8 @@ const RegistrationPage = () => {
     }
     if (step === 2) {
       if (!formData.admissionNo.trim()) newErrors.admissionNo = "Required";
-      if (!formData.department) newErrors.department = "Required";
-      if (!formData.yearOfJoining) newErrors.yearOfJoining = "Required";
-      if (!formData.semester) newErrors.semester = "Required";
+      if (!formData.department) newErrors.department = "Choose your department.";
+      if (!formData.yearOfJoining) newErrors.yearOfJoining = "Choose the year you joined.";
       if (formData.referralCode.trim().toUpperCase() !== 'DREAMITDOIT') newErrors.referralCode = "Invalid Code";
     }
     if (step === 3) {
@@ -220,7 +218,10 @@ const RegistrationPage = () => {
 
         {/* LEFT PANEL */}
         <div className="lg:col-span-4 bg-text-dark text-white p-10 flex flex-col justify-between relative overflow-hidden">
-          <div className="absolute inset-0 bg-[url('/grid-pattern.svg')] opacity-10"></div>
+          <div aria-hidden="true" className="pointer-events-none absolute inset-0 opacity-10" style={{
+            backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)',
+            backgroundSize: '40px 40px',
+          }} />
 
           <div>
             <Link to="/" className="inline-flex items-center text-gray-400 hover:text-white mb-8 transition-colors font-mono text-xs uppercase tracking-widest">
@@ -253,7 +254,7 @@ const RegistrationPage = () => {
 
               {/* STEP 1: PERSONAL */}
               {currentStep === 1 && (
-                <motion.div
+                <Motion.div
                   key="step1"
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -308,12 +309,12 @@ const RegistrationPage = () => {
 
                     <InputGroup label="Phone Number" name="phone" value={formData.phone} onChange={handleInputChange} error={errors.phone} />
                   </div>
-                </motion.div>
+                </Motion.div>
               )}
 
               {/* STEP 2: ACADEMIC */}
               {currentStep === 2 && (
-                <motion.div
+                <Motion.div
                   key="step2"
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -346,21 +347,16 @@ const RegistrationPage = () => {
                     <SelectGroup label="Year of Joining" name="yearOfJoining" value={formData.yearOfJoining} onChange={handleInputChange} options={joiningYears} error={errors.yearOfJoining} />
                   </div>
 
-                  <div className="grid md:grid-cols-2 gap-6">
-                    <SelectGroup label="Current Semester" name="semester" value={formData.semester} onChange={handleInputChange} options={semesters} error={errors.semester} />
-                    <div></div>
-                  </div>
-
                   <div className="flex items-center gap-2 pt-2">
                     <input type="checkbox" id="lat" checked={formData.isLateralEntry} onChange={(e) => setFormData({ ...formData, isLateralEntry: e.target.checked })} className="w-4 h-4 accent-accent" />
                     <label htmlFor="lat" className="text-sm text-text-light">Lateral Entry Candidate</label>
                   </div>
-                </motion.div>
+                </Motion.div>
               )}
 
               {/* STEP 3: SKILLS */}
               {currentStep === 3 && (
-                <motion.div
+                <Motion.div
                   key="step3"
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -403,7 +399,7 @@ const RegistrationPage = () => {
                     ></textarea>
                     {errors.motivation && <p className="text-red-500 text-xs mt-1 font-mono">{errors.motivation}</p>}
                   </div>
-                </motion.div>
+                </Motion.div>
               )}
 
             </AnimatePresence>
@@ -468,17 +464,17 @@ const InputGroup = ({ label, labelRight, error, ...props }) => (
   </div>
 );
 
-const SelectGroup = ({ label, options, error, ...props }) => (
+const SelectGroup = ({ label, name, ...props }) => (
   <div>
-    <label className="block text-xs font-bold text-gray-500 uppercase mb-2">{label}</label>
-    <select
+    <label htmlFor={name} className="block text-xs font-bold text-gray-500 uppercase mb-2">{label}</label>
+    <PublicSelect
       {...props}
-      className={`w-full bg-gray-50 border p-3 text-sm focus:border-accent focus:bg-white transition-all outline-none font-mono appearance-none ${error ? 'border-red-500' : 'border-gray-200'}`}
-    >
-      <option value="">Select...</option>
-      {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-    </select>
-    {error && <p className="text-red-500 text-xs mt-1 font-mono">{error}</p>}
+      id={name}
+      name={name}
+      required
+      placeholder={`Select ${label.toLowerCase()}`}
+      requiredMessage={`Select ${label.toLowerCase()}.`}
+    />
   </div>
 );
 

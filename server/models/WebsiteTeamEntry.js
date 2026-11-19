@@ -59,6 +59,13 @@ websiteTeamEntrySchema.index(
 );
 
 websiteTeamEntrySchema.index({ category: 1, year: 1, order: 1, createdAt: 1 });
+websiteTeamEntrySchema.index({
+  category: 1,
+  visible: 1,
+  year: -1,
+  order: 1,
+  createdAt: 1,
+});
 
 export default mongoose.model(
   "WebsiteTeamEntry",

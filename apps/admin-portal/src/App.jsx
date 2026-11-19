@@ -1,29 +1,29 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { createBrowserRouter, createRoutesFromElements, RouterProvider, Outlet, Route, Navigate } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
+import PageSkeleton from './components/PageSkeleton';
 import AdminLayout from './layouts/AdminLayout';
 import { Toaster } from 'react-hot-toast';
 import RequireAuth from './components/RequireAuth';
 import RequirePermission from './components/RequirePermission';
-import { ViewModeProvider } from './context/ViewModeContext';
+import { ViewModeProvider } from './context/ViewModeProvider';
 
 // Import Pages
-import Dashboard from './pages/Dashboard';
-import Registrations from './pages/Registrations';
-import Events from './pages/Events';
-import Users from './pages/Users';
-import Settings from './pages/Settings';
-import Login from './pages/Login';
-import SetPassword from './pages/SetPassword';
-import Mailer from './pages/Mailer';
-import Makerspace from './pages/Makerspace';
-import TeamEntryUpdate from './pages/TeamEntryUpdate';
-import FirstYearReps from './pages/FirstYearReps';
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Registrations = lazy(() => import('./pages/Registrations'));
+const Events = lazy(() => import('./pages/Events'));
+const ClubNexusEditor = lazy(() => import('./pages/ClubNexusEditor'));
+const NexusDirectory = lazy(() => import('./pages/NexusDirectory'));
+const Users = lazy(() => import('./pages/Users'));
+const Settings = lazy(() => import('./pages/Settings'));
+const Login = lazy(() => import('./pages/Login'));
+const SetPassword = lazy(() => import('./pages/SetPassword'));
+const Mailer = lazy(() => import('./pages/Mailer'));
+const Makerspace = lazy(() => import('./pages/Makerspace'));
+const TeamEntryUpdate = lazy(() => import('./pages/TeamEntryUpdate'));
+const FirstYearReps = lazy(() => import('./pages/FirstYearReps'));
 
-function App() {
-  return (
-    <BrowserRouter>
-      <ViewModeProvider>
-        <Toaster position="top-right" reverseOrder={false} />
-        <Routes>
+const router = createBrowserRouter(createRoutesFromElements(
+  <Route element={<ViewModeProvider><Toaster position="top-right" reverseOrder={false} /><Suspense fallback={<PageSkeleton />}><Outlet /></Suspense></ViewModeProvider>}>
         <Route path="/login" element={<Login />} />
         <Route path="/set-password" element={<SetPassword />} />
         <Route path="/team-entry/update" element={<TeamEntryUpdate />} />
@@ -47,6 +47,8 @@ function App() {
             }
           />
           
+          <Route path="clubs/:clubId/nexus" element={<ClubNexusEditor />} />
+          <Route path="nexus" element={<RequirePermission permission="nexusAdmin"><NexusDirectory /></RequirePermission>} />
           {/* Sub-pages */}
           <Route
             path="registrations"
@@ -111,10 +113,8 @@ function App() {
 
         {/* 404 Catch-all */}
         <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </ViewModeProvider>
-    </BrowserRouter>
-  );
-}
+  </Route>
+));
+function App() { return <RouterProvider router={router} />; }
 
 export default App;

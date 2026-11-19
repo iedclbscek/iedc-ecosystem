@@ -16,6 +16,8 @@ const staffGuestRegistrationSchema = new mongoose.Schema(
 
     department: String,
     organization: String,
+    phone: { type: String, trim: true },
+    whatsappNumber: { type: String, trim: true },
 
     status: {
       type: String,

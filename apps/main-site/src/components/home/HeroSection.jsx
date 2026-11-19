@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion as Motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 
 const HeroSection = () => {
@@ -11,7 +11,7 @@ const HeroSection = () => {
         
         {/* Left: Content Block with Vertical "Stem" */}
         <div className="w-full lg:w-7/12 py-20 lg:pr-12 border-b lg:border-b-0 lg:border-r border-gray-200">
-          <motion.div
+          <Motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
@@ -42,7 +42,7 @@ const HeroSection = () => {
                 JOIN THE CELL
               </Link>
             </div>
-          </motion.div>
+          </Motion.div>
         </div>
 
         {/* Right: Visual Block (The "Industrial" look) */}
@@ -53,7 +53,7 @@ const HeroSection = () => {
           </div>
 
           {/* Floating Focal Point */}
-          <motion.div 
+          <Motion.div
             initial={{ opacity: 0, rotate: -5 }}
             animate={{ opacity: 1, rotate: 0 }}
             transition={{ delay: 0.3, duration: 1 }}
@@ -61,7 +61,11 @@ const HeroSection = () => {
           >
             <div className="flex justify-between items-start">
               <img 
-                src="/img/logo/IEDCLBSLogoColor.webp" 
+                src="/img/logo/IEDCLBSLogoColor-192.webp"
+                srcSet="/img/logo/IEDCLBSLogoColor-192.webp 192w, /img/logo/IEDCLBSLogoColor-384.webp 384w"
+                sizes="96px"
+                width="192"
+                height="94"
                 alt="IEDC" 
                 className="w-24 grayscale contrast-125"
               />
@@ -76,7 +80,7 @@ const HeroSection = () => {
                 92.4% Project Success Rate
               </p>
             </div>
-          </motion.div>
+          </Motion.div>
 
           {/* Abstract Geometry */}
           <div className="absolute top-10 right-10 w-12 h-12 border-2 border-gray-200 rounded-full" />

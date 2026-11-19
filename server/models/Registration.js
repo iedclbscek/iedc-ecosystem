@@ -19,6 +19,7 @@ const registrationSchema = new mongoose.Schema(
     lastName: { type: String, trim: true, required: true },
     email: { type: String, unique: true, required: true, lowercase: true },
     phone: { type: String, trim: true, required: true },
+    whatsappNumber: { type: String, trim: true },
 
     // Student academic info
     // Optional: only some forms provide this. Must be sparse-unique to avoid
@@ -33,7 +34,7 @@ const registrationSchema = new mongoose.Schema(
     referralCode: { type: String, trim: true, required: true },
     department: { type: String, required: true },
     yearOfJoining: { type: String, required: true },
-    semester: { type: String, required: true },
+    semester: { type: String, trim: true },
     isLateralEntry: { type: Boolean, default: false },
 
     // Interests
@@ -152,6 +153,8 @@ registrationSchema.pre("save", async function (next) {
     return next(err);
   }
 });
+
+registrationSchema.index({ createdAt: -1, _id: -1 });
 
 export default mongoose.model(
   "Registration",

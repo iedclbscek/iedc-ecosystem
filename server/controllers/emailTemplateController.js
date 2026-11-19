@@ -1,8 +1,16 @@
 import EmailTemplate from "../models/EmailTemplate.js";
-import Registration from "../models/Registration.js";
+import {
+  AudienceFilterError,
+  parseAudienceFilters,
+  parseAudiencePage,
+  getAudienceSummary,
+  findAudienceMembers,
+  validEmailPattern,
+} from "../utils/activeMemberAudience.js";
 import { sendMail } from "../utils/mailer.js";
 import { renderTemplate } from "../utils/templateRenderer.js";
 import { hasPermission } from "../middleware/requireAuth.js";
+import { paginationMeta, parsePagination } from "../utils/pagination.js";
 
 const normalizeKey = (key) =>
   String(key ?? "")
@@ -12,20 +20,27 @@ const normalizeKey = (key) =>
 export const listEmailTemplates = async (req, res) => {
   try {
     const search = String(req.query.search ?? req.query.q ?? "").trim();
+    const searchPattern = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const filter = search
       ? {
           $or: [
-            { name: { $regex: search, $options: "i" } },
-            { subject: { $regex: search, $options: "i" } },
-            { key: { $regex: search, $options: "i" } },
+            { name: { $regex: searchPattern, $options: "i" } },
+            { subject: { $regex: searchPattern, $options: "i" } },
+            { key: { $regex: searchPattern, $options: "i" } },
           ],
         }
       : {};
 
-    const templates = await EmailTemplate.find(filter)
+    const paginated = req.query.page !== undefined || req.query.limit !== undefined;
+    const { page, limit } = parsePagination(req.query, { defaultLimit: 20 });
+    const total = paginated ? await EmailTemplate.countDocuments(filter) : 0;
+    const meta = paginated ? paginationMeta({ page, limit, total }) : null;
+    let templatesQuery = EmailTemplate.find(filter)
       .select("key name subject isBase updatedAt createdAt")
-      .sort({ updatedAt: -1 });
-    res.json({ templates });
+      .sort({ updatedAt: -1, _id: -1 });
+    if (meta) templatesQuery = templatesQuery.skip((meta.page - 1) * limit).limit(limit);
+    const templates = await templatesQuery;
+    res.json({ templates, ...(meta || {}) });
   } catch (error) {
     res
       .status(500)
@@ -180,11 +195,17 @@ export const sendTestEmailTemplate = async (req, res) => {
 
 const normalize = (v) => String(v ?? "").trim();
 
-const isValidEmail = (email) => {
-  const value = normalize(email);
-  if (!value) return false;
-  // Basic validation; avoids rejecting real-world emails too aggressively.
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+export const getActiveMemberAudience = async (req, res) => {
+  if (!hasPermission(req.user, "mailer")) return res.status(403).json({ message: "Forbidden" });
+  try {
+    const { page: rawPage, ...filters } = req.query || {};
+    const page = parseAudiencePage(rawPage);
+    const match = parseAudienceFilters(filters);
+    return res.json(await getAudienceSummary(match, page));
+  } catch (error) {
+    if (error instanceof AudienceFilterError) return res.status(400).json({ message: error.message });
+    return res.status(500).json({ message: "Failed to load email audience" });
+  }
 };
 
 const chunk = (arr, size) => {
@@ -213,153 +234,68 @@ export const sendBulkEmailTemplate = async (req, res) => {
     const { sendTo, recipients, data: defaultData } = req.body || {};
     const mode = normalize(sendTo).toLowerCase();
 
-    const template = await EmailTemplate.findById(req.params.id);
-    if (!template) {
-      return res.status(404).json({ message: "Template not found" });
-    }
-
-    const subject = template.subject || template.name || "Email";
-    const baseData =
-      defaultData &&
-      typeof defaultData === "object" &&
-      !Array.isArray(defaultData)
-        ? defaultData
-        : {};
-
-    // Send to all active members
+    let match;
     if (mode === "all") {
-      const members = await Registration.find({
-        status: "active",
-        email: { $exists: true, $ne: "" },
-      })
-        .select(
-          "email firstName lastName membershipId admissionNo department semester status",
-        )
-        .lean();
-
-      const targets = members
-        .map((m) => {
-          const email = normalize(m?.email);
-          if (!isValidEmail(email)) return null;
-          const name =
-            normalize(`${m?.firstName ?? ""} ${m?.lastName ?? ""}`) ||
-            undefined;
-          return {
-            email,
-            data: {
-              ...baseData,
-              ...m,
-              ...(name ? { name } : {}),
-            },
-          };
-        })
-        .filter(Boolean);
-
-      const results = await sendManyWithConcurrency({
-        items: targets,
-        concurrency: 5,
-        sendOne: async (t) => {
-          const html = renderTemplate(template.html, t.data);
-          return sendMail({ to: t.email, subject, html });
-        },
-      });
-
-      let sent = 0;
-      let failed = 0;
-      const failures = [];
-
-      for (let i = 0; i < results.length; i++) {
-        const r = results[i];
-        const email = targets[i]?.email;
-        if (r.status === "fulfilled" && r.value?.sent) {
-          sent++;
-        } else {
-          failed++;
-          const reason =
-            r.status === "fulfilled"
-              ? r.value?.reason || "Email not sent"
-              : r.reason?.message || "Failed";
-          if (failures.length < 10) failures.push({ email, reason });
-        }
+      if (Object.keys(req.query || {}).length) {
+        return res.status(400).json({ message: "Place audience filters in the request body" });
       }
-
-      return res.json({
-        mode: "all",
-        total: targets.length,
-        sent,
-        failed,
-        failures,
-      });
-    }
-
-    // Send to list
-    if (mode === "list") {
+      if (Object.keys(req.body).some(key => !["sendTo", "data", "filters"].includes(key))) {
+        return res.status(400).json({ message: "All-member sends accept sendTo, data and optional filters" });
+      }
+      match = parseAudienceFilters(req.body.filters);
+    } else if (mode === "list") {
+      if (req.body.filters !== undefined) {
+        return res.status(400).json({ message: "Audience filters apply only to all-member sends" });
+      }
       if (!Array.isArray(recipients) || recipients.length === 0) {
         return res.status(400).json({ message: "recipients is required" });
       }
-      if (recipients.length > 2000) {
-        return res.status(400).json({ message: "Too many recipients" });
-      }
-
-      const targets = recipients
-        .map((r) => {
-          const email = normalize(r?.email);
-          if (!isValidEmail(email)) return null;
-          const rowData =
-            r?.data && typeof r.data === "object" && !Array.isArray(r.data)
-              ? r.data
-              : {};
-          return { email, data: { ...baseData, ...rowData } };
-        })
-        .filter(Boolean);
-
-      if (targets.length === 0) {
-        return res
-          .status(400)
-          .json({ message: "No valid recipient emails found" });
-      }
-
-      const results = await sendManyWithConcurrency({
-        items: targets,
-        concurrency: 5,
-        sendOne: async (t) => {
-          const html = renderTemplate(template.html, t.data);
-          return sendMail({ to: t.email, subject, html });
-        },
-      });
-
-      let sent = 0;
-      let failed = 0;
-      const failures = [];
-
-      for (let i = 0; i < results.length; i++) {
-        const r = results[i];
-        const email = targets[i]?.email;
-        if (r.status === "fulfilled" && r.value?.sent) {
-          sent++;
-        } else {
-          failed++;
-          const reason =
-            r.status === "fulfilled"
-              ? r.value?.reason || "Email not sent"
-              : r.reason?.message || "Failed";
-          if (failures.length < 10) failures.push({ email, reason });
-        }
-      }
-
-      return res.json({
-        mode: "list",
-        total: targets.length,
-        sent,
-        failed,
-        failures,
-      });
+      if (recipients.length > 2000) return res.status(400).json({ message: "Too many recipients" });
+    } else {
+      return res.status(400).json({ message: "sendTo must be 'all' or 'list'" });
     }
 
-    return res.status(400).json({ message: "sendTo must be 'all' or 'list'" });
+    const template = await EmailTemplate.findById(req.params.id);
+    if (!template) return res.status(404).json({ message: "Template not found" });
+    const subject = template.subject || template.name || "Email";
+    const baseData = defaultData && typeof defaultData === "object" && !Array.isArray(defaultData) ? defaultData : {};
+    let targets;
+    if (mode === "all") {
+      const members = await findAudienceMembers(match);
+      targets = members.map(member => {
+        const name = normalize(`${member.firstName ?? ""} ${member.lastName ?? ""}`);
+        return { email: member.email, data: { ...baseData, ...member, ...(name && { name }) } };
+      });
+    } else {
+      targets = recipients.flatMap(recipient => {
+        const email = normalize(recipient?.email);
+        if (!validEmailPattern.test(email)) return [];
+        const rowData = recipient?.data;
+        const data = rowData && typeof rowData === "object" && !Array.isArray(rowData) ? rowData : {};
+        return [{ email, data: { ...baseData, ...data } }];
+      });
+      if (!targets.length) return res.status(400).json({ message: "No valid recipient emails found" });
+    }
+
+    const results = await sendManyWithConcurrency({
+      items: targets,
+      concurrency: 5,
+      sendOne: target => sendMail({ to: target.email, subject, html: renderTemplate(template.html, target.data) }),
+    });
+    let sent = 0;
+    const failures = [];
+    for (const [index, result] of results.entries()) {
+      if (result.status === "fulfilled" && result.value?.sent) {
+        sent++;
+      } else if (failures.length < 10) {
+        const reason = result.status === "fulfilled" ? result.value?.reason : result.reason?.message;
+        failures.push({ email: targets[index].email, reason: reason || "Email not sent" });
+      }
+    }
+
+    return res.json({ mode, total: targets.length, sent, failed: targets.length - sent, failures });
   } catch (error) {
-    return res
-      .status(500)
-      .json({ message: "Failed to bulk send email", error: error.message });
+    if (error instanceof AudienceFilterError) return res.status(400).json({ message: error.message });
+    return res.status(500).json({ message: "Failed to bulk send email", error: error.message });
   }
 };

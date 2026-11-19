@@ -1,397 +1,272 @@
-import React, { useState, useEffect } from 'react';
-import { Loader2, X, CalendarDays, MapPin, Eye, Settings, Clock, Users, Link as LinkIcon, FileText, Image as ImageIcon } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { useId, useState } from 'react';
+import { CalendarDays, ChevronDown, Eye, Globe2, Loader2, MapPin, X } from 'lucide-react';
+import PortalDialog from './PortalDialog';
+import FormAlert from './FormAlert';
 import EventBannerUploader from './EventBannerUploader';
+import EventDateTimePicker from './EventDateTimePicker';
 import { MultiSelectUsers } from './MultiSelectUsers';
+import './event-editor.css';
 
-const EVENT_STATUSES = ["draft", "published", "completed", "cancelled"];
-const EVENT_VISIBILITIES = ["public", "private"];
+const EVENT_STATUSES = ['draft', 'published', 'completed', 'cancelled'];
+const statusLabels = { draft: 'Draft', published: 'Published', completed: 'Completed', cancelled: 'Cancelled' };
 
-const toIsoOrEmpty = (value) => {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toISOString();
-};
+function validateEvent({ title, shortDescription, startAt, endAt }) {
+  if (!title?.trim()) return { field: 'title', message: 'Enter an event title.' };
+  if (shortDescription?.length > 200) return { field: 'shortDescription', message: 'Shorten the summary to 200 characters or fewer.' };
+  if (endAt && !startAt) return { field: 'startAt', message: 'Add a start time before setting an end time.' };
+  if (endAt && new Date(endAt) <= new Date(startAt)) return { field: 'endAt', message: 'Choose an end time after the start time.' };
+  return null;
+}
 
 export default function EventForm({
-  mode = 'create', // 'create' | 'edit'
-  eventType = 'club', // 'club' | 'iedc'
+  mode = 'create',
+  eventType = 'club',
+  workspaceName = eventType === 'club' ? 'Club events' : 'Organization events',
   initialData,
   coordinators = [],
   onSubmit,
   onCancel,
   onPreview,
-  isSubmitting = false
+  isSubmitting = false,
+  saveError,
+  clubId,
+  canPublish = true,
 }) {
+  const id = useId();
   const [formData, setFormData] = useState(initialData);
   const [isUploading, setIsUploading] = useState(false);
-  const [isDirty, setIsDirty] = useState(false);
-
-  // Form structure
-  // title, shortDescription, description, registrationLink, externalLink,
-  // scope, status, visibility, location, venue, mode, startAt, endAt
-  // coordinatorUserIds (array) or coordinatorUserId (string) depending on eventType
-  // posterUrl, posterPublicId
-
-  useEffect(() => {
-    // Basic dirty check
-    const isChanged = JSON.stringify(formData) !== JSON.stringify(initialData);
-    setIsDirty(isChanged);
-  }, [formData, initialData]);
-
-  const handleCancel = () => {
-    if (isDirty) {
-      if (window.confirm("Discard unsaved changes?")) {
-        onCancel();
-      }
-    } else {
-      onCancel();
-    }
+  const [attempted, setAttempted] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const error = attempted ? validateEvent(formData) : null;
+  const dirty = JSON.stringify(formData) !== JSON.stringify(initialData);
+  const busy = isSubmitting || isUploading;
+  const selectedIds = formData.coordinatorUserIds ?? [];
+  const coordinatorName = coordinatorId => {
+    const user = coordinators.find(item => String(item._id ?? item.id) === String(coordinatorId));
+    return user?.name || user?.membershipId || 'Selected coordinator';
   };
 
+  const initialStatus = initialData.status || 'draft';
+  const status = formData.status || 'draft';
+  const visibility = formData.visibility || 'public';
+  const availableStatuses = !canPublish && initialStatus === 'published'
+    ? ['published']
+    : EVENT_STATUSES.filter(value => canPublish || value !== 'published');
+  const canChangeVisibility = eventType !== 'club' || canPublish || initialStatus !== 'published';
+  const isPublic = status === 'published' && visibility === 'public';
+  const submitLabel = mode === 'edit' ? 'Save changes'
+    : status === 'draft' ? 'Save draft' : status === 'published' ? 'Publish event' : 'Create event';
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-  const validateSchedule = () => {
-    if (!formData.startAt && formData.endAt) {
-      toast.error('Please enter a start date/time.');
-      return false;
-    }
-    if (formData.startAt && !formData.endAt) {
-      toast.error('Please enter an end date/time.');
-      return false;
-    }
-    if (formData.startAt && formData.endAt) {
-      const start = new Date(formData.startAt).getTime();
-      const end = new Date(formData.endAt).getTime();
-      if (end <= start) {
-        toast.error('End date/time must be strictly after start date/time.');
-        return false;
-      }
-    }
-    return true;
-  };
+  function requestClose() {
+    if (busy) return;
+    if (dirty) setConfirmDiscard(true);
+    else onCancel();
+  }
 
-  const handleSubmit = () => {
-    if (!formData.title?.trim()) {
-      toast.error('Title is required.');
+  function save(event) {
+    event.preventDefault();
+    if (busy || confirmDiscard) return;
+    setAttempted(true);
+    const validationError = validateEvent(formData);
+    if (validationError) {
+      document.getElementById(id + '-' + validationError.field)?.focus();
       return;
     }
-    if (!validateSchedule()) return;
     onSubmit(formData);
-  };
+  }
 
-  const handlePreview = () => {
-    if (onPreview) {
-      onPreview(formData);
-    }
-  };
+  function change(field, value) {
+    setFormData(previous => ({ ...previous, [field]: value }));
+  }
 
-  // Coordinator handlers
-  const handleToggleCoordinatorId = (id) => {
-    if (eventType === 'club') {
-      const list = Array.isArray(formData.coordinatorUserIds) ? formData.coordinatorUserIds : [];
-      if (list.includes(id)) {
-        setFormData(p => ({ ...p, coordinatorUserIds: list.filter(v => v !== id) }));
-      } else {
-        setFormData(p => ({ ...p, coordinatorUserIds: [...list, id] }));
-      }
-    } else {
-      // IEDC legacy
-      setFormData(p => ({ ...p, coordinatorUserId: p.coordinatorUserId === id ? '' : id }));
-    }
-  };
+  function fieldState(field, descriptionId) {
+    const invalid = error?.field === field;
+    return {
+      id: id + '-' + field,
+      'aria-invalid': invalid || undefined,
+      'aria-describedby': invalid ? id + '-error' : descriptionId,
+    };
+  }
 
-  const renderCoordinatorChips = () => {
-    const selectedIds = eventType === 'club' 
-      ? (formData.coordinatorUserIds || [])
-      : (formData.coordinatorUserId ? [formData.coordinatorUserId] : []);
+  function renderFieldError(field) {
+    return error?.field === field && <p id={id + '-error'} className="event-field-error" role="alert">{error.message}</p>;
+  }
 
-    if (selectedIds.length === 0) return null;
-
-    return (
-      <div className="flex flex-wrap gap-2 mt-3">
-        {selectedIds.map(id => {
-          const user = coordinators.find(c => String(c._id ?? c.id) === String(id));
-          return (
-            <div key={id} className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-100 border border-slate-200 rounded-full text-xs font-semibold text-slate-700">
-              {user ? user.name : 'Unknown'}
-              <button 
-                onClick={() => handleToggleCoordinatorId(id)}
-                className="hover:text-red-500 transition-colors"
-                title="Remove"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
-
-  const selectedCoordinatorIds = eventType === 'club' 
-    ? (formData.coordinatorUserIds || [])
-    : (formData.coordinatorUserId ? [formData.coordinatorUserId] : []);
-
-  const titleLength = formData.shortDescription?.length || 0;
+  function toggleCoordinator(coordinatorId) {
+    setFormData(previous => {
+      const ids = previous.coordinatorUserIds ?? [];
+      return {
+        ...previous,
+        coordinatorUserIds: ids.includes(coordinatorId)
+          ? ids.filter(value => value !== coordinatorId)
+          : [...ids, coordinatorId],
+      };
+    });
+  }
 
   return (
-    <div className="flex flex-col h-full bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden max-h-[90vh]">
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50/50">
-        <h2 className="font-bold text-lg text-slate-900">
-          {mode === 'create' ? 'Create Event' : 'Edit Event'}
-        </h2>
-        <button
-          onClick={handleCancel}
-          className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all"
-        >
-          <X size={20} />
-        </button>
-      </div>
-
-      {/* Body */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-10">
-
-        {/* 01 // EVENT IDENTITY */}
-        <section className="space-y-4">
-          <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-            <span className="text-blue-500">01 //</span> Event Identity
+    <PortalDialog labelledBy={id + '-heading'} onClose={requestClose} busy={busy} className="event-editor">
+      <form className="event-editor-form" noValidate onSubmit={save}>
+        <header className="op-dialog-head event-editor-head">
+          <div>
+            <h2 id={id + '-heading'}>{mode === 'create' ? 'Create event' : 'Edit event'}</h2>
+            <p className="op-caption">{workspaceName}</p>
           </div>
-          
-          <div className="space-y-1">
-            <label className="text-sm font-semibold text-slate-700">Title <span className="text-red-500">*</span></label>
-            <input
-              type="text"
-              value={formData.title}
-              onChange={e => setFormData(p => ({ ...p, title: e.target.value }))}
-              placeholder="E.g. Hackathon 2026"
-              className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 text-lg font-semibold placeholder:font-normal"
-            />
-          </div>
+          <button type="button" className="op-icon" aria-label="Close event editor" disabled={busy} onClick={requestClose}><X size={17} /></button>
+        </header>
 
-          <div className="pt-2">
-            <label className="block text-sm font-semibold text-slate-700 mb-1">Event Banner</label>
-            <p className="text-xs text-slate-500 mb-3">Upload a 16:9 event banner · JPG, PNG or WebP · Max 5 MB</p>
-            <EventBannerUploader
-              currentImageUrl={formData.posterUrl}
-              isUploading={isUploading}
-              setIsUploading={setIsUploading}
-              onUploadSuccess={({ url, publicId }) => {
-                setFormData(p => ({ ...p, posterUrl: url, posterPublicId: publicId }));
-              }}
-              onRemove={() => {
-                setFormData(p => ({ ...p, posterUrl: '', posterPublicId: '' }));
-              }}
-            />
-          </div>
-        </section>
+        <div className="event-editor-scroll">
+          <fieldset className="event-editor-sections" disabled={isSubmitting}>
+            <legend className="sr-only">Event information</legend>
+            <section className="event-editor-main" aria-labelledby={id + '-details'}>
+              <h3 className="op-section-title" id={id + '-details'}>Event details</h3>
+              <div className="op-field">
+                <label htmlFor={id + '-title'}>Title</label>
+                <input {...fieldState('title')} required value={formData.title}
+                  onChange={event => change('title', event.target.value)} placeholder="e.g. Build an app in a day" />
+                {renderFieldError('title')}
+              </div>
 
-        {/* 02 // EVENT DETAILS */}
-        <section className="space-y-4 pt-4 border-t border-slate-100">
-          <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-            <span className="text-blue-500">02 //</span> Event Details
-          </div>
+              <div className="op-field">
+                <div className="event-field-heading">
+                  <label htmlFor={id + '-shortDescription'}>Summary</label>
+                  <span id={id + '-summary-count'} className="op-caption">{formData.shortDescription?.length ?? 0}/200</span>
+                </div>
+                <textarea {...fieldState('shortDescription', id + '-summary-count')} rows={2} value={formData.shortDescription ?? ''}
+                  onChange={event => change('shortDescription', event.target.value)} placeholder="A short summary for the event listing" />
+                {renderFieldError('shortDescription')}
+              </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="space-y-1">
-              <label className="text-sm font-semibold text-slate-700">Location</label>
-              <div className="relative">
-                <MapPin className="absolute left-3 top-3 text-slate-400" size={16} />
-                <input
-                  type="text"
-                  value={formData.location || formData.venue || ''}
-                  onChange={e => setFormData(p => ({ ...p, location: e.target.value, venue: e.target.value }))}
-                  placeholder="E.g. Main Auditorium"
-                  className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
+              <label className="op-field">
+                Description
+                <textarea rows={4} value={formData.description ?? ''} onChange={event => change('description', event.target.value)}
+                  placeholder="Agenda, what to bring, or any other useful details" />
+              </label>
+
+              <section className="event-editor-poster" aria-labelledby={id + '-poster'}>
+                <h4 id={id + '-poster'} className="op-section-title">Poster</h4>
+                <EventBannerUploader
+                  clubId={clubId}
+                  eventType={eventType}
+                  currentImageUrl={formData.posterUrl}
+                  isUploading={isUploading}
+                  setIsUploading={setIsUploading}
+                  disabled={isSubmitting}
+                  onUploadSuccess={({ url, publicId }) => setFormData(previous => ({ ...previous, posterUrl: url, posterPublicId: publicId }))}
+                  onRemove={() => setFormData(previous => ({ ...previous, posterUrl: '', posterPublicId: '' }))}
                 />
+              </section>
+            </section>
+
+            <div className="event-editor-sidebar">
+              <section className="event-editor-panel" aria-labelledby={id + '-schedule'}>
+                <h3 id={id + '-schedule'} className="op-section-title"><CalendarDays size={16} aria-hidden="true" /> Schedule</h3>
+                <div className="op-field">
+                  <label htmlFor={id + '-startAt'}>Starts</label>
+                  <EventDateTimePicker {...fieldState('startAt', id + '-timezone')} label="Start date and time" value={formData.startAt ?? ''} disabled={isSubmitting}
+                    onChange={value => change('startAt', value)} />
+                  {renderFieldError('startAt')}
+                </div>
+                <div className="op-field">
+                  <label htmlFor={id + '-endAt'}>Ends <span className="event-optional">(optional)</span></label>
+                  <EventDateTimePicker {...fieldState('endAt', id + '-timezone')} label="End date and time" value={formData.endAt ?? ''} disabled={isSubmitting}
+                    onChange={value => change('endAt', value)} />
+                  {renderFieldError('endAt')}
+                </div>
+                <p className="op-caption" id={id + '-timezone'}>Times use {timeZone.replaceAll('_', ' ')}.</p>
+                <label className="op-field">
+                  Location
+                  <span className="event-input-with-icon">
+                    <MapPin size={15} aria-hidden="true" />
+                    <input value={formData.location || formData.venue || ''} placeholder="e.g. Main auditorium or online"
+                      onChange={event => setFormData(previous => ({ ...previous, location: event.target.value, venue: event.target.value }))} />
+                  </span>
+                </label>
+              </section>
+
+              <section className="event-editor-panel" aria-labelledby={id + '-publishing'}>
+                <h3 id={id + '-publishing'} className="op-section-title"><Globe2 size={16} aria-hidden="true" /> Publishing</h3>
+                <div className="event-publishing-fields">
+                  <div className="op-field">
+                    <label htmlFor={id + '-status'}>Status</label>
+                    <select id={id + '-status'} value={status} onChange={event => change('status', event.target.value)}>
+                      {availableStatuses.map(value => <option key={value} value={value}>{statusLabels[value]}</option>)}
+                    </select>
+                  </div>
+                  <div className="op-field">
+                    <label htmlFor={id + '-visibility'}>Visibility</label>
+                    <select id={id + '-visibility'} value={visibility} disabled={!canChangeVisibility} onChange={event => change('visibility', event.target.value)}>
+                      <option value="public">Public</option><option value="private">Private</option>
+                    </select>
+                  </div>
+                </div>
+                <p className="op-caption">{status === 'draft' ? 'Drafts stay in the workspace until published.'
+                  : isPublic && !formData.startAt ? 'Add a start time to include this event in the public schedule.'
+                    : visibility === 'private' ? 'Private events stay in the workspace.'
+                      : isPublic ? 'Published events appear on the public site.' : 'This status keeps the event off the public listing.'}</p>
+              </section>
+            </div>
+
+            <details className="event-editor-extras">
+              <summary>
+                <div><h3 className="op-section-title">Links and coordinators</h3>
+                  <p className="op-caption">{selectedIds.length ? selectedIds.length + (selectedIds.length === 1 ? ' coordinator selected' : ' coordinators selected') : 'Optional'}</p>
+                </div><ChevronDown size={17} aria-hidden="true" />
+              </summary>
+              <div className="event-editor-extra-fields">
+                <label className="op-field">Registration link
+                  <input inputMode="url" value={formData.registrationLink ?? ''} onChange={event => change('registrationLink', event.target.value)}
+                    placeholder="https://forms.gle/…" />
+                </label>
+                <label className="op-field">External link
+                  <input inputMode="url" value={formData.externalLink ?? ''} onChange={event => change('externalLink', event.target.value)}
+                    placeholder="Website or event information" />
+                </label>
+                <section className="event-editor-coordinators" aria-labelledby={id + '-coordinators'}>
+                  <h4 id={id + '-coordinators'} className="op-section-title">Coordinators</h4>
+                  {selectedIds.length > 0 && <ul className="event-coordinator-chips">
+                    {selectedIds.map(coordinatorId => (
+                      <li key={coordinatorId}>{coordinatorName(coordinatorId)}
+                        <button type="button" aria-label={'Remove ' + coordinatorName(coordinatorId)} onClick={() => toggleCoordinator(coordinatorId)}>
+                          <X size={13} aria-hidden="true" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>}
+                  <MultiSelectUsers users={coordinators} selectedIds={selectedIds} onToggle={toggleCoordinator}
+                    searchEnabled searchPlaceholder="Search coordinators" emptyMessage="No coordinators match your search." />
+                </section>
               </div>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-sm font-semibold text-slate-700">Status</label>
-              <div className="relative">
-                <Settings className="absolute left-3 top-3 text-slate-400" size={16} />
-                <select
-                  value={formData.status || 'draft'}
-                  onChange={e => setFormData(p => ({ ...p, status: e.target.value }))}
-                  className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 appearance-none"
-                >
-                  {EVENT_STATUSES.map(status => (
-                    <option key={status} value={status}>{status.charAt(0).toUpperCase() + status.slice(1)}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-sm font-semibold text-slate-700">Visibility</label>
-              <div className="relative">
-                <Eye className="absolute left-3 top-3 text-slate-400" size={16} />
-                <select
-                  value={formData.visibility || 'public'}
-                  onChange={e => setFormData(p => ({ ...p, visibility: e.target.value }))}
-                  className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 appearance-none"
-                >
-                  {EVENT_VISIBILITIES.map(vis => (
-                    <option key={vis} value={vis}>{vis.charAt(0).toUpperCase() + vis.slice(1)}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* 03 // SCHEDULE */}
-        <section className="space-y-4 pt-4 border-t border-slate-100">
-          <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-            <span className="text-blue-500">03 //</span> Schedule
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="text-sm font-semibold text-slate-700">Start Date & Time</label>
-              <div className="relative">
-                <Clock className="absolute left-3 top-3 text-slate-400" size={16} />
-                <input
-                  type="datetime-local"
-                  value={formData.startAt || ''}
-                  onChange={e => setFormData(p => ({ ...p, startAt: e.target.value }))}
-                  className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm font-semibold text-slate-700">End Date & Time</label>
-              <div className="relative">
-                <Clock className="absolute left-3 top-3 text-slate-400" size={16} />
-                <input
-                  type="datetime-local"
-                  value={formData.endAt || ''}
-                  onChange={e => setFormData(p => ({ ...p, endAt: e.target.value }))}
-                  className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                />
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* 04 // COORDINATION */}
-        <section className="space-y-4 pt-4 border-t border-slate-100">
-          <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-            <span className="text-blue-500">04 //</span> Coordination
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-sm font-semibold text-slate-700">Select Coordinators</label>
-            <MultiSelectUsers
-              users={coordinators}
-              selectedIds={selectedCoordinatorIds}
-              onToggle={handleToggleCoordinatorId}
-              searchEnabled
-              searchPlaceholder="Search coordinators..."
-            />
-            {renderCoordinatorChips()}
-          </div>
-        </section>
-
-        {/* 05 // INFORMATION */}
-        <section className="space-y-4 pt-4 border-t border-slate-100 pb-8">
-          <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-            <span className="text-blue-500">05 //</span> Information
-          </div>
-
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-semibold text-slate-700">Short Description</label>
-              <span className={`text-xs font-semibold ${titleLength > 200 ? 'text-red-500' : 'text-slate-400'}`}>
-                {titleLength} / 200
-              </span>
-            </div>
-            <textarea
-              value={formData.shortDescription || ''}
-              onChange={e => setFormData(p => ({ ...p, shortDescription: e.target.value }))}
-              placeholder="A brief summary of the event (shown on cards)..."
-              className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 min-h-20"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="text-sm font-semibold text-slate-700">Registration Link</label>
-              <div className="relative">
-                <LinkIcon className="absolute left-3 top-3 text-slate-400" size={16} />
-                <input
-                  type="text"
-                  value={formData.registrationLink || ''}
-                  onChange={e => setFormData(p => ({ ...p, registrationLink: e.target.value }))}
-                  placeholder="https://forms.gle/..."
-                  className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-sm font-semibold text-slate-700">External Link</label>
-              <div className="relative">
-                <LinkIcon className="absolute left-3 top-3 text-slate-400" size={16} />
-                <input
-                  type="text"
-                  value={formData.externalLink || ''}
-                  onChange={e => setFormData(p => ({ ...p, externalLink: e.target.value }))}
-                  placeholder="Optional website or brochure"
-                  className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-1 pt-2">
-            <label className="text-sm font-semibold text-slate-700">Full Description</label>
-            <div className="relative">
-              <FileText className="absolute left-3 top-3 text-slate-400" size={16} />
-              <textarea
-                value={formData.description || ''}
-                onChange={e => setFormData(p => ({ ...p, description: e.target.value }))}
-                placeholder="Detailed event description, rules, agenda..."
-                className="w-full pl-9 pr-4 py-3 rounded-xl border border-slate-200 bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 min-h-32"
-              />
-            </div>
-          </div>
-        </section>
-      </div>
-
-      {/* Footer / Actions */}
-      <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between gap-3 shrink-0">
-        <button
-          type="button"
-          onClick={handlePreview}
-          className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold hover:bg-slate-50 transition-colors inline-flex items-center gap-2"
-        >
-          <Eye size={18} />
-          <span className="hidden sm:inline">Preview Event</span>
-        </button>
-        
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={handleCancel}
-            disabled={isUploading || isSubmitting}
-            className="px-4 py-2.5 rounded-xl border border-transparent text-slate-600 font-semibold hover:bg-slate-100 transition-colors disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={isUploading || isSubmitting || !formData.title?.trim() || titleLength > 200}
-            className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold transition-all disabled:opacity-50 disabled:bg-slate-400"
-          >
-            {(isUploading || isSubmitting) && <Loader2 className="animate-spin" size={18} />}
-            {isUploading ? 'Uploading Banner...' : (isSubmitting ? (mode === 'create' ? 'Creating...' : 'Saving...') : (mode === 'create' ? 'Create Event' : 'Save Changes'))}
-          </button>
+            </details>
+          </fieldset>
         </div>
-      </div>
-    </div>
+
+        {saveError && !error && <FormAlert className="event-editor-alert">
+          {saveError.response?.data?.message || 'Could not save this event. Your changes are still here. Try again.'}
+        </FormAlert>}
+        <footer className="op-dialog-foot event-editor-actions">
+          {onPreview && <button type="button" className="op-secondary" disabled={busy}
+            onClick={() => onPreview({ ...formData, workspaceName, coordinatorNames: selectedIds.map(coordinatorName) })}>
+            <Eye size={16} aria-hidden="true" /> Preview
+          </button>}
+          <div>
+            <button type="button" className="op-secondary" disabled={busy} onClick={requestClose}>Cancel</button>
+            <button type="submit" className="op-primary" disabled={busy}>
+              {busy && <Loader2 size={15} className="animate-spin" aria-hidden="true" />}
+              {isUploading ? 'Uploading poster…' : isSubmitting ? 'Saving…' : submitLabel}
+            </button>
+          </div>
+        </footer>
+      </form>
+      {confirmDiscard && <PortalDialog labelledBy={id + '-discard-title'} onClose={() => setConfirmDiscard(false)}>
+        <header className="op-dialog-head"><h2 id={id + '-discard-title'}>Discard event changes?</h2></header>
+        <p className="op-caption p-5">Your unsaved changes will be lost.</p>
+        <footer className="op-dialog-foot">
+          <button type="button" className="op-secondary" onClick={() => setConfirmDiscard(false)}>Keep editing</button>
+          <button type="button" className="op-danger" onClick={onCancel}>Discard changes</button>
+        </footer>
+      </PortalDialog>}
+    </PortalDialog>
   );
 }

@@ -1,16 +1,27 @@
 import axios from "axios";
 
+const loopbackHosts = new Set(["localhost", "127.0.0.1"]);
+
 const normalizeBaseUrl = (value) => {
   const text = String(value ?? "").trim();
-  if (!text) return text;
+  if (!text || typeof window === "undefined") return text;
 
-  // Avoid mixed-content: if the page is https, never call an http API.
-  if (typeof window !== "undefined" && window.location?.protocol === "https:") {
-    if (text.startsWith("http://"))
-      return `https://${text.slice("http://".length)}`;
+  // Avoid mixed-content when the portal is served over HTTPS.
+  const { protocol, hostname } = window.location;
+  const baseUrl = protocol === "https:" ? text.replace(/^http:\/\//, "https://") : text;
+  if (!loopbackHosts.has(hostname)) return baseUrl;
+
+  // Session cookies treat localhost and 127.0.0.1 as different sites.
+  try {
+    const url = new URL(baseUrl);
+    if (loopbackHosts.has(url.hostname) && url.hostname !== hostname) {
+      url.hostname = hostname;
+      return url.href;
+    }
+  } catch {
+    // Relative API paths already use the portal's origin.
   }
-
-  return text;
+  return baseUrl;
 };
 
 const api = axios.create({

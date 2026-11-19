@@ -1,3 +1,6 @@
 packages:
   - "apps/*"
   - "server"
+allowBuilds:
+  esbuild: true
+  '@scarf/scarf': false

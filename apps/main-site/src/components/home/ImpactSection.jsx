@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { motion, useInView } from 'framer-motion';
+import { motion as Motion, useInView } from 'framer-motion';
 
 // Optimized Counter Component
 const AnimatedCounter = ({ value, label, suffix = "" }) => {
@@ -9,7 +9,6 @@ const AnimatedCounter = ({ value, label, suffix = "" }) => {
   
   useEffect(() => {
     if (isInView) {
-      let start = 0;
       // Parse the number from string (e.g., "500+" -> 500)
       const end = parseInt(value.toString().replace(/\D/g, '')); 
       const duration = 2000;
@@ -39,7 +38,7 @@ const AnimatedCounter = ({ value, label, suffix = "" }) => {
   return (
     <div ref={ref} className="relative p-8 group border-r border-b border-white/10 hover:bg-white/5 transition-colors duration-300">
       <div className="flex flex-col h-full justify-between">
-        <motion.div
+        <Motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={isInView ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.5 }}
@@ -47,7 +46,7 @@ const AnimatedCounter = ({ value, label, suffix = "" }) => {
           <span className="text-5xl md:text-7xl font-black text-white mb-2 block tracking-tight">
             {count}{suffix}
           </span>
-        </motion.div>
+        </Motion.div>
         
         <div className="mt-4">
           <div className="w-8 h-1 bg-accent mb-4 group-hover:w-full transition-all duration-500"></div>
@@ -125,7 +124,7 @@ const ImpactSection = () => {
       {/* 3. The Manifesto / Quote Block */}
       <div className="bg-accent py-20">
         <div className="container mx-auto px-6 text-center">
-          <motion.div 
+          <Motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             whileInView={{ opacity: 1, scale: 1 }}
             viewport={{ once: true }}
@@ -135,7 +134,7 @@ const ImpactSection = () => {
             <h3 className="text-3xl md:text-5xl font-bold text-text-dark leading-tight mb-8">
               "We don't just build startups. We build the <span className="underline decoration-white decoration-4 underline-offset-4">founders</span> that build the future."
             </h3>
-          </motion.div>
+          </Motion.div>
         </div>
       </div>
 

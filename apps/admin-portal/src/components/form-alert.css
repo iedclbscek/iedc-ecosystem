@@ -1,0 +1,19 @@
+.op-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid #f1cbd2;
+  border-radius: 9px;
+  background: #fff3f5;
+  color: #902436;
+  font-size: 13px;
+  font-weight: 450;
+  line-height: 1.5;
+  text-align: left;
+}
+.op-alert-icon { flex: none; margin-top: .1em; }
+.op-alert-content { min-width: 0; overflow-wrap: anywhere; }
+.op-alert-content button { font-weight: 620; text-decoration: underline; text-underline-offset: 2px; }
+.op-alert-content ul { margin-top: 6px; padding-inline-start: 16px; list-style: disc; }
+.op-alert + .op-alert { margin-block-start: 4px; }

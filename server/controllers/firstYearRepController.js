@@ -245,7 +245,7 @@ export const submitApplication = async (req, res) => {
         name: profile.name,
         admissionNumber: profile.admissionNumber,
         department: profile.department,
-        semester: profile.semester,
+        semester: profile.semester || undefined,
         class: profile.class,
         email: profile.email,
         phone: profile.phone

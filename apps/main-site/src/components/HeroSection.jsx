@@ -1,11 +1,11 @@
-import { motion } from 'framer-motion';
+import { motion as Motion } from 'framer-motion';
 
 const HeroSection = () => {
   return (
     <section className="bg-background pt-24 md:pt-32 pb-16 md:pb-24">
       <div className="container mx-auto px-4">
         <div className="grid md:grid-cols-2 gap-12 items-center">
-          <motion.div
+          <Motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
@@ -27,9 +27,9 @@ const HeroSection = () => {
                 Join Community
               </button>
             </div>
-          </motion.div>
+          </Motion.div>
           
-          <motion.div
+          <Motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.8, delay: 0.2 }}
@@ -46,7 +46,7 @@ const HeroSection = () => {
               <div className="absolute -bottom-6 -right-6 w-24 h-24 bg-accent/20 rounded-lg"></div>
               <div className="absolute -top-6 -left-6 w-16 h-16 bg-cta/20 rounded-full"></div>
             </div>
-          </motion.div>
+          </Motion.div>
         </div>
       </div>
     </section>
