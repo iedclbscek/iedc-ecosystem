@@ -1,6 +1,7 @@
 import { createBrowserRouter, createRoutesFromElements, RouterProvider, Outlet, Route, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import PageSkeleton from './components/PageSkeleton';
+import RouteError from './components/RouteError';
 import AdminLayout from './layouts/AdminLayout';
 import { Toaster } from 'react-hot-toast';
 import RequireAuth from './components/RequireAuth';
@@ -24,7 +25,7 @@ const FirstYearReps = lazy(() => import('./pages/FirstYearReps'));
 const SecondYearReps = lazy(() => import('./pages/SecondYearReps'));
 
 const router = createBrowserRouter(createRoutesFromElements(
-  <Route element={<ViewModeProvider><Toaster position="top-right" reverseOrder={false} /><Suspense fallback={<PageSkeleton />}><Outlet /></Suspense></ViewModeProvider>}>
+  <Route errorElement={<RouteError />} element={<ViewModeProvider><Toaster position="top-right" reverseOrder={false} /><Suspense fallback={<PageSkeleton />}><Outlet /></Suspense></ViewModeProvider>}>
         <Route path="/login" element={<Login />} />
         <Route path="/set-password" element={<SetPassword />} />
         <Route path="/team-entry/update" element={<TeamEntryUpdate />} />
