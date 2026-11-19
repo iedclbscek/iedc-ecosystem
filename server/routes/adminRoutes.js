@@ -69,6 +69,15 @@ import {
   getSettings as getFirstYearRepSettings,
   updateSettings as updateFirstYearRepSettings,
 } from "../controllers/adminFirstYearRepController.js";
+import {
+  getApplications as getSecondYearRepApplications,
+  getApplicationDetail as getSecondYearRepApplicationDetail,
+  updateApplication as updateSecondYearRepApplication,
+  deleteApplication as deleteSecondYearRepApplication,
+  exportApplications as exportSecondYearRepApplications,
+  getSettings as getSecondYearRepSettings,
+  updateSettings as updateSecondYearRepSettings,
+} from "../controllers/adminSecondYearRepController.js";
 
 import { getClubPage, bindClubPage, saveClubPageDraft, publishClubPage, unpublishClubPage, getNexusOrder, putNexusOrder } from "../controllers/clubPageController.js";
 
@@ -1349,5 +1358,14 @@ router.patch("/first-year-reps/:id", requirePermission("firstYearReps"), updateF
  *       - cookieAuth: []
  */
 router.delete("/first-year-reps/:id", requirePermission("firstYearReps"), deleteFirstYearRepApplication);
+
+// Second Year Reps
+router.get("/second-year-reps", getSecondYearRepApplications);
+router.get("/second-year-reps/settings", getSecondYearRepSettings);
+router.patch("/second-year-reps/settings", updateSecondYearRepSettings);
+router.get("/second-year-reps/export/csv", exportSecondYearRepApplications);
+router.get("/second-year-reps/:id", getSecondYearRepApplicationDetail);
+router.patch("/second-year-reps/:id", updateSecondYearRepApplication);
+router.delete("/second-year-reps/:id", deleteSecondYearRepApplication);
 
 export default router;

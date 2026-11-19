@@ -6,7 +6,7 @@
     "node": ">=22 <25"
   },
   "scripts": {
-    "test": "node --test server/migrations/*.test.js server/utils/*.test.js server/controllers/*.test.js shared/*.test.js apps/admin-portal/src/utils/*.test.js apps/main-site/src/utils/*.test.js apps/main-site/src/services/*.test.js",
+    "test": "node --test server/tests/*.test.js server/migrations/*.test.js server/utils/*.test.js server/controllers/*.test.js shared/*.test.js apps/admin-portal/src/utils/*.test.js apps/main-site/src/utils/*.test.js apps/main-site/src/services/*.test.js",
     "lint": "pnpm --dir apps/admin-portal lint && pnpm --dir apps/main-site lint",
     "build": "pnpm --dir apps/admin-portal build && pnpm --dir apps/main-site build"
   }

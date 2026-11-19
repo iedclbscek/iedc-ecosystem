@@ -21,6 +21,7 @@ const Mailer = lazy(() => import('./pages/Mailer'));
 const Makerspace = lazy(() => import('./pages/Makerspace'));
 const TeamEntryUpdate = lazy(() => import('./pages/TeamEntryUpdate'));
 const FirstYearReps = lazy(() => import('./pages/FirstYearReps'));
+const SecondYearReps = lazy(() => import('./pages/SecondYearReps'));
 
 const router = createBrowserRouter(createRoutesFromElements(
   <Route element={<ViewModeProvider><Toaster position="top-right" reverseOrder={false} /><Suspense fallback={<PageSkeleton />}><Outlet /></Suspense></ViewModeProvider>}>
@@ -106,6 +107,14 @@ const router = createBrowserRouter(createRoutesFromElements(
             element={
               <RequirePermission permission="firstYearReps">
                 <FirstYearReps />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="second-year-reps"
+            element={
+              <RequirePermission permission="secondYearReps">
+                <SecondYearReps />
               </RequirePermission>
             }
           />

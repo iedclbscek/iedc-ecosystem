@@ -125,3 +125,13 @@ or have a visible linked team profile, excluding inactive club memberships. It r
 `{ people: [{ name, role, image, url }] }`, without private email addresses or membership IDs.
 `GET /api/public/nexus/:slug/team` requires a published page; editors can preview the same safe data
 before publication through `GET /api/admin/clubs/:clubId/page/team`.
+
+## Second-year representative applications
+
+The public API is `/api/second-year-representatives/*`; review, settings, and CSV routes are under `/api/admin/second-year-reps` and require `secondYearReps` permission.
+
+Codes use the separate `second_year_rep_otps` collection. Startup waits for its unique email and TTL indexes and the applications' unique membership index. Codes previously issued in the shared `otps` collection must be requested again after this change. Eligibility requires a student membership ID beginning with `IEDC25`; semester and joining year do not override that cohort restriction. Records missing an admission number must be corrected before applying.
+
+OTP request limits are process-local. Multiple API workers need a shared limit store; deployments behind a proxy need correctly scoped Express `trust proxy` configuration for client IP limits. Forwarded headers are not trusted by default.
+
+Run `npm test` here for regression checks using stubbed database queries and mail transport. These checks do not verify live MongoDB indexes, SMTP delivery, or deployment behavior.

@@ -6,7 +6,7 @@ import { getWorkspaceAccess, hasWorkspacePermission, normalizePortalRole } from 
 
 const pages = [
   ['dashboard', '/'], ['events', '/events'], ['registrations', '/registrations'],
-  ['users', '/users'], ['firstYearReps', '/first-year-reps'], ['makerspace', '/makerspace'],
+  ['users', '/users'], ['firstYearReps', '/first-year-reps'], ['secondYearReps', '/second-year-reps'], ['makerspace', '/makerspace'],
   ['mailer', '/mailer'], ['settings', '/settings'],
 ];
 

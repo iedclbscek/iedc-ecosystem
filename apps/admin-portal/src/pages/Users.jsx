@@ -237,6 +237,8 @@ const permissionOptions = [
   { id: 'makerspace', label: 'Makerspace' },
   { id: 'mailer', label: 'Email center' },
   { id: 'settings', label: 'Settings' },
+  { id: 'firstYearReps', label: 'First-Year Reps' },
+  { id: 'secondYearReps', label: 'Second-Year Reps' },
 ];
 
 const CLUB_EVENT_PERMISSION_OPTIONS = [

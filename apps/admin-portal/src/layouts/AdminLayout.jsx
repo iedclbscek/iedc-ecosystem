@@ -12,7 +12,7 @@ import './AdminShell.css';
 const links = [
   ['/', 'Overview', 'dashboard', LayoutDashboard], ['/events', 'Events', 'events', CalendarDays],
   ['/registrations', 'Members', 'registrations', Users], ['/users', 'Team & access', 'users', ShieldCheck],
-  ['/first-year-reps', 'First-year reps', 'firstYearReps', UserPlus], ['/makerspace', 'Makerspace', 'makerspace', Wrench],
+  ['/first-year-reps', 'First-year reps', 'firstYearReps', UserPlus], ['/second-year-reps', 'Second-year reps', 'secondYearReps', UserPlus], ['/makerspace', 'Makerspace', 'makerspace', Wrench],
   ['/mailer', 'Email center', 'mailer', Mail], ['/settings', 'Settings', 'settings', Settings],
 ];
 

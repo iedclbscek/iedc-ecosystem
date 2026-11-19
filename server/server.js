@@ -4,6 +4,8 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import { createOriginPolicy } from "./utils/originPolicy.js";
 import connectDB, { isDatabaseReady } from "./config/db.js";
+import SecondYearRepOTP from "./models/SecondYearRepOTP.js";
+import SecondYearRepresentativeApplication from "./models/SecondYearRepresentativeApplication.js";
 import { seedAdminUser } from "./utils/seedAdmin.js";
 import { seedEmailTemplates } from "./utils/seedEmailTemplates.js";
 import { ensureRegistrationAdmissionNoIndex } from "./utils/ensureIndexes.js";
@@ -16,9 +18,11 @@ import registrationRoutes from "./routes/registrationRoutes.js";
 import checkinRoutes from "./routes/checkinRoutes.js";
 import eventsPublicRoutes from "./routes/eventsPublicRoutes.js";
 import firstYearRepRoutes from "./routes/firstYearRepRoutes.js";
+import secondYearRepRoutes from "./routes/secondYearRepRoutes.js";
 
 dotenv.config();
 await connectDB();
+await Promise.all([SecondYearRepOTP.init(), SecondYearRepresentativeApplication.init()]);
 await ensureRegistrationAdmissionNoIndex();
 await Promise.all([seedAdminUser(), seedEmailTemplates()]);
 
@@ -138,6 +142,7 @@ app.use("/api/registrations", registrationRoutes);
 app.use("/api", checkinRoutes);
 app.use("/api", eventsPublicRoutes);
 app.use("/api/first-year-representatives", firstYearRepRoutes);
+app.use("/api/second-year-representatives", secondYearRepRoutes);
 
 // Health
 /**

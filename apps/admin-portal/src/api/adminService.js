@@ -715,3 +715,36 @@ export const unpublishClubPage = async (clubId, expectedRevision) => (await api.
 export const bindClubPage = async (clubId, body) => (await api.patch(`/admin/clubs/${clubId}/public-binding`, body)).data;
 export const fetchNexusOrder = async () => (await api.get('/admin/nexus/order')).data;
 export const saveNexusOrder = async (order) => (await api.put('/admin/nexus/order', { order })).data;
+
+// Second-Year Representatives
+export const fetchSecondYearReps = async (params) => {
+  const { data } = await api.get("/admin/second-year-reps", { params });
+  return data;
+};
+export const fetchSecondYearRep = async (id) => {
+  const { data } = await api.get(`/admin/second-year-reps/${id}`);
+  return data;
+};
+export const updateSecondYearRep = async (id, payload) => {
+  const { data } = await api.patch(`/admin/second-year-reps/${id}`, payload);
+  return data;
+};
+export const deleteSecondYearRep = async (id) => {
+  const { data } = await api.delete(`/admin/second-year-reps/${id}`);
+  return data;
+};
+export const fetchSecondYearRepsSettings = async () => {
+  const { data } = await api.get("/admin/second-year-reps/settings");
+  return data;
+};
+export const updateSecondYearRepsSettings = async (payload) => {
+  const { data } = await api.patch("/admin/second-year-reps/settings", payload);
+  return data;
+};
+
+export const exportSecondYearReps = async () => {
+  const { data } = await api.get("/admin/second-year-reps/export/csv", {
+    responseType: "blob",
+  });
+  return data;
+};
