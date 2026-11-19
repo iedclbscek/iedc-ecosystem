@@ -1,3 +1,8 @@
+import { fileURLToPath } from 'node:url';
+
+// Keep the annotation-only module in serverless dependency tracing.
+export const clubPageOpenApiPath = fileURLToPath(import.meta.url);
+
 /**
  * @openapi
  * components:

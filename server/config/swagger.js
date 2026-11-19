@@ -1,3 +1,4 @@
+import { clubPageOpenApiPath } from '../routes/clubPage.openapi.js';
 import swaggerJSDoc from "swagger-jsdoc";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -61,6 +62,7 @@ export function buildOpenApiSpec() {
       ],
     },
     apis: [
+      clubPageOpenApiPath,
       path.join(__dirname, "../routes/*.js"),
       path.join(__dirname, "../controllers/*.js"),
     ],
