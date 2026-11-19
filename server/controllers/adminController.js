@@ -53,7 +53,7 @@ export const getRegistrations = async (req, res) => {
       .select("firstName lastName email membershipId admissionNo department semester phone phoneNumber whatsappNumber organization status")
       .sort({ createdAt: -1, _id: -1 })
       .skip((meta.page - 1) * limit)
-      .limit(limit);
+      .limit(limit).lean();
 
     res.json({
       memberType,

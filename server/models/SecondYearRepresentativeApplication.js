@@ -54,4 +54,8 @@ const applicationSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+applicationSchema.index({ createdAt: -1, _id: -1 });
+applicationSchema.index({ status: 1, createdAt: -1, _id: -1 });
+applicationSchema.index({ "memberSnapshot.department": 1, createdAt: -1, _id: -1 });
+
 export default mongoose.model("SecondYearRepresentativeApplication", applicationSchema, "second_year_rep_applications");

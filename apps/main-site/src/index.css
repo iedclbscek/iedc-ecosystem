@@ -203,3 +203,7 @@
     background-image: none;
   }
 }
+
+/* Match request feedback to the public site's industrial theme. */
+.request-feedback { border-radius: 0; background: #fafaf7; border-color: #ddd; color: #303030; font-family: monospace; }
+.request-feedback span { border-color: #f1d7d3; border-top-color: #ff6b6b; }

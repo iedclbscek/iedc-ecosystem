@@ -3,7 +3,7 @@ import axios from "axios";
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 // Create axios instance with default config
-const api = axios.create({
+export const registrationApi = axios.create({
   baseURL: `${API_BASE_URL}/api`,
   headers: {
     "Content-Type": "application/json",
@@ -45,7 +45,7 @@ export const uploadImages = async (formData) => {
  */
 export const sendRegistrationOtp = async (email) => {
   try {
-    const response = await api.post("/public/send-otp", {
+    const response = await registrationApi.post("/public/send-otp", {
       email,
       purpose: "registration",
     });
@@ -69,7 +69,7 @@ export const sendRegistrationOtp = async (email) => {
  */
 export const verifyRegistrationOtp = async ({ email, otp }) => {
   try {
-    const response = await api.post("/public/verify-otp", { email, otp });
+    const response = await registrationApi.post("/public/verify-otp", { email, otp });
     return response.data;
   } catch (error) {
     if (error.response) {
@@ -93,7 +93,7 @@ export const verifyRegistrationOtp = async ({ email, otp }) => {
  */
 export const submitRegistration = async (registrationData) => {
   try {
-    const response = await api.post("/registrations", registrationData);
+    const response = await registrationApi.post("/registrations", registrationData);
     return response.data;
   } catch (error) {
     if (error.response) {

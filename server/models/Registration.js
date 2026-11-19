@@ -156,6 +156,8 @@ registrationSchema.pre("save", async function (next) {
 
 registrationSchema.index({ createdAt: -1, _id: -1 });
 
+registrationSchema.index({ status: 1, createdAt: -1, _id: -1 });
+
 export default mongoose.model(
   "Registration",
   registrationSchema,

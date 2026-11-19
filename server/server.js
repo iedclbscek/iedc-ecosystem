@@ -22,9 +22,10 @@ import secondYearRepRoutes from "./routes/secondYearRepRoutes.js";
 
 dotenv.config();
 await connectDB();
-await Promise.all([SecondYearRepOTP.init(), SecondYearRepresentativeApplication.init()]);
-await ensureRegistrationAdmissionNoIndex();
-await Promise.all([seedAdminUser(), seedEmailTemplates()]);
+await Promise.all([
+  SecondYearRepOTP.init(), SecondYearRepresentativeApplication.init(),
+  ensureRegistrationAdmissionNoIndex(), seedAdminUser(), seedEmailTemplates(),
+]);
 
 const app = express();
 

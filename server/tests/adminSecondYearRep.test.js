@@ -44,15 +44,15 @@ test("list keeps search literal, paginates, and returns consistent global stats"
   let capturedQuery;
   const query = {
     select() { return this; },
-    sort(value) { assert.deepEqual(value, { createdAt: -1 }); return this; },
-    skip(value) { assert.equal(value, 20); return this; },
+    sort(value) { assert.deepEqual(value, { createdAt: -1, _id: -1 }); return this; },
+    skip(value) { assert.equal(value, 0); return this; },
     limit(value) { assert.equal(value, 20); return this; },
     async lean() { return []; },
   };
   t.mock.method(Application, "find", value => { capturedQuery = value; return query; });
-  t.mock.method(Application, "countDocuments", async value => { assert.equal(value, capturedQuery); return 2; });
+  t.mock.method(Application, "countDocuments", async value => { assert.equal(value.status, "Applied"); return 2; });
   t.mock.method(Application, "aggregate", async () => [
-    { _id: "Applied", count: 2 }, { _id: "Selected", count: 5 },
+    { _id: "Applied", count: 2, departments: ["CSE"] }, { _id: "Selected", count: 5, departments: ["IT", "CSE"] },
   ]);
   const res = response();
   await controller.getApplications(request({ query: {
@@ -63,7 +63,8 @@ test("list keeps search literal, paginates, and returns consistent global stats"
   assert.equal(capturedQuery.status, "Applied");
   assert.equal(capturedQuery.$or[0]["memberSnapshot.name"].test("[a]+.*"), true);
   assert.equal(capturedQuery.$or[0]["memberSnapshot.name"].test("aaaa"), false);
-  assert.equal(res.body.page, 2);
+  assert.equal(res.body.page, 1);
+  assert.deepEqual(res.body.departments, ["CSE", "IT"]);
   assert.equal(res.body.total, 2);
   assert.equal(res.body.stats.total, 7);
   assert.equal(res.body.stats.applied, 2);
@@ -119,4 +120,12 @@ test("CSV quotes every applicant field and neutralizes spreadsheet formulas", as
   assert.equal(res.statusCode, 200);
   assert.ok(res.body.endsWith('"Doe, ""Jane""","\'=1+1","\'+123","\'@CSE","S3","A,""B""","jane@example.com","\'-123","Applied","2026-10-05T00:00:00.000Z"'));
   assert.equal(res.headers["Content-Type"], "text/csv");
+});
+
+test('CSV uses the selected department and status and rejects injected export filters', async t => {
+ let captured;
+ t.mock.method(Application, 'find', query => { captured=query; return {select(){return this;},sort(){return this;},lean:async()=>[]}; });
+ let res=response();await controller.exportApplications(request({query:{department:'CSE',status:'Selected',search:'[qa]'}}),res);
+ assert.equal(res.statusCode,200);assert.equal(captured['memberSnapshot.department'],'CSE');assert.equal(captured.status,'Selected');assert(captured.$or[0]['memberSnapshot.name'].test('[qa]'));
+ res=response();await controller.exportApplications(request({query:{department:{$ne:'CSE'}}}),res);assert.equal(res.statusCode,400);
 });

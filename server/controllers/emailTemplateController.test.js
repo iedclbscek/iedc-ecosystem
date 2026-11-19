@@ -4,6 +4,7 @@ import test from "node:test";
 import mongoose from "mongoose";
 import nodemailer from "nodemailer";
 import EmailTemplate from "../models/EmailTemplate.js";
+import { studentDepartments, joiningYears } from "../../shared/studentOptions.js";
 import Registration from "../models/Registration.js";
 import { getActiveMemberAudience, sendBulkEmailTemplate } from "./emailTemplateController.js";
 
@@ -92,8 +93,8 @@ test("Mongo audience counts match actual envelopes, including intersections and 
       await getActiveMemberAudience({ user: mailer, query: filters || {} }, preview);
       assert.equal(preview.code, 200, JSON.stringify(preview.body));
       assert.deepEqual(preview.body, {
-        departments: ["Civil Engineering", "Information Technology"],
-        years: ["2025", "2024"],
+        departments: [...studentDepartments, "Hidden department"].sort(),
+        years: joiningYears(["2025", "2024", "2000"]),
         total: expected.length,
       });
 
@@ -146,6 +147,13 @@ test("Mongo audience counts match actual envelopes, including intersections and 
         department: "Geology", yearOfJoining: "2025",
       })));
     }
+    await Registration.updateMany({ status: "active" }, { $set: { status: "pending" } });
+    const noActive = response();
+    await getActiveMemberAudience({ user: mailer, query: { page: "1" } }, noActive);
+    assert.equal(noActive.body.total, 0);
+    assert.deepEqual(noActive.body.members, []);
+    for (const department of studentDepartments) assert(noActive.body.departments.includes(department));
+    assert(noActive.body.years.includes("2025"));
   } finally {
     if (previousUser === undefined) delete process.env.EMAIL_USER; else process.env.EMAIL_USER = previousUser;
     if (previousPass === undefined) delete process.env.EMAIL_PASS; else process.env.EMAIL_PASS = previousPass;

@@ -165,7 +165,7 @@ function BulkSend({ template, onClose }) {
               {checkingAudience
                 ? <RowsSkeleton rows={4} columns={2} compact label="Loading matching members" />
                 : total === 0
-                  ? <p className="mail-audience-empty">No active members with valid email addresses match this selection.</p>
+                  ? <p className="mail-audience-empty">No active members with valid email addresses match this selection. Pending and rejected registrations are excluded.</p>
                   : page > totalPages
                     ? <p className="mail-audience-empty">This page is no longer available.{' '}
                       <button className="underline" type="button" onClick={() => setPage(totalPages)}>Show the last page</button></p>

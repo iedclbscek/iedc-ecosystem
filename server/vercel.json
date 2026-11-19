@@ -1,4 +1,7 @@
 {
   "framework": "express",
-  "installCommand": "pnpm install --frozen-lockfile"
+  "installCommand": "pnpm install --frozen-lockfile",
+  "regions": [
+    "bom1"
+  ]
 }

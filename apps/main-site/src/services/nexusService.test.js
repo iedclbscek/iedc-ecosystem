@@ -23,3 +23,9 @@ test('live team uses the published slug endpoint and propagates its safe people 
  globalThis.fetch=async url=>{requested=url;return {ok:true,json:async()=>({people})};};
  try {assert.deepEqual(await getNexusTeam('example-club'),people);assert.match(requested,/\/api\/public\/nexus\/example-club\/team$/);}finally{globalThis.fetch=original;}
 });
+
+test('published Nexus pages need one request and no directory round trip', async () => {
+ const original = globalThis.fetch; const requests = [];
+ globalThis.fetch = async url => { requests.push(String(url)); return {ok:true,json:async()=>({slug:'gdg',page:{card:{title:'GDG'}},clubId:'club'})}; };
+ try {const data=await getNexusPage('gdg');assert.equal(data.slug,'gdg');assert.equal(requests.length,1);assert.match(requests[0],/\/nexus\/gdg$/);} finally {globalThis.fetch=original;}
+});

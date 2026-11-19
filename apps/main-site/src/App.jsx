@@ -69,7 +69,7 @@ const AppContent = () => {
   return (
     <div className="flex flex-col min-h-screen">
       <Navbar />
-      <main className="flex-grow">
+      <main data-scroll-surface className="flex-grow">
         <Suspense fallback={<RouteSkeleton />}>
         <Routes>
           <Route path="/" element={<HomePage />} />

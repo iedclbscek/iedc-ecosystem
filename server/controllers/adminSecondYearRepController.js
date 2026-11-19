@@ -1,4 +1,5 @@
 import SecondYearRepresentativeApplication from "../models/SecondYearRepresentativeApplication.js";
+import { paginationMeta } from "../utils/pagination.js";
 import SystemSetting from "../models/SystemSetting.js";
 import { hasPermission } from "../middleware/requireAuth.js";
 
@@ -10,6 +11,34 @@ const handleError = (res, error, customMessage = "Server error") => {
   const status = ["CastError", "ValidationError"].includes(error.name) ? 400 : 500;
   res.status(status).json({ message: customMessage, error: error.message });
 };
+
+function applicationFilter(params) {
+  const query = {};
+
+  if (params.search) {
+    const regex = new RegExp(String(params.search).trim().slice(0, 100).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+    query.$or = [
+      { "memberSnapshot.name": regex },
+      { "memberSnapshot.admissionNumber": regex },
+      { membershipId: regex },
+      { "memberSnapshot.email": regex },
+    ];
+  }
+
+  if (params.department) {
+    query["memberSnapshot.department"] = params.department;
+  }
+
+  if (params.class) {
+    query["memberSnapshot.class"] = params.class;
+  }
+
+  if (params.status) {
+    query.status = params.status;
+  }
+
+  return query;
+}
 
 // @desc    Get all Second-Year representative applications with filtering and pagination
 // @route   GET /api/admin/Second-Year-reps
@@ -35,29 +64,7 @@ export const getApplications = async (req, res) => {
       return res.status(400).json({ message: "Invalid application status" });
     }
 
-    const query = {};
-
-    if (req.query.search) {
-      const regex = new RegExp(String(req.query.search).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
-      query.$or = [
-        { "memberSnapshot.name": regex },
-        { "memberSnapshot.admissionNumber": regex },
-        { membershipId: regex },
-        { "memberSnapshot.email": regex },
-      ];
-    }
-
-    if (req.query.department) {
-      query["memberSnapshot.department"] = req.query.department;
-    }
-
-    if (req.query.class) {
-      query["memberSnapshot.class"] = req.query.class;
-    }
-
-    if (req.query.status) {
-      query.status = req.query.status;
-    }
+    const query = applicationFilter(req.query);
 
     let sort = { createdAt: -1 };
     if (req.query.sort) {
@@ -70,19 +77,16 @@ export const getApplications = async (req, res) => {
       sort = { [sortField === "submittedAt" ? "createdAt" : sortField]: sortOrder };
     }
 
+    const [total, statsAggr] = await Promise.all([
+      SecondYearRepresentativeApplication.countDocuments(query),
+      SecondYearRepresentativeApplication.aggregate([
+        { $group: { _id: "$status", count: { $sum: 1 }, departments: { $addToSet: "$memberSnapshot.department" } } },
+      ]),
+    ]);
+    const meta = paginationMeta({ page, limit, total });
     const applications = await SecondYearRepresentativeApplication.find(query)
       .select("membershipId memberSnapshot.name memberSnapshot.admissionNumber memberSnapshot.department memberSnapshot.class status createdAt")
-      .sort(sort)
-      .skip(skip)
-      .limit(limit)
-      .lean();
-
-    const total = await SecondYearRepresentativeApplication.countDocuments(query);
-
-    // Aggregation for stats (Applied, Reviewed, Shortlisted, Selected, etc.)
-    const statsAggr = await SecondYearRepresentativeApplication.aggregate([
-      { $group: { _id: "$status", count: { $sum: 1 } } }
-    ]);
+      .sort({ ...sort, _id: -1 }).skip((meta.page - 1) * limit).limit(limit).lean();
 
     const stats = {
       total: statsAggr.reduce((sum, s) => sum + s.count, 0),
@@ -111,8 +115,9 @@ export const getApplications = async (req, res) => {
         submittedAt: app.createdAt
       })),
       stats,
-      page,
-      pages: Math.ceil(total / limit),
+      departments: [...new Set(statsAggr.flatMap(row => row.departments).filter(Boolean))].sort(),
+      page: meta.page,
+      pages: meta.totalPages,
       total,
     });
   } catch (error) {
@@ -218,9 +223,12 @@ export const exportApplications = async (req, res) => {
       return res.status(403).json({ message: "Forbidden" });
     }
 
-    const applications = await SecondYearRepresentativeApplication.find({})
-      .select("-review.reviewedBy") // Exclude sensitive/unnecessary refs
-      .sort({ createdAt: -1 })
+    if (["search", "department", "class", "status"].some(key => req.query[key] !== undefined && typeof req.query[key] !== 'string') || (req.query.status && !statuses.includes(req.query.status))) {
+      return res.status(400).json({ message: 'Invalid export filters' });
+    }
+    const applications = await SecondYearRepresentativeApplication.find(applicationFilter(req.query))
+      .select("memberSnapshot membershipId status createdAt")
+      .sort({ createdAt: -1, _id: -1 })
       .lean();
 
     const csvCell = (value) => {

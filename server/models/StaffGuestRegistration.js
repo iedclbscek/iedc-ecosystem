@@ -32,6 +32,8 @@ const staffGuestRegistrationSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+staffGuestRegistrationSchema.index({ userType: 1, createdAt: -1, _id: -1 });
+
 export default mongoose.model(
   "StaffGuestRegistration",
   staffGuestRegistrationSchema,

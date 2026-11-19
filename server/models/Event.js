@@ -51,4 +51,6 @@ const eventSchema = new mongoose.Schema(
 eventSchema.index({ status: 1, visibility: 1, startAt: -1, createdAt: -1 });
 eventSchema.index({ club: 1, startAt: 1, _id: 1 });
 
+eventSchema.index({ scope: 1, startAt: -1, createdAt: -1, _id: -1 });
+
 export default mongoose.model("Event", eventSchema, "events");

@@ -1,3 +1,4 @@
+import { studentDepartments, joiningYears } from "../../shared/studentOptions.js";
 import Registration from "../models/Registration.js";
 
 export const validEmailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -59,19 +60,11 @@ function eligibleMembers(fields = { _id: 0 }) {
 export async function getAudienceSummary(match, page) {
   const includeMembers = page !== undefined;
   const identityFields = { _id: 1, firstName: 1, lastName: 1 };
-  const [result] = await Registration.aggregate([
+  // Filter choices describe all registrations; delivery eligibility remains active-only.
+  const [departments, years, [result]] = await Promise.all([
+    Registration.distinct('department'), Registration.distinct('yearOfJoining'), Registration.aggregate([
     ...eligibleMembers(includeMembers ? identityFields : undefined),
     { $facet: {
-      departments: [
-        { $match: { departmentLabel: { $ne: "" } } },
-        { $group: { _id: "$departmentKey", label: { $min: "$departmentLabel" } } },
-        { $sort: { _id: 1 } },
-      ],
-      years: [
-        { $match: { joiningYear: joiningYearPattern } },
-        { $group: { _id: "$joiningYear" } },
-        { $sort: { _id: -1 } },
-      ],
       selected: [{ $match: match }, { $count: "total" }],
       ...(includeMembers && {
         members: [
@@ -92,11 +85,12 @@ export async function getAudienceSummary(match, page) {
         ],
       }),
     } },
+  ]),
   ]);
   const total = result.selected[0]?.total || 0;
   return {
-    departments: result.departments.map(option => option.label),
-    years: result.years.map(option => option._id),
+    departments: [...new Map([...departments, ...studentDepartments].filter(value => typeof value === "string" && value.trim()).map(value => [value.trim().toLowerCase(), value.trim()])).values()].sort(),
+    years: joiningYears(years.map(value => String(value).trim())),
     total,
     ...(includeMembers && { members: result.members, page, totalPages: Math.max(1, Math.ceil(total / pageSize)) }),
   };

@@ -11,8 +11,6 @@ export async function getNexusCatalogue(signal) {
  return {communities:mergeNexusCatalogue(legacyCatalogue,data),withdrawn:data.withdrawn||[]};
 }
 export async function getNexusPage(slug,signal) {
- const catalogue=await getNexusCatalogue(signal);
- if(catalogue.withdrawn.includes(slug)) {const error=new Error('This club page is currently unavailable.');error.status=404;throw error;}
  try {return await read(`/api/public/nexus/${encodeURIComponent(slug)}`,signal);}
  catch(error){if(error.status===404&&error.legacy===true&&Object.hasOwn(legacyPages,slug))return {slug,page:legacyPages[slug],clubId:null};throw error;}
 }
